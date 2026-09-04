@@ -147,8 +147,10 @@ Answering a TLS client-certificate challenge, behind an adapter with two impleme
 
 - **`portal`** ([`client_cert_portal.h`](../service/src/tls/client_cert_portal.h)) — call the smart
   card service's `AcquireCredential` (named for what it grants: private-key use, not just a
-  certificate), then satisfy the operation either by brokered signing behind a GnuTLS external
-  signer, or by an experimental PKCS#11 endpoint. **Preferred when available**, because the chooser
+  certificate) with `purpose: "client_auth"` and `context` set to the destination host, then satisfy
+  the operation either by brokered `Sign` behind a GnuTLS external-signer path — unproven, only
+  worth using if WebKitGTK/glib-networking expose one — or by the experimental
+  `OpenPkcs11Endpoint` compatibility endpoint. **Preferred when available**, because the chooser
   and the PIN then belong to one trusted service shared by every application, and the PIN never
   reaches this process.
 - **`inproc`** ([`client_cert_inproc.h`](../service/src/tls/client_cert_inproc.h)) — enumerate with

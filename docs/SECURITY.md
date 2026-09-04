@@ -177,10 +177,16 @@ while; see [decisions/0007-certificate-adapter.md](decisions/0007-certificate-ad
   expiry. Brokered signing gives precise accounting, revocation and per-operation consent — though
   note honestly that no generic `Sign()` can prove its input came from a TLS handshake, so what it
   buys is accounting rather than attestation.
-- **The module-endpoint variant is experimental and its isolation is weaker than it sounds.** Stock
-  p11-kit forwarding scopes to a *token*, not to an object: "a module scoped to the chosen
-  certificate" needs a restricted facade that does not exist yet. Until it does, an endpoint grants
-  more of the card than the consent dialog implies, and that gap must not be described as solved.
+- **The module-endpoint variant (`OpenPkcs11Endpoint`) is experimental, opt-in, and its isolation is
+  weaker than it sounds.** Stock `p11-kit server` forwards a whole *token*, not a scoped object, and
+  carries no login state across the boundary; what this endpoint returns instead is a Unix socket fd
+  backed by the smart card service's own broker-controlled synthetic facade — one slot, the granted
+  objects only, read-only sessions. Two things about it are unresolved and must not be described as
+  solved: a PKCS#11 URI cannot name a socket, and `g_tls_certificate_new_from_pkcs11_uris()` has no
+  module parameter, so whether this process can make the returned fd and URIs resolvable to GLib at
+  all — as opposed to merely receiving them — is unproven ([S2](SPIKES.md)); the likely resolution is
+  one permanently registered broker module exposing synthetic grant-bound slots, not a module handed
+  over per grant.
 - **Whatever the adapter held is released on every exit path** — completion, failure, timeout,
   cancellation. A finished transaction must not leave a live grant or endpoint behind. This is the
   one card-related discipline that is entirely this service's responsibility either way.

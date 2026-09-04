@@ -53,10 +53,12 @@ select_and_present(challenge) → GTlsCertificate*
 with two implementations, chosen at run time:
 
 - **`portal`** — call the smart card service: `AcquireCredential` (not "RequestCertificate": it
-  grants private-key use and the name should say so) returns a grant carrying the certificate, its
-  chain, the permitted operations and mechanisms, and an expiry. The operation is then satisfied
-  either by **brokered signing** through a GnuTLS external-signer path, or by an **experimental
-  PKCS#11 endpoint**. **Preferred when available.**
+  grants private-key use and the name should say so), with `purpose: "client_auth"` and `context`
+  set to the destination host, returns a grant carrying the certificate, its chain, the permitted
+  operations and mechanisms, and an expiry. The operation is then satisfied either by **brokered
+  `Sign`** through a GnuTLS external-signer path — unproven, and dependent on WebKitGTK/glib-networking
+  actually exposing one — or by the **experimental `OpenPkcs11Endpoint`** compatibility endpoint.
+  **Preferred when available.**
 - **`inproc`** — the proven in-process path: enumerate with p11-kit, show this service's own chooser
   and PIN prompt, and build the certificate with `g_tls_certificate_new_from_pkcs11_uris()` against
   the **system** p11-kit configuration. No forwarded module, no dynamic registration, nothing
