@@ -58,11 +58,12 @@ What the eventual rename would touch, file by file, is
 > has been asked.
 >
 > **One bus name, two incubating projects.** `io.github.sjtrotter.portal.Desktop` is a singleton
-> stand-in for `org.freedesktop.portal.Desktop`, and the sibling `smartcard-portal` sketch would
-> claim it too. Only one incubating frontend can be installed at a time. The resolution — one
-> frontend process hosting both interfaces, exactly as the real xdg-desktop-portal hosts all portals
-> — is in
-> [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md).
+> stand-in for `org.freedesktop.portal.Desktop`, and the sibling `smartcard-portal` sketch — now
+> restructured into the same shape — claims it too. Only one incubating frontend can be installed at
+> a time. The resolution — one shared frontend process hosting both interfaces, exactly as the real
+> xdg-desktop-portal hosts all portals — is a concrete next step now that both sketches are built to
+> the portal shape; see
+> [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md), "The Desktop bus name".
 
 ## The missing primitive
 
@@ -109,11 +110,12 @@ frontend/backend split is *inside* layer 2, and it is invisible from layers 1 an
 
 ## Layer 1 — the smart card portal (*a separate project, and not a hard dependency*)
 
-**Not in this repository.** `smartcard-portal` (working name), public interface
-`io.github.sjtrotter.portal.Smartcard1` once its own parallel restructuring lands
-(`io.github.sjtrotter.Smartcard1` today), being sketched in parallel. It would own the trusted certificate
-chooser and the PIN prompt **for every application on the machine** — a mail client, a VPN dialog, a
-code-signing tool and a browser all need one — and return a *grant*: the certificate, the operations
+**Not in this repository.** `smartcard-portal`, public interface
+`io.github.sjtrotter.portal.Smartcard1` on the same `io.github.sjtrotter.portal.Desktop` bus name
+this repository's own frontend claims, now that its own parallel restructuring into a portal
+frontend and backend has landed. It owns the trusted certificate chooser and the PIN prompt **for
+every application on the machine** — a mail client, a VPN dialog, a code-signing tool and a browser
+all need one — and returns a *grant*, held as a `Session` object: the certificate, the operations
 it permits, and either brokered `Sign`/`Decrypt` or a PKCS#11 endpoint.
 
 That is the **preferred** way for layer 2's backend to satisfy a certificate challenge, because it

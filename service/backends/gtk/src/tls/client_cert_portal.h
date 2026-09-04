@@ -15,34 +15,38 @@
  *  performs, which is exactly what this project asks other people not to do to
  *  it.
  *
- *  Names, and their status. In the restructured shape both projects mirror
- *  xdg-desktop-portal, so the call goes to:
+ *  Names, and their status. Both projects have now landed their frontend/backend
+ *  restructuring and mirror xdg-desktop-portal, so the call goes to:
  *
  *      bus name      io.github.sjtrotter.portal.Desktop
  *      object path   /io/github/sjtrotter/portal/desktop
  *      interface     io.github.sjtrotter.portal.Smartcard1
- *      method        AcquireCredential(s parent_window, a{sv} options) -> o handle
+ *      method        CreateSession(a{sv} options) -> o session_handle
+ *                    AcquireCredential(o session_handle, s parent_window,
+ *                                      a{sv} options) -> o request_handle
  *      result        io.github.sjtrotter.portal.Request::Response(u, a{sv})
  *
- *  UNAGREED, AND SAY SO. The sibling sketch currently ships
- *  io.github.sjtrotter.Smartcard1 on its own bus name at
- *  /io/github/sjtrotter/Smartcard1, and argues in its own documents that a
- *  frontend/backend split is premature. Its restructuring is being done in
- *  parallel and has not landed. This adapter therefore treats the name above as
- *  a proposal to that project, not as a fact about it, and an implementation
- *  must probe rather than assume: the portal name first, the standalone
- *  io.github.sjtrotter.Smartcard1 name second, neither being an error to be
- *  missing (the inproc adapter is what runs then). Neither name may be frozen
- *  before S2 has said whether the module transport works at all.
+ *  THE GRANT IS THE SESSION. `CreateSession` returns a `Session` object path,
+ *  and that path - not a bare `grant_id` string - is the handle this adapter
+ *  holds, watches, and closes. `AcquireCredential`'s response still carries a
+ *  `grant_id`, but it is a LOG IDENTIFIER only, for correlating this project's
+ *  journal with the smart card portal's; it is never passed back to that portal
+ *  as an argument. `Sign` and `Decrypt` are themselves `Request`-shaped calls,
+ *  because upstream's convention is that anything which can prompt - a lazy
+ *  login, per-operation consent - returns a `Request` the caller can `Close()`,
+ *  not an ordinary method call.
  *
  *  NOTE THE BUS NAME IT IS ON. Under the portal shape the smart card interface
  *  is hosted by a FRONTEND on the shared Desktop bus name - the same singleton
  *  name this project's own frontend claims. Two incubating frontends cannot both
  *  hold it, so on a machine where both are installed the certificate adapter and
  *  the web authentication portal are talking to the same process or to nothing.
- *  That is not a bug in this file; it is the argument for one incubating
- *  frontend process hosting both interfaces, exactly as xdg-desktop-portal hosts
- *  all portals. See docs/decisions/0008-build-to-the-upstream-shape.md.
+ *  That is not a bug in this file; now that BOTH projects are actually built to
+ *  the portal shape rather than one of them only arguing for it, a shared
+ *  incubating frontend process hosting both interfaces - exactly as
+ *  xdg-desktop-portal hosts all portals - is the concrete next step, blocked
+ *  only on agreement between the two projects. See
+ *  docs/decisions/0008-build-to-the-upstream-shape.md, "The Desktop bus name".
  *
  *  THE IDENTITY THIS CALL CARRIES, and the honest limitation. The smart card
  *  portal's frontend derives the app id of ITS caller, which here is
@@ -56,9 +60,16 @@
  *  Attested delegation - "this request is on behalf of an application whose id I
  *  established" - is a protocol neither project has, and it is one hop that
  *  crosses a trust boundary in the wrong direction for anything either side can
- *  fix alone. It is a further argument for a single frontend hosting both
- *  interfaces: inside one frontend the derived app id is already in hand, and no
- *  attestation would have to cross a bus at all.
+ *  fix alone. A single shared frontend hosting both interfaces SOLVES this, but
+ *  only there: inside one frontend the derived app id is already in hand and can
+ *  be passed to the smart-card side IN-PROCESS, with no attestation crossing a
+ *  bus at all. That fix does not generalise. It works only because the two
+ *  portals then run in one trusted process sharing one address space; across two
+ *  separate frontend processes, passing an app id across the boundary would be
+ *  an unattested assertion of someone else's identity, which is exactly what the
+ *  paragraph above forbids. Doing it that way is NOT a smaller version of the
+ *  shared-frontend fix - it is the thing the shared frontend exists to avoid
+ *  needing, and it is not to be built as a stopgap.
  *
  *  Two ways to use the grant, and they are not equally proven:
  *
@@ -69,17 +80,19 @@
  *                      Accounting-wise it is precise, revocable and auditable per
  *                      operation, but no generic Sign() can prove its input came from a
  *                      TLS handshake, so what it buys is accounting, not attestation.
- *    PKCS#11 endpoint  `OpenPkcs11Endpoint(grant_id)` - EXPERIMENTAL, opt-in, never
- *                      returned automatically. It returns a Unix socket fd speaking the
- *                      p11-kit RPC protocol, plus `certificate_uri` and
- *                      `private_key_uri` valid only on that endpoint, backed by a
- *                      broker-controlled SYNTHETIC facade - not the card forwarded, and
- *                      not the whole-token export stock `p11-kit server` would give:
- *                      that exports a TOKEN, not an object, and carries no login state
- *                      across the boundary. Two things are open: a PKCS#11 URI cannot
- *                      name a socket, and `g_tls_certificate_new_from_pkcs11_uris()` has
- *                      no module parameter, so making the fd/URIs resolvable to GLib at
- *                      all is unproven; that is spike S2.
+ *    PKCS#11 endpoint  `OpenPkcs11Endpoint(session_handle)` - EXPERIMENTAL, opt-in,
+ *                      never returned automatically. It is created by the smart card
+ *                      portal's BACKEND and relayed by its frontend: what this adapter
+ *                      receives is a Unix socket fd speaking the p11-kit RPC protocol,
+ *                      plus `certificate_uri` and `private_key_uri` valid only on that
+ *                      endpoint, backed by a broker-controlled SYNTHETIC facade - not the
+ *                      card forwarded, and not the whole-token export stock
+ *                      `p11-kit server` would give: that exports a TOKEN, not an object,
+ *                      and carries no login state across the boundary. Two things are
+ *                      open: a PKCS#11 URI cannot name a socket, and
+ *                      `g_tls_certificate_new_from_pkcs11_uris()` has no module
+ *                      parameter, so making the fd/URIs resolvable to GLib at all is
+ *                      unproven; that is spike S2.
  *
  *  The likely resolution if per-grant module registration turns out not to work is one
  *  permanently registered broker module exposing synthetic grant-bound slots - which
@@ -87,17 +100,20 @@
  *  module resolves", and is a change to the other project's interface, not to this
  *  adapter's shape.
  *
+ *  BACKEND_GONE. The smart card portal's `GrantInvalidated` signal can arrive with reason
+ *  `backend_gone` - its own backend died while this adapter's session was live - separately
+ *  from anything this adapter did. It is not a `Sign`/`Decrypt` failure to retry: the
+ *  session is dead, the endpoint fd (if any) is poisoned, and the only correct response is
+ *  to treat the grant as released, fail the in-flight operation, and let
+ *  `webauth_cert_adapter_select()` re-run `available()` before trying the portal path
+ *  again. See webauth_cert_portal_release_grant() below.
+ *
  *  Sketch only; nothing here is implemented.
  */
 
-/** The smart card portal under the restructured, portal-shaped names. */
 #define WEBAUTH_SMARTCARD_BUS_NAME "io.github.sjtrotter.portal.Desktop"
 #define WEBAUTH_SMARTCARD_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
 #define WEBAUTH_SMARTCARD_INTERFACE "io.github.sjtrotter.portal.Smartcard1"
-
-/** The name that sketch ships today, probed second. Not a compatibility promise:
- *  neither name is frozen, and both projects say so. */
-#define WEBAUTH_SMARTCARD_LEGACY_BUS_NAME "io.github.sjtrotter.Smartcard1"
 
 typedef enum
 {
@@ -114,34 +130,47 @@ typedef enum
  *  process either. */
 typedef struct
 {
-	char* grant_id;          /**< names the grant in Sign/Decrypt/RenewGrant/ReleaseGrant;
-	                           *   not itself a capability */
-	GBytes* certificate_der; /**< chosen leaf certificate; carries its own length */
-	GPtrArray* chain_der;    /**< ordered intermediates as GBytes*, best effort */
-	guint capabilities;      /**< a mask of WebAuthGrantCapability */
-	gint64 expires_at;       /**< real expiry; may be sooner than requested */
+	char* session_object_path; /**< the `Session` object path `CreateSession` returned;
+	                              *  THIS is the grant handle - passed to `Sign`, `Decrypt`,
+	                              *  `RenewGrant` and `ReleaseGrant`/`Session.Close()`, and
+	                              *  the path this adapter watches for `Session.Closed` and
+	                              *  `GrantInvalidated` (including reason `backend_gone`) */
+	char* grant_id;             /**< a LOG IDENTIFIER only, from the AcquireCredential
+	                              *  response; correlates this project's journal with the
+	                              *  smart card portal's, and is never itself passed back to
+	                              *  that portal as an argument */
+	GBytes* certificate_der;    /**< chosen leaf certificate; carries its own length */
+	GPtrArray* chain_der;       /**< ordered intermediates as GBytes*, best effort */
+	guint capabilities;         /**< a mask of WebAuthGrantCapability */
+	gint64 expires_at;          /**< real expiry; may be sooner than requested */
 
 	/* Populated only after a successful webauth_cert_portal_open_endpoint() call;
 	 * -1 and NULL/NULL until then, and reset to that on release. */
-	gint endpoint_fd;           /**< OpenPkcs11Endpoint's Unix socket fd, or -1 */
+	gint endpoint_fd;           /**< OpenPkcs11Endpoint's Unix socket fd, created by the
+	                               *  smart card portal's BACKEND and RELAYED by its
+	                               *  frontend - or -1 */
 	char* certificate_uri;      /**< RFC 7512 URI, valid only on endpoint_fd */
 	char* private_key_uri;      /**< RFC 7512 URI, valid only on endpoint_fd */
 	guint endpoint_version;     /**< wire/behaviour version of the open endpoint */
 } WebAuthPortalCredential;
 
-/** Whether a smart card portal answers - under either name - and advertises a
+/** Whether the smart card portal answers on the shared Desktop bus name and advertises a
  *  capability we can use. Missing is not an error: the inproc adapter runs. */
 gboolean webauth_cert_portal_available(guint* capabilities, GError** error);
 
-/** Open a PKCS#11 endpoint for @credential's grant and fill in its endpoint_fd,
+/** Open a PKCS#11 endpoint for @credential's session and fill in its endpoint_fd,
  *  certificate_uri, private_key_uri and endpoint_version. Only when
  *  WEBAUTH_GRANT_ENDPOINT was advertised, and only after S2 has shown the resulting fd
  *  can actually satisfy a WebKit handshake - which consumer, if any, can load a
  *  broker-issued fd/URI pair at all is exactly what is unproven. */
 gboolean webauth_cert_portal_open_endpoint(WebAuthPortalCredential* credential, GError** error);
 
-/** Release the grant, and with it any endpoint or PKCS#11 session behind it. Resets
- *  endpoint_fd to -1. Called on every exit path of the transaction. */
+/** Release the grant - i.e. close the Session at @credential's session_object_path - and
+ *  with it any endpoint or PKCS#11 session behind it. Resets endpoint_fd to -1. Called on
+ *  every exit path of the transaction, AND when a `GrantInvalidated` signal (reason
+ *  `backend_gone` or otherwise) arrives for this session out of band: in that case the
+ *  Session is already dead on the portal side, and this only needs to drop the local
+ *  handle and fail the caller, not send another Close(). */
 void webauth_cert_portal_release_grant(WebAuthPortalCredential* credential);
 
 #endif /* WEBAUTH_GTK_TLS_CLIENT_CERT_PORTAL_H */

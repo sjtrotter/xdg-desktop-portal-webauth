@@ -156,9 +156,9 @@ Drawing the boundary settled two questions that the single-process design had le
 ## The Desktop bus name
 
 **The problem.** `io.github.sjtrotter.portal.Desktop` is a singleton, and it is the incubating
-stand-in for `org.freedesktop.portal.Desktop`. The sibling `smartcard-portal` sketch is being
-restructured in parallel into the same shape, and its frontend would claim the same name. Two
-incubating frontends cannot both hold it: the second to start fails to acquire the name.
+stand-in for `org.freedesktop.portal.Desktop`. The sibling `smartcard-portal` sketch has restructured
+in parallel into the same shape, and its frontend claims the same name. Two incubating frontends
+cannot both hold it: the second to start fails to acquire the name.
 
 That is not a packaging accident to be worked around. It is the architecture stating a fact: **the
 real xdg-desktop-portal hosts every portal interface in one process.** `desktop-portal/xdp-main.c`
@@ -177,8 +177,11 @@ smaller version of that; it is a different, incompatible thing.
    `incubating-portal-frontend` project — one process, one bus name, one object path,
    `init_webauthentication()` and `init_smartcard()` side by side, each routing to its own impl
    interface — is exactly xdg-desktop-portal's own structure and is the honest way for two
-   incubating portals to coexist on one machine. It is proposed here rather than built here,
-   because it needs agreement from both projects and neither interface is settled.
+   incubating portals to coexist on one machine. It is proposed here rather than built here, because
+   it needs agreement from both projects — but now that BOTH sketches are actually built to the
+   portal shape, rather than one of them only arguing for it, that agreement is the only thing
+   standing between "proposed" and "built": **a shared frontend is the concrete next step**, not a
+   hope contingent on a restructuring that has not happened yet.
 
 3. **For now, each repository ships its own frontend stub, and the documents say so.** This
    repository's frontend claims the name; so would the sibling's. Only one can be installed. Both
@@ -198,13 +201,26 @@ path reachable at all.
 And it would fix something else neither project can fix alone. The smart card portal derives the
 app id of *its* caller, which under the portal adapter is `webauth-portal-gtk`, not the application
 that started the sign-in — so its consent dialog names the wrong thing, and the original app id can
-only be passed as untrusted text. Inside one frontend, both interfaces would already hold the same
-derived app id, and no attestation would have to cross a bus at all. See
-[SECURITY.md](../SECURITY.md) and `service/backends/gtk/src/tls/client_cert_portal.h`.
+only be passed as untrusted text. **A shared frontend solves the delegation gap**, but only there:
+inside one frontend, both interfaces would already hold the same derived app id — the one this
+project's own frontend derived for the web-authentication request — and it could be passed to the
+smart-card side's `AcquireCredential` **in-process**, with no attestation crossing a bus at all.
 
-**Status of the sibling's names.** As of this writing the smart card sketch ships
-`io.github.sjtrotter.Smartcard1` — no `portal` component, no shared Desktop bus name — on its own
-bus name at `/io/github/sjtrotter/Smartcard1`, and argues in its own documents that a
-frontend/backend split is premature — the same position this decision overrides. Its restructuring
-has not landed. The names this repository uses for it are therefore a **proposal to that project**,
-not a fact about it, and the certificate adapter probes for both.
+That fix does not generalise past the process boundary it lives inside. **It holds only because the
+two portals then run in one trusted process**, sharing one address space and one derived identity;
+nothing untrusted touches the app id on its way from one `init_*()` call to the other. Across two
+separate frontend processes — this project's `webauth-portal-frontend` and a separately-running
+smart card frontend — passing an app id across that boundary would be an unattested assertion of
+someone else's identity, which is exactly the identity-laundering forbidden above and in
+[SECURITY.md](../SECURITY.md). Doing it that way, as a stopgap ahead of the shared frontend, is **not
+to be done**: it would not be a smaller version of the shared-frontend fix, it would be the thing the
+shared frontend exists to make unnecessary. See [SECURITY.md](../SECURITY.md) and
+`service/backends/gtk/src/tls/client_cert_portal.h`.
+
+**Status of the sibling's names.** The smart card sketch has completed the same restructuring this
+decision describes. It now ships `io.github.sjtrotter.portal.Smartcard1` on the shared
+`io.github.sjtrotter.portal.Desktop` bus name at `/io/github/sjtrotter/portal/desktop`, with its own
+frontend/backend split (`smartcard-portal-frontend` and `smartcard-portal-gtk`) mirroring this one.
+The names this repository uses for it are no longer a proposal awaiting that project's agreement —
+they are what it actually ships — and the certificate adapter no longer needs to probe a
+pre-restructuring legacy name.

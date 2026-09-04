@@ -26,9 +26,10 @@ moment the user authorises a hardware token to authenticate on their behalf: a u
 by a different window in every application has no way to learn which window to trust. There should
 be one, and it should not belong to whichever component happened to need a certificate first.
 
-So: a separate project, the **smart card portal** (working name `smartcard-portal`; public
-interface `io.github.sjtrotter.portal.Smartcard1` once that project's own restructuring lands,
-`io.github.sjtrotter.Smartcard1` until then), owns the chooser and the PIN.
+So: a separate project, the **smart card portal** (repository `smartcard-portal`; public interface
+`io.github.sjtrotter.portal.Smartcard1`, on the same `io.github.sjtrotter.portal.Desktop` bus name
+this project's own frontend claims, now that its restructuring has landed), owns the chooser and the
+PIN.
 
 **But it cannot be a hard dependency for v0, because the mechanism that would connect it to this
 service is unproven at exactly the point that matters.**
