@@ -1,71 +1,62 @@
-# webauth-portal
+# xdg-desktop-portal-webauth, and the Entra token client
 
 **Status: design sketch. Nothing works yet.** This repository contains design documents, a
-repository skeleton, and three stub binaries that build and print usage. No web view has been opened
+repository skeleton, and two stub binaries that build and print usage. No web view has been opened
 and no token has ever been acquired by this code.
 
-## It is a portal frontend and a portal backend
+## It is a portal backend, plus a client
 
-The web authentication service is built as **an xdg-desktop-portal-shaped pair**: a *frontend* that
-applications call, and a *backend* that owns the window.
+Web authentication is **an xdg-desktop-portal frontend and backend pair** — and the frontend is
+xdg-desktop-portal itself. This repository ships the backend, and an application that uses it.
 
 ```
    an application                      clients/entra/, or anything else
         │
-        │  io.github.sjtrotter.portal.WebAuthentication
-        │  io.github.sjtrotter.portal.WebAuthentication1        ← the ONLY interface
-        ▼                                                        applications may call
-   webauth-portal-frontend             service/frontend/
+        │  org.freedesktop.portal.experimental.WebAuthentication   ← the ONLY interface
+        │  on org.freedesktop.portal.Desktop            [GATED]      applications may call
+        ▼
+   xdg-desktop-portal                  ANOTHER REPOSITORY, on a branch
         derives the app id, validates the URIs, filters the options,
-        applies policy, mints the Request, guarantees one Response.
+        applies policy, mints the Request, guarantees one Response,
+        re-checks the completion URI before the application sees it.
         No window. No web engine. No toolkit. No card.
         │
-        │  io.github.sjtrotter.impl.portal.WebAuthentication1   ← NOT for applications
-        ▼
-   webauth-portal-gtk                  service/backends/gtk/
+        │  org.freedesktop.impl.portal.experimental.WebAuthentication
+        ▼                                              ← NOT for applications
+   xdg-desktop-portal-webauth          backend/
         GTK4 + WebKitGTK 6.0: the window, the security chrome, the storage
         partition, the navigation interception, the TLS client certificate.
         │
-        │  io.github.sjtrotter.portal.Certificate1  (as an ordinary client)
+        │  org.freedesktop.portal.experimental.Certificate  (as an ordinary client)
         ▼
-   the certificate portal              SEPARATE REPOSITORY, optional
+   ...back out to the same xdg-desktop-portal, and in again to
+   xdg-desktop-portal-certificate      SEPARATE REPOSITORY, optional
 ```
 
-**Applications talk to the frontend and to nothing else.** They never name a backend, never read a
-`.portal` file, never call an `impl` interface, and cannot tell which backend served them. A machine
-that installs a different backend — a Qt one, a system-browser one, a headless paste one — changes
-nothing in any application.
+**Applications talk to xdg-desktop-portal and to nothing else.** They never name a backend, never
+read a `.portal` file, never call an `impl` interface, and cannot tell which backend served them. A
+machine that installs a different backend — a Qt one, a system-browser one, a headless paste one —
+changes nothing in any application.
 
-This is xdg-desktop-portal's own architecture, copied deliberately and early: the `Desktop` bus
-name, the `Request` object and its path convention, the `impl` interface signature with the
-frontend-derived `app_id` prepended, `.portal` files, and a `portals.conf`-shaped preference list.
-Doing that before anyone upstream has been asked is a decision with real costs, and they are
-recorded rather than argued away:
-[docs/decisions/0008-build-to-the-upstream-shape.md](docs/decisions/0008-build-to-the-upstream-shape.md).
-What the eventual rename would touch, file by file, is
-[docs/UPSTREAMING.md](docs/UPSTREAMING.md).
+**`[GATED]` is load-bearing.** The interface is experimental and is not exported unless
+xdg-desktop-portal was started with `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`.
+With the gate off, `entra-token-helper` exits `40` (unavailable) and says which variable is
+missing. That is the default state of every machine, and it is the intended behaviour.
+
+The frontend is a local-only branch, `experimental/certificate-webauthentication`, commits
+`3f46e3c..661e441`. It has been built and tested (38 pytest cases for this portal, all green,
+against a python-dbusmock backend) and **has not been proposed to anyone**. Its interfaces live in
+the `org.freedesktop.portal.experimental.*` namespace, which is what upstream set aside for portals
+that are not finished — not a claim that this one has been accepted.
+[docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md) records why the
+frontend moved there and the incubating one was deleted;
+[docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md) is why the split exists at
+all, and 0010 preserves it. [docs/UPSTREAMING.md](docs/UPSTREAMING.md) has the whole picture,
+including what the branch's XML forced this repository to change.
 
 > **Names.** The repository is still called `entra-token-helper`, which was its original scope and
-> now describes only the smallest part of it. The working title is **`webauth-portal`**; the rename
-> waits until the interface name is settled, because renaming twice is worse than renaming late.
->
-> The interfaces ship as **`io.github.sjtrotter.portal.WebAuthentication1`** and
-> **`io.github.sjtrotter.impl.portal.WebAuthentication1`** — project-controlled reverse-DNS names
-> with a major version, as the D-Bus specification recommends. They are deliberately **not** in the
-> `org.freedesktop.portal.*` namespace. **Copying the shape is not claiming the namespace.** Becoming
-> an xdg-desktop-portal interface is a possible *destination*, with a long list of prerequisites; see
-> [docs/ROADMAP.md](docs/ROADMAP.md) phase 2. Nothing has been proposed to anyone, and no maintainer
-> has been asked.
->
-> **A bus name of its own.** This frontend owns **`io.github.sjtrotter.portal.WebAuthentication`**
-> at **`/io/github/sjtrotter/portal/WebAuthentication`** — this project's own incubating stand-in
-> for `org.freedesktop.portal.Desktop`, not a name shared with anyone. The sibling `smartcard-portal`
-> sketch's frontend owns its own name in the same way, `io.github.sjtrotter.portal.Certificate`, and
-> its interface is `io.github.sjtrotter.portal.Certificate1`. Both incubating frontends install and
-> run side by side; at acceptance both interfaces move onto the real
-> `org.freedesktop.portal.Desktop` and the per-project names disappear. See
-> [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names
-> during incubation".
+> now describes only the smaller part of it. The backend is `xdg-desktop-portal-webauth`; renaming
+> the repository itself is a later decision.
 
 ## The missing primitive
 
@@ -87,15 +78,15 @@ This project is the middle of **three** layers: the missing primitive, and the f
 it. The bottom layer — the smart card portal — is a separate project in its own repository.
 
 ```
-  io.github.sjtrotter.portal.Certificate1   layer 1   smartcard-portal — SEPARATE REPOSITORY
-    certificate chooser, PIN prompt, brokered signing            (optional, preferred)
-        ▲
+  org.freedesktop.portal.experimental.Certificate   layer 1
+    certificate chooser, PIN prompt, brokered signing   frontend: the same xdg-desktop-portal
+        ▲                                               backend: smartcard-portal — SEPARATE REPO
         │ D-Bus: AcquireCredential → grant   (the BACKEND calls it, as an ordinary client)
-        │        …or, if p11-kit forwarding cannot register a module late,
-        │        the in-process fallback runs instead and this arrow is absent
+        │        …but only if a GnuTLS external-signer path exists; otherwise the
+        │        in-process fallback runs instead and this arrow is absent
         │
-  io.github.sjtrotter.portal.WebAuthentication1   layer 2   service/ — THIS REPOSITORY
-    a FRONTEND (policy, identity, validation) and a BACKEND (window, engine, card)
+  org.freedesktop.portal.experimental.WebAuthentication   layer 2
+    frontend: xdg-desktop-portal (branch)         backend: backend/ — THIS REPOSITORY
         ▲
         │ D-Bus: Start → Response { completion_uri }
         │
@@ -108,62 +99,61 @@ it. The bottom layer — the smart card portal — is a separate project in its 
 
 Layer 1 knows nothing about the web. Layer 2 knows nothing about OAuth, and as little about cards as
 the chosen adapter allows. Layer 3 owns no windows. None of them knows anything about RDP. The
-frontend/backend split is *inside* layer 2, and it is invisible from layers 1 and 3.
+frontend/backend split is *inside* layers 1 and 2, and it is invisible from layer 3 — and both
+layers now share one frontend process, which is what makes the delegation problem below solvable.
 
-## Layer 1 — the smart card portal (*a separate project, and not a hard dependency*)
+## Layer 1 — the Certificate portal (*a separate backend, and not a hard dependency*)
 
-**Not in this repository.** `smartcard-portal`, public interface
-`io.github.sjtrotter.portal.Certificate1` on its own incubating bus name,
-`io.github.sjtrotter.portal.Certificate` — a separate name from this repository's own frontend's,
-now that its own parallel restructuring into a portal frontend and backend has landed. It owns the
-trusted certificate chooser and the PIN prompt **for
+**Its backend is not in this repository.** `smartcard-portal` ships
+`xdg-desktop-portal-certificate`; its frontend is the same xdg-desktop-portal branch as ours, and
+the public interface is `org.freedesktop.portal.experimental.Certificate` on
+`org.freedesktop.portal.Desktop`. It owns the trusted certificate chooser and the PIN prompt **for
 every application on the machine** — a mail client, a VPN dialog, a code-signing tool and a browser
-all need one — and returns a *grant*, held as a `Session` object: the certificate, the operations
-it permits, and either brokered `Sign`/`Decrypt` or a PKCS#11 endpoint.
+all need one — and returns a *grant*, held as a `Session` object: the certificate, and the
+operations and mechanisms it permits.
 
 That is the **preferred** way for layer 2's backend to satisfy a certificate challenge, because it
-takes the PIN out of the backend's process entirely. It is **not a dependency for v0**, because the step
-that would connect the two is unproven: a PKCS#11 URI cannot name a socket, GLib's
-`g_tls_certificate_new_from_pkcs11_uris()` has no module parameter, and WebKit's network process may
-not see a module registered after it started.
+takes the PIN out of the backend's process entirely. It is **not a dependency**, and it has got
+further from being one rather than closer: the branch's Certificate interface has **no
+`OpenPkcs11Endpoint`** — an fd-returning method needs its own review, so it was deferred — which
+leaves brokered `Sign` as the only way to use a grant, and brokered `Sign` needs an external-signer
+path in WebKitGTK/glib-networking that is not known to exist.
 
 So the backend keeps the certificate path behind an **adapter** with two implementations — `portal`
-(preferred, unproven) and `inproc` (the fallback, and the path known to work) — and a machine with no
-smart card portal installed still signs in. Spike [S2](docs/SPIKES.md) is what decides when that
+(preferred, and currently unusable) and `inproc` (the path known to work) — and a machine with no
+certificate portal installed still signs in. Spike [S2](docs/SPIKES.md) is what decides when that
 changes. See
 [docs/decisions/0007-certificate-adapter.md](docs/decisions/0007-certificate-adapter.md).
 
-## Layer 2 — the web authentication portal (`service/`)
+## Layer 2 — the web authentication portal (`backend/`, plus a frontend elsewhere)
 
-Two per-user, D-Bus-activated processes that between them perform **one interactive web
-authentication transaction and return an uninterpreted completion artifact.** The public interface
-description is
-[`service/frontend/data/io.github.sjtrotter.portal.WebAuthentication1.xml`](service/frontend/data/io.github.sjtrotter.portal.WebAuthentication1.xml)
-and is explained in [docs/PUBLIC-INTERFACE.md](docs/PUBLIC-INTERFACE.md); the backend contract is
-[`service/backends/gtk/data/io.github.sjtrotter.impl.portal.WebAuthentication1.xml`](service/backends/gtk/data/io.github.sjtrotter.impl.portal.WebAuthentication1.xml)
-and [docs/IMPL-INTERFACE.md](docs/IMPL-INTERFACE.md).
+Two per-user processes that between them perform **one interactive web authentication transaction
+and return an uninterpreted completion artifact.** The public interface is defined by the frontend
+branch and summarised in [docs/PUBLIC-INTERFACE.md](docs/PUBLIC-INTERFACE.md); the backend contract
+is [`backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml)
+— a verbatim tracking copy of the branch's file — and [docs/IMPL-INTERFACE.md](docs/IMPL-INTERFACE.md).
 
 ```
-io.github.sjtrotter.portal.WebAuthentication1        on io.github.sjtrotter.portal.WebAuthentication
-
+org.freedesktop.portal.experimental.WebAuthentication   on org.freedesktop.portal.Desktop
+                                                        [not exported unless the gate is set]
   Start(s parent_window, s start_uri, s completion_uri, a{sv} options) → o request_handle
         options: handle_token, activation_token,
-                 session_mode: shared|ephemeral, timeout, title
+                 session_mode: shared|ephemeral, timeout (≤900), title
 
-io.github.sjtrotter.portal.Request
+org.freedesktop.portal.Request
 
   Close()                                cancel — there is no separate Cancel method
   Response(u response, a{sv} results)    0 completed { completion_uri }, 1 cancelled, 2 other
 
-io.github.sjtrotter.impl.portal.WebAuthentication1         NOT for applications
+org.freedesktop.impl.portal.experimental.WebAuthentication      NOT for applications
 
   Start(o handle, s app_id, s parent_window, s start_uri, s completion_uri, a{sv} options)
         → (u response, a{sv} results)
 ```
 
 The transaction pattern is `org.freedesktop.portal.Request`'s, and the impl signature is
-`org.freedesktop.impl.portal.Account`'s with the frontend-derived `app_id` prepended, because those
-patterns are right and callers already know them. Copying a pattern is not claiming a namespace.
+`org.freedesktop.impl.portal.Account`'s with the frontend-derived `app_id` prepended. That
+signature survived the move upstream unchanged, which is the best evidence the shape was right.
 
 The portal:
 
@@ -187,7 +177,8 @@ what makes it reusable, and it is a boundary that would be easy to cross once an
 uncross. See [docs/decisions/0005-service-shape.md](docs/decisions/0005-service-shape.md).
 
 **Backend preference**, once there is more than one — and each of these is a separate *backend*,
-selected in `portals.conf`, not a mode inside one process:
+selected in `portals.conf`, not a mode inside one process. All of them would install a `.portal`
+file naming `org.freedesktop.impl.portal.experimental.WebAuthentication`:
 
 1. **The system browser**, whenever the completion mechanism lets it securely return the result —
    loopback HTTP, claimed HTTPS app links, registered custom schemes. This is what RFC 8252 prefers
@@ -286,13 +277,13 @@ These live in the **Entra client**, never in the portal.
 | Layer | Owns | Does not own |
 |---|---|---|
 | **FreeRDP** | RDP wire protocol; `.rdp`/`.rdpw` parsing; sovereign-cloud constants; ARM and WST transports; generating the RDS PoP key and formatting `req_cnf`; the RDS-AAD nonce handshake; asking for a token through `GetAccessToken` | OAuth flows, browsers, certificates, PINs, token storage |
-| **smartcard-portal** (layer 1, *separate repo, optional*) | The trusted certificate chooser; the PIN prompt; the PIN; brokered signing or a PKCS#11 endpoint | Anything about why a certificate was wanted |
-| **webauth-portal-frontend** (layer 2, frontend) | The bus name applications call; deriving the caller's app id; validating the URIs it forwards and re-checking the one that comes back; option filtering; storage-mode and timeout policy; rate limiting; the Request object and exactly one Response | A window, a web engine, a toolkit, a display connection, a card, a PIN, or any protocol meaning |
-| **webauth-portal-gtk** (layer 2, backend) | Hosting a web view; security chrome; parenting to `parent_window`; storage partitioning; navigation interception before load; recognising and scoping TLS client-certificate challenges and running an adapter for them | The application's identity (it is told), the decision to accept a request, the option vocabulary, the storage policy, or any protocol meaning. It owns the card only as far as the chosen adapter forces it to. |
+| **xdg-desktop-portal-certificate** (layer 1, *separate repo, optional*) | The trusted certificate chooser; the PIN prompt; the PIN; brokered signing | Anything about why a certificate was wanted |
+| **xdg-desktop-portal** (the frontend of layers 1 and 2) | The bus name applications call; deriving the caller's app id; validating the URIs it forwards and re-checking the one that comes back; option filtering; storage-mode and timeout policy; the Request object and exactly one Response | A window, a web engine, a toolkit, a display connection, a card, a PIN, or any protocol meaning |
+| **xdg-desktop-portal-webauth** (layer 2, backend) | Hosting a web view; security chrome; parenting to `parent_window`; storage partitioning; navigation interception before load; recognising and scoping TLS client-certificate challenges and running an adapter for them | The application's identity (it is told), the decision to accept a request, the option vocabulary, the storage policy, or any protocol meaning. It owns the card only as far as the chosen adapter forces it to. |
 | **Entra client** (layer 3) | OAuth: `state`, PKCE, redirect validation, code exchange, refresh, the PoP variant; sovereign authorities; the account and token cache; the CLI contract | Windows, web views, certificates, PINs |
 | **Client apps** (Remmina, KRDC, sdl-freerdp, gtk-frdp) | Session UX; one line of glue that installs a callback invoking the client | Any of the above |
 
-The Entra client never chooses a cloud, and neither half of the portal learns there is such a thing. FreeRDP
+The Entra client never chooses a cloud, and no part of the portal learns there is such a thing. FreeRDP
 resolves the authority from the `.rdp`/`.rdpw` file and passes it in with the scope and, for PoP
 requests, the `req_cnf` it generated.
 
@@ -350,34 +341,68 @@ Removed <user>@<tenant-domain>
 ```
 
 Every one of those currently exits `70` with `not implemented (design sketch)`. Only `--help` and
-`--version` succeed, in all three binaries.
+`--version` succeed, in both binaries.
 
-## Building
+## Building, and testing it on a dev machine
 
-The three components are **independent meson projects** with no build-time dependency in any
-direction. That is how two claims stay testable rather than aspirational: that the portal is
-protocol-independent, and that the frontend needs no toolkit. Each builds on its own:
+The two components are **independent meson projects** with no build-time dependency in either
+direction. That is how the claim that the portal is protocol-independent stays testable rather than
+aspirational: `backend/` must contain no Entra, Azure, OAuth or RDP identifier, and that is a grep.
 
 ```console
-$ meson setup build-frontend service/frontend      && ninja -C build-frontend
-$ meson setup build-gtk      service/backends/gtk  && ninja -C build-gtk
-$ meson setup build-entra    clients/entra         && ninja -C build-entra
+$ meson setup build-backend backend       && ninja -C build-backend
+$ meson setup build-entra   clients/entra && ninja -C build-entra
 ```
 
-The top-level build is a convenience umbrella that includes all three as meson subprojects while
-they share a repository, and disappears when they are split
+The top-level build is a convenience umbrella that includes both as meson subprojects while they
+share a repository, and disappears when they are split
 ([docs/decisions/0006-two-repositories.md](docs/decisions/0006-two-repositories.md)):
 
 ```console
 $ meson setup build && ninja -C build
-$ ./build/subprojects/webauth-portal-frontend/webauth-portal-frontend --help
-$ ./build/subprojects/webauth-portal-gtk/webauth-portal-gtk --help
+$ ./build/subprojects/xdg-desktop-portal-webauth/xdg-desktop-portal-webauth --help
 $ ./build/subprojects/entra-token-client/entra-token-helper --help
 ```
 
-All three stubs need only GLib and GIO. WebKitGTK 6.0, GTK 4 and p11-kit are declared optional in
-the **backend** and libsecret in the **client**; they are reported in the configure summary and
-nothing uses them yet. The frontend declares no optional dependencies at all, and never should.
+Both stubs need only GLib and GIO. WebKitGTK 6.0, GTK 4 and p11-kit are declared optional in the
+**backend** and libsecret in the **client**; they are reported in the configure summary and nothing
+uses them yet.
+
+Two scripts drive the real thing, and neither touches your session bus unless you ask it to:
+
+```console
+$ tools/dev-stack.sh
+```
+
+starts, on a **private bus** made by `dbus-run-session`: `xdg-permission-store` (the portal refuses
+to start without it), this backend, and a development xdg-desktop-portal from the branch with
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` and an `XDG_DESKTOP_PORTAL_DIR`
+pointing at a throwaway directory holding this repository's `.portal` file and a `portals.conf`
+selecting it. Then it runs the trigger. Point it at your build with
+`XDP_BUILD=/path/to/xdg-desktop-portal/build`.
+
+```console
+$ tools/trigger-webauthentication.sh          # version + Start + both rejection cases
+$ tools/trigger-webauthentication.sh version
+$ tools/trigger-webauthentication.sh monitor  # watch the Response signals
+```
+
+calls the **public** interface with `gdbus`, exactly as an application would — on
+`org.freedesktop.portal.Desktop`, never on this backend's name. Its URIs are
+`https://example.invalid/...` placeholders, overridable with `START_URI` and `COMPLETION_URI`. If
+the frontend was started without the gate, every call fails with "no such interface"; that is the
+gate working.
+
+Installed files, for the backend: `$libexecdir/xdg-desktop-portal-webauth`,
+`$datadir/xdg-desktop-portal/portals/webauth.portal` (the real directory — that is where the
+frontend looks, and it is what every out-of-tree backend does),
+`$datadir/dbus-1/services/org.freedesktop.impl.portal.desktop.webauth.service`, and the interface
+XML in `$datadir/dbus-1/interfaces`. To select it explicitly, put this in `portals.conf`:
+
+```ini
+[preferred]
+org.freedesktop.impl.portal.experimental.WebAuthentication=webauth
+```
 
 ## How this relates to FreeRDP
 
@@ -433,9 +458,10 @@ per-application policy. That is not a web authentication service; it is an ident
 there are already several.
 [docs/decisions/0005-service-shape.md](docs/decisions/0005-service-shape.md).
 
-**Ship an `org.freedesktop.portal.*` name now.** It would make integration look official. It would
-also assert an ownership and an acceptance that do not exist, and the D-Bus specification recommends
-a controlled reverse-domain namespace with a major interface version anyway.
+**Ship a non-experimental `org.freedesktop.portal.*` name.** It would make integration look
+official. It would also assert an acceptance that does not exist. `experimental` is the namespace
+upstream set aside for portals in this state, it is not exported by default, and it can change or be
+removed without a version bump — which is an accurate description of where this is.
 
 ## Why this might be a bad idea
 
@@ -471,9 +497,10 @@ Recorded properly rather than argued away. The full versions, with what each one
     mid-transaction), splits the completion matcher into two implementations of one rule, and gives
     up per-request capability negotiation. It was done anyway, to avoid a second rewrite and to make
     the upstream patch a rename; the full argument and every cost is
-    [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md). It is also the
-    cheapest of these to undo — collapsing two halves that already agree is much easier than
-    splitting one that does not.
+    [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md). What has changed is
+    that the frontend half is no longer this project's to maintain
+    ([docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)), which
+    removes most of the cost and all of the "collapse it back" escape hatch.
 
 **And the exit criterion:** if caller identity, displayed origin and storage partitioning cannot be
 made convincing, **collapse the browser layer back into the Entra client**. A narrowly scoped Entra/AVD helper is better than a generic authentication portal with an
@@ -505,43 +532,41 @@ Stated carefully, because none of it is adoption of this idea.
 ## Repository layout
 
 ```
-service/frontend/           the portal FRONTEND — its own meson project.
-                            The directory that MOVES INTO xdg-desktop-portal at acceptance.
-  data/…portal.WebAuthentication1.xml    the incubating PUBLIC interface
-  data/…portal.WebAuthentication.service.in   D-Bus activation, this project's own bus name
-  src/                                   request.h, session.h, app-info.h,
-                                         portal-impl.h, webauthentication.h
-service/backends/gtk/       the reference BACKEND — its own meson project.
-                            The directory that STAYS, as a desktop backend.
-  data/…impl.portal.WebAuthentication1.xml   the incubating BACKEND interface
-  data/webauth-gtk.portal.in                 DBusName, Interfaces, UseIn
-  data/…impl.portal.WebAuthentication.gtk.service.in   D-Bus activation
-  src/                                   webauthentication.h, request.h, transaction.h,
-                                         webkit_session.h, chrome.h, externalwindow.h,
-                                         storage.h, completion.h, redact.h
+backend/                    the portal BACKEND — its own meson project.
+                            Laid out like every out-of-tree backend.
+  data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
+                                         a VERBATIM COPY of the frontend branch's file,
+                                         which it must track
+  data/webauth.portal.in                 DBusName, Interfaces, UseIn
+  data/org.freedesktop.impl.portal.desktop.webauth.service.in   D-Bus activation
+  src/                                   webauthentication-impl.h, request-impl.h,
+                                         transaction.h, webkit_session.h, chrome.h,
+                                         externalwindow.h, storage.h, completion.h,
+                                         redact.h
   src/tls/                               the certificate adapter and both implementations:
                                          client_cert.h, client_cert_portal.h,
                                          client_cert_inproc.h, pkcs11.h, chooser.h, pin.h
 clients/entra/              layer 3 — entra-token-client (its own meson project)
   src/                                   CLI stub plus header sketches: OAuth, clouds,
                                          cache, IPC schema
+tools/                      dev-stack.sh, trigger-webauthentication.sh
 docs/                       ARCHITECTURE, PUBLIC-INTERFACE, IMPL-INTERFACE, UPSTREAMING,
                             ENTRA-CLIENT-CLI, SECURITY, SPIKES, ROADMAP, decisions/
 tests/                      the offline test strategy (no tests yet)
 ```
 
-The layout mirrors upstream on both sides: `service/frontend/` is
-`xdg-desktop-portal/desktop-portal/` and `service/backends/gtk/` is `xdg-desktop-portal-gtk`, one
-file per portal interface in `src/` and the `.portal` file in `data/`.
-
-Layer 1 is not here: it is `smartcard-portal`, a separate repository, and layer 2 runs without it.
+`backend/` mirrors the sibling `smartcard-portal` repository's own top-level `src/` + `data/`, as
+closely as having a second component allows. The frontend is not here: it is a branch of
+xdg-desktop-portal. Layer 1's backend is not here either: it is `smartcard-portal`, a separate
+repository, and layer 2 runs without it.
 
 ## License
 
 GPL-2.0-or-later. The in-process certificate chooser and PIN prompt are derived from Remmina
 (GPL-2.0-or-later), and reusing proven card-handling code is worth more than license convenience.
 Both binaries are separate processes from FreeRDP (Apache-2.0), spoken to over CLI and D-Bus
-boundaries, so no linking question arises in either direction. See
+boundaries, so no linking question arises in either direction. Note that xdg-desktop-portal itself
+is LGPL-2.1-or-later, and the frontend branch's files carry that; nothing here links against it. See
 [docs/decisions/0004-license.md](docs/decisions/0004-license.md) for the alternative considered.
 
 ## AI assistance

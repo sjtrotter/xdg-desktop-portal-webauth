@@ -3,7 +3,15 @@
 Date: 2026-09-03
 Status: accepted (for the sketch); overrides the "premature" advice in
 [0005](0005-service-shape.md), the review, and this repository's own previous
-[ROADMAP.md](../ROADMAP.md) "Deferred" entry
+[ROADMAP.md](../ROADMAP.md) "Deferred" entry; its *packaging* half is superseded by
+[0010](0010-backend-only-frontend-lives-upstream.md)
+
+> **Amendment (0010).** The split argued for here is preserved exactly; what changed is that the
+> frontend half is no longer in this repository. It is a branch of xdg-desktop-portal
+> (`experimental/certificate-webauthentication`), which is how upstream asks new portals to be
+> developed, so `service/frontend/` was deleted, `service/backends/gtk/` became `backend/`, and
+> this repository is now an out-of-tree backend plus its client. Every directory and interface name
+> below is therefore historical.
 
 ## Context
 
@@ -158,6 +166,12 @@ Drawing the boundary settled two questions that the single-process design had le
   here, not a rewrite.
 
 ## Per-project bus names during incubation
+
+> **Moot (0010).** This whole section is about two incubating frontends coexisting on one machine.
+> Neither exists any more — both interfaces are on one xdg-desktop-portal branch, on the real
+> `org.freedesktop.portal.Desktop` — so there are no per-project bus names left to coordinate. It
+> is kept as the record of why the shared-name arrangement was dropped, and because its closing
+> argument about the delegation gap is the one 0010 reports as resolved in-process.
 
 **The old problem, and why it is gone.** `io.github.sjtrotter.portal.Desktop` used to be a shared
 singleton stand-in for `org.freedesktop.portal.Desktop`, claimed by this project's frontend and, in

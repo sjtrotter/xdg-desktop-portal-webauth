@@ -2,27 +2,28 @@
 
 # Umbrella build for the sketch.
 #
-# This repository holds three components that are deliberately independent:
+# This repository holds two components that are deliberately independent:
 #
-#   service/frontend/      webauth-portal-frontend  the portal FRONTEND
-#   service/backends/gtk/  webauth-portal-gtk       the reference BACKEND
-#   clients/entra/         entra-token-client       a CONSUMER of the frontend
+#   backend/         xdg-desktop-portal-webauth   an out-of-tree portal BACKEND
+#   clients/entra/   entra-token-helper           a CONSUMER of the portal
 #
-# The first two are the two halves of xdg-desktop-portal's frontend/backend
-# architecture, built to that shape now so that acceptance upstream is a rename
-# rather than a rewrite; see docs/decisions/0008-build-to-the-upstream-shape.md
-# and docs/UPSTREAMING.md. The third is an application, and it talks only to the
-# frontend.
+# There is no frontend here. The portal frontend -- app id derivation, URI
+# validation, option filtering, policy, the Request object and the guarantee of
+# exactly one Response, and the re-check of the completion URI the backend
+# returns -- is a branch of xdg-desktop-portal itself:
+# experimental/certificate-webauthentication, commits 3f46e3c..661e441. See
+# docs/decisions/0010-backend-only-frontend-lives-upstream.md and
+# docs/UPSTREAMING.md.
 #
-# The smart card portal is a separate project in its own repository and is
-# optional; see docs/decisions/0007-certificate-adapter.md.
+# The certificate portal's backend is a separate project in its own repository
+# and is optional; see docs/decisions/0007-certificate-adapter.md.
 #
-# Each of the three is a complete meson project in its own right and can be
+# Each of the two is a complete meson project in its own right and can be
 # configured on its own (see the comments at the top of each). This top-level
-# file exists only so that one `meson setup build && ninja -C build` builds all
-# three while they share a repository. It includes them through subprojects/,
-# whose three entries are symlinks to the real directories, so nothing here is a
-# build-time dependency between any of them.
+# file exists only so that one `meson setup build && ninja -C build` builds both
+# while they share a repository. It includes them through subprojects/, whose
+# entries are symlinks to the real directories, so nothing here is a build-time
+# dependency between them.
 #
 # This file disappears when the components are split into separate repositories
 # at the first tagged interface release; see docs/decisions/0006-two-repositories.md.
@@ -35,18 +36,17 @@ project(
   meson_version: '>= 0.60.0',
 )
 
-subproject('webauth-portal-frontend')
-subproject('webauth-portal-gtk')
+subproject('xdg-desktop-portal-webauth')
 subproject('entra-token-client')
 
 summary(
   {
-    'frontend': 'service/frontend/ (webauth-portal-frontend)',
-    'backend': 'service/backends/gtk/ (webauth-portal-gtk)',
+    'backend': 'backend/ (xdg-desktop-portal-webauth)',
     'consumer': 'clients/entra/ (entra-token-helper)',
-    'smart card portal': 'separate repository, optional',
+    'frontend': 'xdg-desktop-portal, branch experimental/certificate-webauthentication',
+    'certificate portal backend': 'separate repository, optional',
     'build-time coupling': 'none, by design',
-    'runtime coupling': 'D-Bus only: app -> frontend -> backend',
+    'runtime coupling': 'D-Bus only: app -> xdg-desktop-portal -> backend',
     'status': 'design sketch; nothing is implemented',
   },
   section: 'Repository',

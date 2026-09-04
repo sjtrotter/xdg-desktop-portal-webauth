@@ -1,107 +1,149 @@
-# Upstreaming: what changes at acceptance, and what does not
+# Upstreaming: the frontend is already upstream-shaped, and what is left
 
-Status: design sketch, and this document is a **plan for a patch nobody has been asked to accept**.
-Nothing here has been proposed to xdg-desktop-portal, no maintainer has been contacted, and the
-interface may well be argued down. See [ROADMAP.md](ROADMAP.md) phase 2 for the acceptance path and
-its preconditions — a working implementation, a second unrelated consumer, and testing on two
-desktops — none of which have been met.
+Status: design sketch. **Nothing has been proposed to anyone.** No issue has been opened,
+no pull request exists, no maintainer has been contacted, and the branch this document is
+about is local-only — nothing was forked and nothing was pushed.
 
-The point of this document is that it is **short**. This repository is built in
-xdg-desktop-portal's own shape
-([decisions/0008](decisions/0008-build-to-the-upstream-shape.md)) precisely so that acceptance is a
-rename and a move rather than a rewrite. If this file ever grows a section called "and then
-restructure X", the decision has stopped paying for itself.
+What changed since the previous version of this document is that "the frontend, if
+accepted, would move into xdg-desktop-portal" stopped being a plan with a mapping table
+attached. The frontend **is** in xdg-desktop-portal now, on a branch, in the
+`experimental` namespace upstream set aside for portals in exactly this state. See
+[decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
 
-## Sources this shape was copied from
+The point of this document is still that it is **short**. If it ever grows a section called
+"and then restructure X", [decisions/0008](decisions/0008-build-to-the-upstream-shape.md)
+has stopped paying for itself.
 
-Read these before changing anything here; every mapping below is checked against them.
+## Where the frontend is
 
-- Docs index — <https://flatpak.github.io/xdg-desktop-portal/docs/>
-- Writing a new backend — <https://flatpak.github.io/xdg-desktop-portal/docs/writing-a-new-backend.html>
-- `.portal` files and `portals.conf` — <https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html>
-- The Request interface — <https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html>
-- The Session interface — <https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Session.html>
-- Window identifiers — <https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html>
-- Public and impl XML — <https://github.com/flatpak/xdg-desktop-portal/tree/main/data>
-- Frontend sources — <https://github.com/flatpak/xdg-desktop-portal/tree/main/desktop-portal>
-  and <https://github.com/flatpak/xdg-desktop-portal/tree/main/shared>
-- Reference backend — <https://github.com/flatpak/xdg-desktop-portal-gtk>
+```
+repository   /home/betty/Projects/xdg-desktop-portal
+remote       upstream → https://github.com/flatpak/xdg-desktop-portal.git
+branch       experimental/certificate-webauthentication
+base         upstream/main = c95490a  settings: include xdp-dex.h for the
+                                      dex_scheduler_spawnv fallback
+commits      661e441  doc: List the experimental portals in the interface reference
+             3a32e9b  web-authentication: Add an experimental WebAuthentication portal  ← this one
+             703fb22  certificate: Add an experimental Certificate portal
+             aa1d697  session-dex: Add xdp_session_dex_close()
+             3f46e3c  xdp: Add a gate for experimental portals
+```
 
-**Note the frontend path.** Upstream's frontend sources were in `src/` and are now in
-`desktop-portal/`, with the app-info code in `shared/`; `request.c` is `xdp-request.c`,
-`session.c` is `xdp-session.c`, and `portal-impl.c` is `xdp-portal-config.c`. Documents written
-against the old layout — including the design review this project started from — name paths that
-no longer exist. Verified against the tree on 2026-09-03.
+`3a32e9b` is the commit this repository tracks. `3f46e3c` is the
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate. `703fb22` is the Certificate portal the
+`portal` certificate adapter calls — **on the same branch, in the same frontend process**,
+which is what makes the delegation gap solvable at all
+([decisions/0007](decisions/0007-certificate-adapter.md)).
 
-## Name mapping
+Test results, from the branch write-up: `meson test` green on the whole suite,
+`tests/test_webauthentication.py` 38 passed, `tests/test_certificate.py` 40 passed,
+`gitlint --commits upstream/main..HEAD` passes, `black --check` passes.
 
-| Incubating (here) | At acceptance | Notes |
+## Why `experimental` is not a claim of acceptance
+
+[PR #1889](https://github.com/flatpak/xdg-desktop-portal/pull/1889) ("Introduce
+Credentials portal (experimental)") is where the mechanism was settled. Sebastian Wick,
+2026-01-28, verbatim:
+
+> As for the interface name, let's call it something like
+> `org.freedesktop.portal.experimental.Credentials`. It should also not be exposed by
+> default and have a environment variable to turn it on (e.g.
+> `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=credentials`).
+
+and Isaiah Inuwa, minutes later:
+
+> I noticed the other portals have singular names: should we do that here too?
+> `org.freedesktop.portal.experimental.Credential`
+
+So: singular name, `experimental` infix, not exported by default, turned on by an
+environment variable holding portal names. That is what an unfinished portal looks like
+upstream, and it is what the branch implements. It carries no more standing than the old
+`io.github.sjtrotter.*` names did — it just carries it in the place where the people whose
+opinion matters can see it. `WebAuthentication` is not singular-vs-plural ambiguous, so
+the naming note above did not force a change here.
+
+## What this repository is now
+
+An out-of-tree backend, plus an application:
+
+| Here | What it is |
+|---|---|
+| `backend/src/main.c` | the D-Bus activated executable |
+| `backend/src/webauthentication-impl.h`, `request-impl.h` | the impl skeleton, one file per portal interface |
+| `backend/src/transaction.h`, `webkit_session.h`, `chrome.h`, `externalwindow.h`, `storage.h`, `completion.h`, `redact.h` | the window, the engine, the chrome, the partition, the matcher, the logging rules |
+| `backend/src/tls/` | the certificate adapter and both implementations |
+| `backend/data/webauth.portal.in` | `DBusName`, `Interfaces`, `UseIn`; installed into `$datadir/xdg-desktop-portal/portals` |
+| `backend/data/org.freedesktop.impl.portal.desktop.webauth.service.in` | D-Bus activation |
+| `backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` | a **verbatim tracking copy** of the branch's file; deleted the day the branch lands and the file ships in xdg-desktop-portal's interfaces directory |
+| `clients/entra/` | the Entra ID / AVD token client. **Never moves.** It is a consumer. |
+| `tools/` | `trigger-webauthentication.sh`, `dev-stack.sh` |
+
+What is *gone*, and was deleted rather than moved: `service/frontend/src/webauthentication.h`,
+`request.h`, `session.h`, `app-info.h`, `portal-impl.h`, `main.c`, its interface XML, its
+`.service.in`, and its `meson.build`. The previous version of this document listed four of
+those five headers as "**Deleted.** Upstream has …". It was right, and the deletion has now
+happened.
+
+## What the branch's XML forced this repository to change
+
+The interface is the frontend's, and where the branch disagreed with what this repository
+had written down, the branch won. Recorded because a claim that "acceptance is a rename"
+is only worth anything with its exceptions attached — and these are the exceptions.
+
+The headline is how few there are on this side: **`Start`'s signature did not change**, on
+either the public or the impl interface, and neither did the response codes, the option
+vocabulary, the matching rule or the backend's structure.
+
+| This repository said | The branch says | Why |
 |---|---|---|
-| `io.github.sjtrotter.portal.WebAuthentication1` | `org.freedesktop.portal.WebAuthentication` | Public interface. Upstream drops the trailing major version from the interface name and carries it in the `version` property instead, as `org.freedesktop.portal.Account` does. |
-| `io.github.sjtrotter.impl.portal.WebAuthentication1` | `org.freedesktop.impl.portal.WebAuthentication` | Backend interface. Same. |
-| `io.github.sjtrotter.portal.WebAuthentication` (bus name) | `org.freedesktop.portal.Desktop` | This project's own incubating bus name, not a shared stand-in — see [decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names during incubation". At acceptance the frontend *is* xdg-desktop-portal, which already owns the real name. |
-| `/io/github/sjtrotter/portal/WebAuthentication` | `/org/freedesktop/portal/desktop` | Both the frontend's and every backend's object path. |
-| `io.github.sjtrotter.portal.Request` | `org.freedesktop.portal.Request` | Shared. Our XML node is **deleted**; upstream's existing interface is used unchanged. |
-| `io.github.sjtrotter.impl.portal.Request` | `org.freedesktop.impl.portal.Request` | Same. |
-| `io.github.sjtrotter.portal.Session` | `org.freedesktop.portal.Session` | Documented but unused: version 1 creates no Session. |
-| `io.github.sjtrotter.impl.portal.WebAuthentication.gtk` | `org.freedesktop.impl.portal.desktop.<backend>` | The backend bus name. Uncontested either way — every backend has its own. |
-| `io.github.sjtrotter.portal.Certificate1` | `org.freedesktop.portal.<TBD>` | **The sibling project's** name, and not this project's to map. Its own documents argue the eventual home may be a credential type under `credentialsd`'s proposed interface rather than a device-named portal. |
+| `completion_uri` must be "absolute, `https` or an exactly named custom scheme, with no userinfo and no wildcard" | "absolute URI with a host, no userinfo and no wildcard" | The custom-scheme carve-out is not in the XML. A custom scheme with a host still parses, but "an exactly named custom scheme" is not a documented category any more |
+| the `reason` symbols were this repository's list | fixed by the XML: impl side `timeout`, `no_display`, `no_engine`, `session_terminated`, `no_certificate_adapter`, `unrelated_certificate_challenge`; public side adds `no_backend`, `backend_disappeared`, `backend_completion_mismatch`, `backend_protocol_error` | Settled, and the split between the two lists is itself informative: a backend cannot report `backend_disappeared` about itself |
+| `timeout` default and ceiling were prose | 300 default, 900 ceiling, always forwarded | Settled in code |
+| `title` "length-limited" | ≤ 256 characters and single-line | Settled in code |
+| the interface was ours to version | **experimental**: it can change or be removed without a version bump, and is not exported unless the gate is set | This is the largest change to what a consumer must expect |
 
-## File mapping
+And what the **Certificate** interface, on the same branch, forced on the certificate
+adapter — which matters more here than anything in the paragraph above:
 
-| Here | At acceptance | What happens |
+| `client_cert_portal.h` said | The branch says | Consequence |
 |---|---|---|
-| `service/frontend/src/webauthentication.h` | `xdg-desktop-portal/desktop-portal/webauthentication.c` (+`.h`) | **Moves.** This is the patch. |
-| `service/frontend/data/io.github.sjtrotter.portal.WebAuthentication1.xml` | `xdg-desktop-portal/data/org.freedesktop.portal.WebAuthentication.xml` | Moves, renamed; the `Request` node is dropped. |
-| `service/backends/gtk/data/io.github.sjtrotter.impl.portal.WebAuthentication1.xml` | `xdg-desktop-portal/data/org.freedesktop.impl.portal.WebAuthentication.xml` | Moves to the **frontend** repository, where upstream keeps all impl XML; backends consume it from `desktop_portal_interfaces_dir`. |
-| `service/frontend/src/request.h` | — | **Deleted.** Upstream has `desktop-portal/xdp-request.c`. |
-| `service/frontend/src/session.h` | — | **Deleted.** Upstream has `desktop-portal/xdp-session.c`. |
-| `service/frontend/src/app-info.h` | — | **Deleted.** Upstream has `shared/xdp-app-info*.c`. |
-| `service/frontend/src/portal-impl.h` | — | **Deleted.** Upstream has `desktop-portal/xdp-portal-config.c`. |
-| `service/frontend/data/…portal.WebAuthentication.service.in` | — | **Deleted.** Upstream ships it. |
-| `service/frontend/src/main.c`, `service/frontend/meson.build` | — | **Deleted.** Upstream has `xdp-main.c`; the new portal is one entry in `desktop-portal/meson.build` and one `init_webauthentication()` call. |
-| `service/backends/gtk/**` | `xdg-desktop-portal-gtk/src/webauthentication.c` — or stays as its own backend project | **Stays.** Either it is contributed to xdg-desktop-portal-gtk as one more file in `src/`, or it remains a standalone backend like `xdg-desktop-portal-gnome`. That is a conversation with a desktop, not a precondition. |
-| `service/backends/gtk/data/webauth-gtk.portal.in` | `data/<backend>.portal.in`, installed to `$datadir/xdg-desktop-portal/portals` | Directory and interface name change; the file's three keys do not. |
-| `service/backends/gtk/src/completion.h` + the frontend's re-check | `xdg-desktop-portal/shared/` | **Merges.** One rule with two implementations becomes one rule with one implementation linked by both halves. This is the only genuine code merge in the list. |
-| `clients/entra/**` | — | **Never moves.** It is a consumer. See [decisions/0006](decisions/0006-two-repositories.md). |
-| `docs/**` | the proposal's text | The threat model, the matching rules, the caller-identity model and the chrome requirements are what a portal proposal is *asked* for; they move into the discussion, not the tree. |
+| `CreateSession(a{sv}) → o session_handle` | `CreateSession(a{sv}) → o handle`, a **Request**; the session handle arrives in its `Response` | The adapter must subscribe before calling, and must not treat the return value as a session |
+| `OpenPkcs11Endpoint(o session, a{sv}) → h fd, s, s, u` | **not on the interface at all** | The `portal` adapter's compatibility transport does not exist. Brokered `Sign` is all there is, and it needs an external-signer path in WebKitGTK/glib-networking that is not known to exist. The `inproc` adapter is therefore not a fallback but the only implementation that can currently work |
+| `context` carrying the challenging origin | **no such option** | The origin can only travel in `reason`, as application-supplied text |
+| a `pkcs11_endpoint` capability bit | `GetCapabilities` has no such key | `WEBAUTH_GRANT_ENDPOINT` is gone from the adapter's capability mask |
 
-## What actually changes at acceptance
+## What remains before this could be a pull request
 
-Two things, and this list is deliberately exhaustive:
+1. **Open the "new portals" discussion upstream first.** xdg-desktop-portal directs
+   requests for new portals to an issue in `flatpak/xdg-desktop-portal`, with the question
+   "what protected host resource is being mediated?" answered first. The strongest
+   available answer here: **a trusted system authentication user-agent, persistent
+   sign-in state, and client-certificate capability**, and it has to be argued rather than
+   assumed. Nothing has been opened.
+2. **Fix the commit trailer.** The branch's commits carry
+   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. `gitlint` passes on that,
+   but `.gitlint.conf/co-authored-by-coding-agent.py` exists precisely to reject AI
+   co-author trailers and asks for `Assisted-by: AGENT_NAME:MODEL_VERSION` instead. A real
+   PR should use `Assisted-by: Claude:Fable-5.1`. This is noted in the branch write-up and
+   is a rewrite-the-commits job, not a code change.
+3. **A second, unrelated consumer.** [ROADMAP.md](ROADMAP.md) makes this a precondition,
+   and no amount of correct plumbing substitutes for it. One consumer that is a sibling
+   project by the same author is weaker evidence still.
+4. **A second backend, and interest from another desktop.** The paste-only and
+   system-browser backends the design keeps promising are the cheapest way to find out
+   whether the impl interface is actually implementable by somebody who did not design it.
+5. **Agreement on what the frontend enforces** — which is precisely the content of
+   [IMPL-INTERFACE.md](IMPL-INTERFACE.md), and precisely the thing this repository took a
+   position on early so that there is something concrete to disagree with.
+6. **Conformance tests and documentation** before the interface stops being experimental.
+7. **The branch's own open items**, which are not this repository's: nothing has been run
+   against a real web engine or real hardware, and the python-dbusmock templates are the
+   only implementations that have ever answered these interfaces.
 
-1. **The names.** Every `io.github.sjtrotter.portal.*` becomes `org.freedesktop.portal.*` and every
-   `io.github.sjtrotter.impl.portal.*` becomes `org.freedesktop.impl.portal.*`, along with the
-   object path and the two configuration directories.
-2. **The frontend's home.** `service/frontend/` stops existing here and its one interesting file
-   becomes one file in `xdg-desktop-portal/desktop-portal/`. Four of its five headers are deleted
-   rather than moved, because upstream already has all four.
+## Retiring the experimental names
 
-Nothing else. Not the impl method signature, not the response codes, not the option vocabulary, not
-the matching rule, not the backend's structure, not the threat model, not the client. That is the
-whole return on [decisions/0008](decisions/0008-build-to-the-upstream-shape.md), and it is why the
-costs listed there were accepted.
-
-## What acceptance would still require, that a rename does not give
-
-Being *shaped* correctly is not being *accepted*, and the difference is most of the work:
-
-- Answering "what protected host resource is being mediated?" — portals traditionally mediate
-  access sandboxed applications lack. The strongest available answer is "a trusted system
-  authentication user-agent, persistent sign-in state, and client-certificate capability", and it
-  has to be argued rather than assumed.
-- A second, unrelated consumer. [ROADMAP.md](ROADMAP.md) phase 1 makes this a precondition, and no
-  amount of correct plumbing substitutes for it.
-- Agreement on the public interface, and on **what the frontend enforces** — which is precisely the
-  content of [IMPL-INTERFACE.md](IMPL-INTERFACE.md), and precisely the thing this repository has
-  taken a position on early so that there is something concrete to disagree with.
-- A second backend, and interest from another desktop.
-- Conformance tests and documentation before the incubating interface is declared obsolete.
-
-## Retiring the incubating names
-
-When and if the freedesktop names ship, the incubating ones are **retired, not aliased**. A
-compatibility period in which both bus names work would double the surface being reasoned about at
-exactly the moment the security argument matters most, and this project has no deployed users to
-protect. The `.portal` file, the D-Bus service files and the client's constants change in one
-commit, and the old names are never claimed again.
+When and if a non-experimental `org.freedesktop.portal.WebAuthentication` ships, the
+experimental one is **retired, not aliased**. A compatibility period in which both
+interface names work would double the surface being reasoned about at exactly the moment
+the security argument matters most, and this project has no deployed users to protect. The
+`.portal` file, the D-Bus service file and the client's constants change in one commit.

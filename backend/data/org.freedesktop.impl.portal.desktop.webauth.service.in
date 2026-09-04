@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 the xdg-desktop-portal-webauth authors
+#
+# D-Bus activation for this backend. Compare xdg-desktop-portal-gtk's
+# data/org.freedesktop.impl.portal.desktop.gtk.service.in and
+# xdg-desktop-portal-termfilechooser's
+# org.freedesktop.impl.portal.desktop.termfilechooser.service: one session
+# service per out-of-tree backend, named
+# org.freedesktop.impl.portal.desktop.<backend>.
+#
+# Every backend has its own name and several may be installed at once, which is
+# why a second backend -- a Qt one, a system-browser one, a paste-only one -- is
+# a packaging decision here rather than a code change anywhere.
+#
+# xdg-desktop-portal activates this name when portals.conf (or UseIn) selects
+# webauth.portal for org.freedesktop.impl.portal.experimental.WebAuthentication.
+# APPLICATIONS HAVE NO REASON TO HOLD THIS NAME; see docs/SECURITY.md, "The impl
+# interface is not for applications".
+
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.webauth
+Exec=@libexecdir@/xdg-desktop-portal-webauth
+SystemdService=xdg-desktop-portal-webauth.service

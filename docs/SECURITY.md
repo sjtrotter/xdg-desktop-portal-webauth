@@ -3,20 +3,35 @@
 Status: design sketch. This document states the rules the implementation must satisfy. None of them
 are enforced yet, because there is no implementation.
 
-There are four boundaries. Three are in this repository.
+There are four boundaries. **Two are in this repository.**
 
 The **portal frontend** boundary establishes who is asking and what may be asked: it owns the bus
 name applications call, derives the app id, validates the arguments, applies the policy a caller may
 not influence, and guarantees exactly one answer. It draws nothing and it never sees a card, a PIN
-or a page. The **portal backend** boundary protects the browser session: whoever can drive it can
-show the user a page of their choosing, cause a request for a card signature, and learn the URI a
-flow ended at. The **Entra client** boundary protects the identity: whoever can drive it can mint
-tokens for a cloud account. The fourth — the **smart card portal**, a separate project — protects
-the card itself: it owns the certificate chooser, the PIN prompt, and the PIN.
+or a page. **That boundary is xdg-desktop-portal**, branch
+`experimental/certificate-webauthentication` — not this repository
+([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). Frontend-side rules
+below are recorded as *provided by xdg-desktop-portal*, and are stated here because a backend's
+obligations only make sense alongside them, not because this repository implements them.
+
+The **portal backend** boundary protects the browser session: whoever can drive it can show the
+user a page of their choosing, cause a request for a card signature, and learn the URI a flow ended
+at. That is `backend/`, and it is the half this document holds this repository to. The **Entra
+client** boundary protects the identity: whoever can drive it can mint tokens for a cloud account.
+The fourth — the **Certificate portal**, whose backend is a separate project — protects the card
+itself: it owns the certificate chooser, the PIN prompt, and the PIN.
+
+**The public interface is gated.** `org.freedesktop.portal.experimental.WebAuthentication` is not
+exported unless the portal was started with
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. With the gate off, no application can
+reach any of this and this backend is never activated. That is a property of the frontend and this
+repository cannot change it in either direction. Installing this backend on a machine whose portal
+does not know the interface adds no attack surface: the `.portal` file names an interface nothing
+matches.
 
 They are separated so that none has to be trusted with another's job. The frontend never sees a
 page; the backend never sees an application; neither ever sees a token; the Entra client never
-touches a card and never opens a window; the smart card portal never learns what protocol any of it
+touches a card and never opens a window; the Certificate portal never learns what protocol any of it
 is for.
 
 The frontend/backend split is new, and its security consequences cut both ways. It is recorded in
@@ -88,13 +103,15 @@ identity" exists.
 
 This is the split's own security obligation, and it did not exist when there was one process.
 
-`io.github.sjtrotter.impl.portal.WebAuthentication1` takes an `app_id` as an *argument*. An
+`org.freedesktop.impl.portal.experimental.WebAuthentication` takes an `app_id` as an *argument*. An
 application that reached it directly would name itself, choose its own storage mode, bypass rate
 limiting, and bypass the frontend's re-check of the returned URI. So:
 
-- **The backend refuses any sender that is not its frontend.** It knows the frontend's unique name
-  from the connection that called it and checks every invocation. A refusal is an error return and a
-  logged outcome symbol, never a window.
+- **The backend refuses any sender that does not own `org.freedesktop.portal.Desktop`.** It checks
+  every invocation. A refusal is an error return and a logged outcome symbol, never a window. This
+  is now literally the same mechanism upstream relies on rather than an analogue of it under our
+  own names: the impl bus names are not proxied into sandboxes by the portal machinery, and a
+  Flatpak's D-Bus policy does not grant them.
 - **Distributions should apply D-Bus policy** to the backend's bus name, as upstream backends
   expect: the impl service is addressed by the portal frontend and nothing else. This is defence in
   depth, not the primary mechanism, because a session-bus policy on a same-UID desktop is a
@@ -109,11 +126,12 @@ limiting, and bypass the frontend's re-check of the returned URI. So:
   comes from somewhere the application cannot influence at all. What it costs is one more name on
   the bus that must be treated as privileged.
 
-**Caller identity is resolved, never asserted.** An executable path is not an application identity:
-a same-UID process can execute another path, manipulate its launch context, or connect straight to
-the bus. **The frontend resolves it; the backend is told and never asks** — a backend that resolved
-its own peer would resolve the frontend. The frontend distinguishes three honesty levels and says
-which one it has:
+**Caller identity is resolved, never asserted.** *(Provided by xdg-desktop-portal:
+`xdp_invocation_get_app_info()`.)* An executable path is not an application identity: a same-UID
+process can execute another path, manipulate its launch context, or connect straight to the bus.
+**The frontend resolves it; the backend is told and never asks** — a backend that resolved its own
+peer would resolve xdg-desktop-portal. The frontend distinguishes three honesty levels, forwards
+which one it got as `app_id_kind`, and this backend renders the difference:
 
 | Kind | Source | Status |
 |---|---|---|
@@ -133,12 +151,14 @@ Consequences, enforced rather than advised:
   gets `shared` or `ephemeral` — never a partition it named. This is a large part of why there is no
   per-application persistent mode in version 1.
 - First use by an unidentified host caller may warrant an explicit confirmation, particularly before
-  a certificate request is made on its behalf. Note that the smart card portal makes its own
+  a certificate request is made on its behalf. Note that the Certificate portal makes its own
   decision here too, and the backend must pass through enough about the *original* caller for that
   decision to be made honestly — presenting every request as its own would launder the caller's
   identity, which is the opposite of what either project is for.
 - **Requests are rate-limited.** Repeated background requests from one connection are the cheapest
-  way to turn this portal into a phishing launcher.
+  way to turn this portal into a phishing launcher. **This is not implemented anywhere.** It is on
+  the frontend branch's own open-items list, and until it is there is nothing between a hostile
+  caller and a window every time it asks.
 
 ## URI rules
 
@@ -148,8 +168,9 @@ Each rule with the reason. The full definition is in [PUBLIC-INTERFACE.md](PUBLI
   will not open, `file:`, `data:`, `javascript:` or a scheme handler; a portal that opens arbitrary
   URIs on request is a
   general-purpose way to make a desktop open anything.
-- **`completion_uri` must be absolute, `https` or an exactly named custom scheme, with no userinfo
-  and no wildcard.**
+- **`completion_uri` must be absolute, with a host, no userinfo and no wildcard.** Note that the
+  branch's XML says exactly that and no more: the earlier "`https` or an exactly named custom
+  scheme" carve-out is not a documented category any more.
 - **The frontend validates before forwarding, and re-checks what comes back.** A malformed request
   is a D-Bus error before any backend is woken and any window is opened; a returned `completion_uri`
   that is not the one the application asked for becomes response `2` with reason
@@ -218,36 +239,51 @@ The backend satisfies a client-certificate challenge through an adapter with two
 and the security position differs between them. Both are documented because both will exist for a
 while; see [decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md).
 
-### Under the `portal` adapter — preferred
+### Under the `portal` adapter — preferred, and currently unusable
 
-**Read this first: the delegation gap the split made unmissable.** Under this adapter the backend
-calls the smart card portal as an ordinary client of *its public interface*. That portal therefore
-derives **the backend's** app id — `webauth-portal-gtk` — and not the application's. Its consent
-window names the wrong thing, and the original app id can only be passed as untrusted text (the
-`reason` hint, with the challenging origin in `context`). This was equally true before the split and
-merely easier to overlook; it must be presented honestly, because presenting a passed-through app id
-as an established identity would launder a caller's identity through someone else's trusted window,
-which is the opposite of what either project is for. Attested delegation across one portal hop is a
-protocol neither project has — and one incubating frontend hosting both interfaces would not need
-one, since the derived app id would already be in hand. See
-[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
+**Read this first: what it can no longer do.** The Certificate interface on the frontend branch has
+**no `OpenPkcs11Endpoint`** — an fd-returning method needs its own review, so it was deferred as a
+follow-up. Brokered `Sign` is the only way to use a grant, and using brokered `Sign` from a WebKit
+handshake needs a GnuTLS external-signer path in WebKitGTK/glib-networking that is not known to
+exist. Until one does, this adapter cannot complete a handshake and the `inproc` adapter is not a
+fallback but the only implementation. Everything below describes the security position this adapter
+*would* have, and is why it is still worth finishing.
 
-- **The PIN never reaches this process.** It is entered in the smart card portal's window, against
+**Read this second: the delegation gap, and what has changed about it.** Over D-Bus the backend
+calls the Certificate portal as an ordinary client of *its public interface*, so the portal derives
+**this backend's** app id and not the application's. Its consent window names the wrong thing, and
+the original app id can only be passed as untrusted text — `reason`, since there is no `context`
+option either. Presenting a passed-through app id as an established identity would launder a
+caller's identity through someone else's trusted window, which is the opposite of what either
+project is for.
+
+**What changed: both portals now live in one frontend process.** xdg-desktop-portal derived the app
+id for the `WebAuthentication.Start` call and still holds it when it calls its own certificate side,
+so it can pass the *original* app id along in-process, with nothing untrusted in between and no
+attestation crossing a bus. That is the "shared frontend" fix both projects described as arriving at
+acceptance, and it has arrived early. **It is not written yet**, on that branch.
+
+**The caveat is permanent.** The fix works *only* in-process. Across a process boundary, passing an
+app id along is an unattested assertion of someone else's identity, there is no cross-process
+attestation protocol here, none is being built, and doing it as a stopgap is not a smaller version
+of the in-process fix — it is the thing the in-process fix exists to avoid needing. See
+[decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
+
+- **The PIN never reaches this process.** It is entered in the Certificate portal backend's window, against
   another process's memory. There is no buffer here to scrub and no bug here that can leak one.
 - **The grant is bounded**: a certificate, a set of permitted operations and mechanisms, and an
   expiry. Brokered signing gives precise accounting, revocation and per-operation consent — though
   note honestly that no generic `Sign()` can prove its input came from a TLS handshake, so what it
   buys is accounting rather than attestation.
-- **The module-endpoint variant (`OpenPkcs11Endpoint`) is experimental, opt-in, and its isolation is
-  weaker than it sounds.** Stock `p11-kit server` forwards a whole *token*, not a scoped object, and
-  carries no login state across the boundary; what this endpoint returns instead is a Unix socket fd
-  backed by the smart card portal's own broker-controlled synthetic facade — one slot, the granted
-  objects only, read-only sessions. Two things about it are unresolved and must not be described as
-  solved: a PKCS#11 URI cannot name a socket, and `g_tls_certificate_new_from_pkcs11_uris()` has no
-  module parameter, so whether this process can make the returned fd and URIs resolvable to GLib at
-  all — as opposed to merely receiving them — is unproven ([S2](SPIKES.md)); the likely resolution is
-  one permanently registered broker module exposing synthetic grant-bound slots, not a module handed
-  over per grant.
+- **The module-endpoint variant does not exist.** `OpenPkcs11Endpoint` is on neither the public nor
+  the impl Certificate interface. The reasons it was deferred are the reasons it was always risky:
+  stock `p11-kit server` forwards a whole *token*, not a scoped object, and carries no login state
+  across the boundary, so it would have had to be a broker-controlled synthetic facade; and even
+  then, a PKCS#11 URI cannot name a socket and `g_tls_certificate_new_from_pkcs11_uris()` has no
+  module parameter, so whether this process could make a returned fd and URI pair resolvable to
+  GLib at all — as opposed to merely receiving them — is unproven ([S2](SPIKES.md)). The likely
+  resolution, if it is ever built, is one permanently registered broker module exposing synthetic
+  grant-bound slots, not a module handed over per grant.
 - **Whatever the adapter held is released on every exit path** — completion, failure, timeout,
   cancellation. A finished transaction must not leave a live grant or endpoint behind. This is the
   one card-related discipline that is entirely the backend's responsibility either way, and the
@@ -258,12 +294,14 @@ one, since the derived app id would already be in hand. See
   made to lie, the other portal's window inherits the lie. It must therefore pass through enough
   about the *original* caller for that project's own consent decision to be made honestly, rather
   than presenting every request as its own — subject to the delegation gap above, which means
-  "honestly" currently includes "and this is a claim we cannot attest".
+  "honestly" currently includes "and this is a claim we cannot attest". Note that the only field
+  available for it is `reason`: there is no `context` option on the interface.
 
-### Under the `inproc` adapter — the fallback
+### Under the `inproc` adapter — currently the only one that can work
 
-Everything the portal adapter moves out of this process is back inside it, and the rules are the
-ones the proven implementation already follows:
+Everything the portal adapter would move out of this process is inside it, and the rules are the
+ones the proven implementation already follows. These are not fallback rules any more; until the
+external-signer path exists, they are the rules:
 
 - **The chooser names the requesting application, the target origin, the certificate identity and
   the purpose — before any PIN is asked for.** A chooser that does not say who wants the certificate
@@ -283,17 +321,19 @@ ones the proven implementation already follows:
   has loaded, and its `certauth.` subdomain where the flow requires it, may cause a certificate
   request. A page able to provoke a request naming an arbitrary origin would be phishing through a
   trusted window — and through *someone else's* trusted window under the portal adapter, which is
-  worse.
+  worse. `unrelated_certificate_challenge` is one of the `reason` symbols the impl XML names for
+  exactly this.
 - **Cancelling anywhere cancels the transaction**, producing response `1`. Neither adapter falls back
   to "continue without a certificate".
 - **Nothing about a certificate is logged**: not the PKCS#11 URI, not the label, not the serial, not
   the subject. Only counts.
 - **When neither adapter can run**, the challenge is declined and the transaction ends `2` with
-  reason `no_certificate_adapter`.
+  reason `no_certificate_adapter` — also one of the XML's symbols.
 - **The residual risk delegation does not remove:** the backend can still provoke a certificate
-  prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting in the frontend and honest
-  caller display in the backend stand between that and a nuisance; under the portal adapter, that
-  project's own consent policy is the backstop.
+  prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting in the
+  frontend and honest caller display in the backend stand between that and a nuisance — and the
+  rate limiting is not implemented, so at present only the honest display does. Under the portal
+  adapter, that project's own consent policy is the backstop.
 
 ## Transactions
 
@@ -304,10 +344,12 @@ obligations are new:
 - **The frontend owes an answer when the backend dies.** One `Response(2, { reason:
   "backend_disappeared" })`, not silence. An application waiting forever on a dead backend is a
   denial of service the single-process design could not produce, because there was nobody left to
-  wait on.
+  wait on. *(Provided by xdg-desktop-portal.)*
 - **The backend cancels when the frontend dies.** Its connection dropping destroys the window at
   once. A window belonging to no request is the leaked-window failure this interface promises not to
-  have, and it would be a window with security chrome and no request behind it.
+  have, and it would be a window with security chrome and no request behind it. Note that "the
+  frontend" is now xdg-desktop-portal, whose restart is a more ordinary event than a bespoke
+  service's death — which is a reason to get this right rather than to assume it away.
 - **The deadline exists twice.** The backend's is authoritative and slightly shorter, so a live
   backend answers first with a clean `timeout`; the frontend's is the backstop for one that has
   stopped answering. Neither may be the only one.
@@ -423,7 +465,7 @@ chooses the `completion_uri` it hands to the portal.
 | **PoP token** | As above, additionally keyed by the `req_cnf` binding. | A PoP token bound to one `kid` is useless for another; a cache key ignoring the binding would return a token the caller cannot use. |
 | **Authorization code** | In memory for the seconds between the completion and the token request. Scrubbed. | Exchangeable for a refresh token by anyone holding it plus the public client id. PKCE is what stops that, and PKCE is not a reason to be careless with the code. |
 | **PKCE verifier, `state`** | In memory for the transaction. Scrubbed. | The verifier binds the code to this process; `state` binds the response to this request. |
-| **PIN** | Never seen by the Entra client. Under the portal backend's `portal` adapter, never seen there either; under `inproc`, held in that backend only long enough to answer the challenge and then scrubbed. | A component having no path to a secret is better than a component being careful with one — which is the strongest argument for finishing the portal path and retiring the fallback. |
+| **PIN** | Never seen by the Entra client. Under the portal backend's `portal` adapter, never seen there either; under `inproc` — currently the only adapter that can work — held in that backend only long enough to answer the challenge and then scrubbed. | A component having no path to a secret is better than a component being careful with one — which is the strongest argument for finishing the portal path, and the clearest cost of `OpenPkcs11Endpoint` having been deferred. |
 | **Private key on the card** | Never leaves the card. | That is the point of the card. |
 | **PoP key** | Never seen by the client. FreeRDP generates and retains it; the client receives only `req_cnf`. | The client cannot leak what it never has. |
 | **Account records** (account id, authority, tenant, client id) | Keyring, beside the refresh token. | Not secret in the same sense, but they name a person and a tenant. |
@@ -465,13 +507,15 @@ production.
 Before either interface is frozen, five things want an independent pair of eyes:
 
 1. The completion matcher and its percent-decoder — **both copies**, against the same fixtures. Two
-   implementations of one rule is a cost of the split and this is where it is paid.
+   implementations of one rule is a cost of the split and this is where it is paid. One copy is
+   written and tested upstream (`completion_uri_matches()`); the other is not written at all.
 2. The frontend's peer check and app-id derivation, and everything downstream that trusts the
-   answer — the chrome, the partition choice, the result binding, and what is passed to the smart
-   card portal about the original caller.
-2a. The impl boundary itself: that the backend refuses non-frontend senders, that the frontend's
-   option filter drops what it should, and that the frontend's re-check of the returned
-   `completion_uri` cannot be skipped on any path.
+   answer — the chrome, the partition choice, the result binding, and what is passed to the
+   Certificate portal about the original caller. *(The derivation is upstream's now; what to review
+   here is everything that consumes it.)*
+2a. The impl boundary itself: that the backend refuses senders that do not own
+   `org.freedesktop.portal.Desktop`, that the frontend's option filter drops what it should, and
+   that the frontend's re-check of the returned `completion_uri` cannot be skipped on any path.
 3. The lifetime of whatever the certificate adapter holds — a grant, an endpoint, a PKCS#11 session
    — especially on the cancellation and timeout paths.
 4. The client's callback classifier.

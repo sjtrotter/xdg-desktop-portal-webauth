@@ -2,6 +2,14 @@
 
 Status: design sketch. The sketch itself is done; nothing after it has started.
 
+**What has changed since this document was last honest about its own scope:** the frontend is no
+longer this project's to build. It is an xdg-desktop-portal branch
+([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md),
+[UPSTREAMING.md](UPSTREAMING.md)), written and passing its own 38-case pytest suite. Anything below
+that budgets frontend work is work that is *done, elsewhere, by the same author*; the numbers have
+not been re-derived, and where a line is now moot it says so rather than pretending the rest got
+better.
+
 Effort figures are person-weeks for **one experienced Linux/C developer already familiar with the
 working Remmina patches**, taken from the Codex estimate in the design review. They describe a
 *credible MVP*, not something ready for general distribution. The largest single uncertainty in
@@ -15,40 +23,48 @@ S1 decides what the client can promise; S2 decides whether the smart-card delega
 and where the support floor sits. S3 (keyring availability) can run alongside. **Days, not weeks** —
 and nothing below starts until both have answers.
 
-S2 has an external dependency: the smart card portal's own spike, in its own repository, must first
-establish that a scoped forwarded module can be produced. Run that one first, or stand in for it
-with a hand-run `p11-kit server` — which is worth doing regardless, because it isolates whether a
-failure is in the forwarding or in the consuming.
+S2 has an external dependency: the certificate project's own spike, in its own repository, must
+first establish that a scoped forwarded module can be produced — and **that project's frontend
+branch has deferred `OpenPkcs11Endpoint` entirely**, so there is currently no method to ask for one.
+Run its spike first, or stand in for it with a hand-run `p11-kit server` — which is worth doing
+regardless, because it isolates whether a failure is in the forwarding or in the consuming.
 
 ---
 
-## Phase 0 — Reference frontend, reference backend and Entra client — **10–17 person-weeks**
+## Phase 0 — Reference backend and Entra client — **10–17 person-weeks**
 
-One portal frontend, one backend and one token client, all working, on the machines the author
-controls. Not packaged for the world, not proposed to anyone.
+One backend and one token client, working against the frontend on the xdg-desktop-portal branch, on
+the machines the author controls. Not packaged for the world, not proposed to anyone.
+
+The frontend line in the estimates below is **done** — it is upstream's code on a branch, with
+tests — which is a real saving, and the figures have not been reworked to reflect it. Read them as
+a ceiling.
 
 The estimate rose by about a person-week against the single-service plan, and that increase is the
 price of [decisions/0008](decisions/0008-build-to-the-upstream-shape.md): a second D-Bus interface,
 a second activation path, backend discovery, and the failure paths that only exist when the two
 halves can die independently. It is spent here rather than spent twice later.
 
-### 0a. Frontend: the portal — **1–2 weeks**
+### ~~0a. Frontend: the portal — 1–2 weeks~~ — **done, upstream**
 
-The public interface exactly as in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md): `Start`, the
-`Request` object, `Close()`, one `Response`. App-id derivation and its three honesty levels. Option
-filtering and argument validation. Storage-mode policy. Rate limiting. The re-check of the
+`Start`, the `Request` object, `Close()`, one `Response`. App-id derivation and its three honesty
+levels. Option filtering and argument validation. Storage-mode policy. The re-check of the
 `completion_uri` a backend returns. Exact parsed completion matching and its rejection rules — the
 frontend's copy. Structural redaction discipline.
 
-Deliberately toolkit-free: GLib and GIO only, forever.
+All of it exists in `desktop-portal/web-authentication.c` on the xdg-desktop-portal branch, with 38
+passing pytest cases. Two caveats: **rate limiting is not implemented** — it is on the branch's own
+open-items list — and nothing has been run against a real web engine.
 
-### 0b. Frontend: backend discovery and lifetime — **0.5–1 week**
+### ~~0b. Frontend: backend discovery and lifetime — 0.5–1 week~~ — **done, upstream, and mostly for free**
 
 `.portal` file parsing, the `portals.conf` `[preferred]` search, not exporting the interface when
 nothing implements it, proxying with a `G_MAXINT` timeout, forwarding `Close()`, and the answers the
 frontend owes when a backend cannot start, dies, or misbehaves
-([IMPL-INTERFACE.md](IMPL-INTERFACE.md)). Small, and entirely new work that the single-service plan
-did not contain.
+([IMPL-INTERFACE.md](IMPL-INTERFACE.md)). Almost none of this was written for these portals:
+`xdp-portal-config.c` and `xdp-request-dex.c` were already there. That is the clearest single
+measure of what
+[decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md) saved.
 
 ### 0c. Backend: WebKitGTK web view — **1–2 weeks**
 
@@ -125,30 +141,31 @@ adapter is still built here — that is the whole point of retaining it. What th
 buys is not a smaller phase 0; it is that the card code is eventually written *once*, for every
 application, rather than faster for this one.
 
-**And note the coordination cost**, which is real even though the bus-name question is now settled.
-The `AcquireCredential` contract, its grant semantics and the lifetime of anything it returns must
-still be agreed between two sketches being written in parallel — and neither should be frozen until
-S2 has said whether the module transport works at all. Each project now claims its own incubating
-bus name, so there is nothing to negotiate there; see
-[decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names during
-incubation". A shared `incubating-portal-frontend` is discussed there as one option to explore, not
-a required next step, and is not budgeted above, because it is a third project and neither
-interface is settled.
+**And note the coordination cost**, most of which has now been paid in one place. The
+`AcquireCredential` contract, its grant semantics and the lifetime of anything it returns are
+settled — both interfaces are defined by one xdg-desktop-portal branch, so there are no two sketches
+to reconcile and no bus names to negotiate. What is *not* settled is whether either can be
+implemented: neither has ever been answered by anything but a python-dbusmock template, and the
+Certificate interface deliberately ships without `OpenPkcs11Endpoint`, so the module transport S2
+was to test has nothing to test against.
 
 ---
 
 ## Phase 1 — Distribution and a second consumer
 
-Packaging for the distributions the S2 matrix identified, with **two** D-Bus service files, a
-`.portal` file, a documented `portals.conf`, and a stated support floor. The smart card portal is a
-*recommended*, not a required, dependency: without it the in-process adapter runs. Testing on GNOME
+Packaging for the distributions the S2 matrix identified, with **one** D-Bus service file, a
+`.portal` file in `$datadir/xdg-desktop-portal/portals`, a documented `portals.conf`, and a stated
+support floor — plus a patched or branch-built xdg-desktop-portal, which is the hard part. The
+certificate portal is a *recommended*, not a required, dependency: without it the in-process
+adapter runs. Testing on GNOME
 and KDE, on Wayland and X11, including `parent_window` parenting and `activation_token` behaviour.
 
-Two packaging questions are new and neither has an answer yet: whether the frontend and the backend
-are one package or two (two, if the point of the split is to be honoured), and what a distribution
-does when both this frontend and the smart card portal's want the same bus name — which is the
-argument for the shared incubating frontend in
-[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
+One packaging question is left, and it is smaller than it was: this repository ships one backend
+package plus a client, and the frontend is a patch to somebody else's package. The old question of
+what a distribution does when two incubating frontends want a bus name is gone with the frontends
+([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). The new one is that a
+distribution cannot ship this at all until the branch is merged, which is an argument for opening
+the upstream conversation sooner rather than later.
 
 And, more important than any of that: **a second, unrelated consumer.** Not a second RDP client —
 something that is not AVD and not FreeRDP, that needs an interactive web sign-in and would rather
@@ -164,15 +181,20 @@ Also in this phase: the repository split from
 
 ## Phase 2 — Propose the interface to freedesktop
 
-Only after phases 0 and 1. The eventual names would be `org.freedesktop.portal.WebAuthentication` and
-`org.freedesktop.impl.portal.WebAuthentication`; today's `io.github.sjtrotter.portal.*` and
-`io.github.sjtrotter.impl.portal.*` are the incubating ones, and shipping a freedesktop name before
-acceptance would assert an ownership that does not exist. The full mapping, file by file, is
-[UPSTREAMING.md](UPSTREAMING.md).
+Only after phases 0 and 1 — **and note that a step of this phase has already been taken, in the
+wrong order.** The interfaces exist, as
+`org.freedesktop.portal.experimental.WebAuthentication` and
+`org.freedesktop.impl.portal.experimental.WebAuthentication`, on an unproposed xdg-desktop-portal
+branch. `experimental` is the namespace upstream set aside for portals in exactly this state, so
+that is not the ownership claim the old incubating names existed to avoid — but writing the patch
+is not the same as opening the conversation, and it must not be presented as one.
+[UPSTREAMING.md](UPSTREAMING.md) says where the branch is and what is left.
 
 The acceptance path, in order:
 
-1. Implement the independent prototype and publish the introspection XML.
+1. Implement the prototype and publish the introspection XML. **Partly done, in the wrong order:
+   the frontend and both XML files exist on the branch, with tests; the backend does not exist at
+   all.**
 2. Document the threat model, completion matching, caller identity, cookie/storage model and UI
    security chrome. (Most of that is [SECURITY.md](SECURITY.md) and
    [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) already, but written against a real
@@ -184,11 +206,13 @@ The acceptance path, in order:
 6. Agree the public interface and what the frontend enforces. This project has taken a concrete
    position on both — [IMPL-INTERFACE.md](IMPL-INTERFACE.md) — precisely so there is something to
    disagree with rather than a blank page.
-7. Move the frontend into xdg-desktop-portal and rename both interfaces. Because of
-   [decisions/0008](decisions/0008-build-to-the-upstream-shape.md) this step is a rename and a
-   move, not the design work it used to be; [UPSTREAMING.md](UPSTREAMING.md) is the patch, written
-   in advance.
-8. Obtain interest from another desktop, and a second backend. One backend already exists.
+7. ~~Move the frontend into xdg-desktop-portal and rename both interfaces.~~ **Already done, on a
+   branch, out of order** ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)).
+   What is left of this step is to rewrite the commit trailers as
+   `Assisted-by: Claude:Fable-5.1`, which is what `.gitlint.conf` asks for, and then to have the
+   patch reviewed — which is steps 5 and 6, not this one.
+8. Obtain interest from another desktop, and a second backend. **None exists**: this repository's
+   backend has no implementation.
 9. Add conformance tests and documentation before declaring the incubating interface obsolete.
 
 The proposal will have to answer *"what protected host resource is being mediated?"* — portals
@@ -241,10 +265,12 @@ Not "never" — "not yet, and not before something asks for it".
   version 1 replaces it with "a backend implements the whole interface or does not claim it". If
   that turns out to be too rigid — a paste backend that can serve some flows, say — the answer is a
   `GetCapabilities`-shaped addition argued upstream, not invented here.
-- **A shared `incubating-portal-frontend`** hosting both this interface and the smart card
-  portal's, so that two incubating portals can be installed at once. Proposed in
-  [decisions/0008](decisions/0008-build-to-the-upstream-shape.md); needs agreement from both
-  projects, which is why it is here and not in phase 0.
+- ~~**A shared `incubating-portal-frontend`**~~ hosting both this interface and the certificate
+  portal's. **Done, and it is xdg-desktop-portal**: both interfaces are on one branch, in one
+  frontend process, which is what closes the delegation gap in-process
+  ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). What remains is for
+  that frontend to actually forward the original app id internally, and the permanent caveat that
+  it works only in-process.
 - **A system-browser backend, and a paste backend.** Formerly "a system-browser session": under the
   split these are separate backends selected by `portals.conf` rather than implementations behind a
   vtable.

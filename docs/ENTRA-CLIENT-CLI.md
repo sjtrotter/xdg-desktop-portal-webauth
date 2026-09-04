@@ -8,7 +8,7 @@ frontends and other programs are expected to depend on. Layer 2, the web authent
 client calls when it needs a window, has its own contract in
 [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md); the two are independent and versioned separately.
 
-The client calls the portal's **frontend**, on `io.github.sjtrotter.portal.WebAuthentication`, and nothing
+The client calls xdg-desktop-portal, on `org.freedesktop.portal.Desktop`, and nothing
 else. That the portal is internally a frontend and a backend
 ([decisions/0008](decisions/0008-build-to-the-upstream-shape.md)) is invisible here: no verb, exit
 code or field below changed when the split was made, and none would change again if a machine
@@ -94,7 +94,7 @@ For `accounts --json` the object carries an `"accounts"` array instead of `token
 | `10` | interaction required | An interactive transaction would have been needed and `--prompt never` was given. The caller may retry with `--prompt auto`. Not an error condition; it is the documented way to ask "can you do this silently?" |
 | `20` | cancelled | The portal responded `1`: the user closed the sign-in window, or cancelled the certificate chooser or the PIN prompt. A caller should **not** immediately retry interactively — the user just said no. |
 | `30` | no such account | No account matched, or `--account` named one that is not stored, or the account exists but has no usable refresh token (signed out, expired, revoked). The caller should run `login`. |
-| `40` | provider unavailable | The client cannot do its job in this environment: nothing implementing `io.github.sjtrotter.portal.WebAuthentication1` to call for an interactive request — which now includes a frontend that is running but has no backend configured, since it does not export the interface at all — no session bus, or no Secret Service keyring. Also the mapping for a portal `Response` of `2` when it means no window could be shown at all. A dispatcher should treat this as "decline" and fall through to the next provider (e.g. FreeRDP's terminal paste flow). |
+| `40` | provider unavailable | The client cannot do its job in this environment: `org.freedesktop.portal.experimental.WebAuthentication` is not exported, so there is nothing to call for an interactive request. **That is the default state of a machine**: the interface is experimental and absent unless xdg-desktop-portal was started with `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. The same code covers a portal with the gate on but no backend configured (it exports nothing either), no session bus, and no Secret Service keyring — indistinguishable by design. **The message must name the environment variable**, because on a developer's machine that is almost always what is wrong. Also the mapping for a portal `Response` of `2` when it means no window could be shown at all. A dispatcher should treat this as "decline" and fall through to the next provider (e.g. FreeRDP's terminal paste flow). |
 | `50` | authorization server error | The authority refused: `invalid_grant`, `interaction_required` from the server, a Conditional Access claims challenge, a consent problem, `AADSTS50011`. The details are on stderr, redacted. |
 | `64` | usage | Bad arguments. (`64` is `EX_USAGE` from `sysexits.h`.) |
 | `70` | internal | An unexpected failure in the client itself — including a portal `Response` of `2` for a reason other than unavailability, such as a timeout, a `backend_disappeared` or a `backend_completion_mismatch`. (`70` is `EX_SOFTWARE`.) **Every verb currently returns this** with the message `not implemented (design sketch)`. |
@@ -206,7 +206,7 @@ what it will be *when it works*, not a promise made about a sketch.
 
 The portal interface version is separate. A caller of this CLI never sees it, and the client is
 expected to work against anything implementing version 1 of
-[`io.github.sjtrotter.portal.WebAuthentication1`](PUBLIC-INTERFACE.md) — including, one day, a
+[`org.freedesktop.portal.experimental.WebAuthentication`](PUBLIC-INTERFACE.md) — including, one day, a
 desktop-native backend rather than this project's own, or the frontend having moved into
 xdg-desktop-portal entirely ([UPSTREAMING.md](UPSTREAMING.md)). The backend interface version is
 separate again and is nobody's business here.

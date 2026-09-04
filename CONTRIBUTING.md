@@ -22,16 +22,17 @@ This is a design sketch. The most useful contribution right now is an argument, 
   `<user>@<tenant-domain>` and similar placeholders. The only real identifiers in this repository are
   the AVD public client id, Microsoft's authority/scope/redirect constants, and the error code
   `AADSTS50011`.
-- **Keep the layers apart.** `service/` must contain no Entra, Azure, OAuth or RDP identifier — that
+- **Keep the layers apart.** `backend/` must contain no Entra, Azure, OAuth or RDP identifier — that
   is what makes "the portal is protocol-independent" a testable claim rather than a slogan. There is
-  no build-time dependency between `service/` and `clients/entra/` in either direction, and there must
+  no build-time dependency between `backend/` and `clients/entra/` in either direction, and there must
   never be one. See [docs/decisions/0006-two-repositories.md](docs/decisions/0006-two-repositories.md).
-- **Keep the frontend and the backend apart, and keep the frontend thin.** `service/frontend/`
-  depends on GLib and GIO and nothing else, ever: it is the directory that moves into
-  xdg-desktop-portal at acceptance, and a toolkit dependency there is a defect, not a convenience.
-  Anything that draws, browses or touches a card belongs in a backend. There is no build-time
-  dependency between the two halves either — they speak D-Bus. See
-  [docs/decisions/0008-build-to-the-upstream-shape.md](docs/decisions/0008-build-to-the-upstream-shape.md).
+- **The frontend is not here, and the interface is not ours.** The frontend is a branch of
+  xdg-desktop-portal ([docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)),
+  and `backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a verbatim
+  copy of that branch's file. A change to the interface is a change to that branch, followed by
+  re-copying the file; a hand-edit here produces a backend that no longer implements what it claims.
+  Anything about who is calling, what may be asked, or what a caller is told belongs upstream;
+  anything that draws, browses or touches a card belongs here.
 - **Mirror upstream rather than inventing.** Where xdg-desktop-portal has already answered a
   question — object paths, option filtering, `.portal` files, who gets told the `app_id` — copy the
   answer and cite it. Where this project must differ, say why in the file that differs. The measure
@@ -47,15 +48,14 @@ This is a design sketch. The most useful contribution right now is an argument, 
 
 ## Building
 
-Each of the three components is a standalone meson project:
+Each of the two components is a standalone meson project:
 
 ```console
-$ meson setup build-frontend service/frontend      && ninja -C build-frontend
-$ meson setup build-gtk      service/backends/gtk  && ninja -C build-gtk
-$ meson setup build-entra    clients/entra         && ninja -C build-entra
+$ meson setup build-backend backend       && ninja -C build-backend
+$ meson setup build-entra   clients/entra && ninja -C build-entra
 ```
 
-Or all three, through the umbrella:
+Or both, through the umbrella:
 
 ```console
 $ meson setup build && ninja -C build

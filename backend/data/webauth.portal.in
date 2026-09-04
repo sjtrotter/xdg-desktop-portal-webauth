@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 the xdg-desktop-portal-webauth authors
+#
+# The backend declaration, in xdg-desktop-portal's .portal format. Compare
+# xdg-desktop-portal-gtk's data/gtk.portal.in, which is the same three keys:
+#
+#   [portal]
+#   DBusName=org.freedesktop.impl.portal.desktop.gtk
+#   Interfaces=org.freedesktop.impl.portal.FileChooser;...;
+#   UseIn=gnome
+#
+# DBusName is the backend's D-Bus activation name; Interfaces is the
+# semicolon-separated list of impl interfaces it implements; UseIn is the
+# deprecated legacy desktop-environment key, kept because upstream still ships
+# it and because a portals.conf may not exist.
+# https://flatpak.github.io/xdg-desktop-portal/docs/writing-a-new-backend.html
+# https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html
+#
+# Installed to $datadir/xdg-desktop-portal/portals/ -- the REAL directory the
+# real xdg-desktop-portal scans (desktop-portal/xdp-portal-config.c:364),
+# because this repository is now an out-of-tree BACKEND of xdg-desktop-portal
+# rather than a portal frontend of its own. That is what every out-of-tree
+# backend does; see docs/decisions/0010-backend-only-frontend-lives-upstream.md.
+#
+# The interface named below is EXPERIMENTAL and is gated in the frontend: a
+# stock xdg-desktop-portal has never heard of it, will not match this file
+# against anything, and will simply not use this backend. The frontend that does
+# know it exports the public side only when
+# XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL contains "web-authentication".
+# Installing this file is therefore inert on a machine without that frontend,
+# which is why it is safe -- and why it is the only place it can go if the
+# frontend is ever to find it.
+#
+# UseIn is listed as every desktop this backend is willing to serve rather than
+# one: it is a GTK/WebKitGTK window, and until a KDE backend exists it is better
+# for a KDE user to get a working sign-in in the wrong toolkit than no sign-in
+# at all. A desktop that disagrees says so in portals.conf, which wins.
+
+[portal]
+DBusName=org.freedesktop.impl.portal.desktop.webauth
+Interfaces=org.freedesktop.impl.portal.experimental.WebAuthentication;
+UseIn=gnome;KDE;X-Cinnamon;MATE;XFCE;

@@ -201,18 +201,23 @@ Then, in order of plausibility:
   more attractive on security grounds anyway, and dependent on GLib exposing enough control.
 - **Integrating the broker into glib-networking/GnuTLS**, which is a much longer road.
 
-Publishing the smart card portal's API should wait for one of these to work. An API claiming
+Publishing the Certificate portal's API should wait for one of these to work. An API claiming
 object-scoped modules, service-owned login, broad application compatibility or connection-bound
 lifetime, published before any of it is demonstrated, is a promise that will have to be broken.
+**Note that its own frontend branch has taken exactly that view**: `OpenPkcs11Endpoint` is not on
+the interface at all, deferred for its own review, which means the forwarded-module half of S2 has
+nothing to run against until somebody adds it. What is left of S2 on the portal side is the
+brokered-`Sign` half, and that needs a GnuTLS external-signer path in WebKitGTK/glib-networking
+that is not known to exist.
 
 If instead **interception** is what fails, that is a different problem: the browser-extension
 mechanism from the "Why not X" section stops being a rejected alternative and becomes a second
 **backend** — a separate process implementing
-`io.github.sjtrotter.impl.portal.WebAuthentication1`, declared in its own `.portal` file and
-selected in `portals.conf` — and neither [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), nor
-[IMPL-INTERFACE.md](IMPL-INTERFACE.md), nor [ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md), nor the
-FreeRDP integration changes. That an alternative mechanism is now a package rather than a patch is
-the clearest practical dividend of
+`org.freedesktop.impl.portal.experimental.WebAuthentication`, declared in its own `.portal` file in
+`$datadir/xdg-desktop-portal/portals` and selected in `portals.conf` — and neither
+[PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), nor [IMPL-INTERFACE.md](IMPL-INTERFACE.md), nor
+[ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md), nor the FreeRDP integration changes. That an
+alternative mechanism is a package rather than a patch is the clearest practical dividend of
 [decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
 
 ---

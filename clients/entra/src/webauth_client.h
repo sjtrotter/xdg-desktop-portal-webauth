@@ -8,13 +8,13 @@
  *  Calling the web authentication portal: the client's only interactive
  *  dependency.
  *
- *      bus name      io.github.sjtrotter.portal.WebAuthentication
- *      object path   /io/github/sjtrotter/portal/WebAuthentication
- *      interface     io.github.sjtrotter.portal.WebAuthentication1
+ *      bus name      org.freedesktop.portal.Desktop
+ *      object path   /org/freedesktop/portal/desktop
+ *      interface     org.freedesktop.portal.experimental.WebAuthentication
  *      method        Start(s parent_window, s start_uri, s completion_uri,
  *                          a{sv} options) -> o request_handle
- *      result        io.github.sjtrotter.portal.Request::Response(u, a{sv})
- *      request path  /io/github/sjtrotter/portal/WebAuthentication/request/<sender>/<token>
+ *      result        org.freedesktop.portal.Request::Response(u, a{sv})
+ *      request path  /org/freedesktop/portal/desktop/request/<sender>/<token>
  *
  *  Everything interactive this client does is one Start call and one Response.
  *  It hands over a URI to open and the exact URI whose navigation ends the flow,
@@ -22,22 +22,28 @@
  *  OAuth, and this client owns no windows, no web view, no certificate chooser
  *  and no PIN prompt.
  *
- *  IT TALKS TO THE FRONTEND AND TO NOTHING ELSE. The portal is a frontend that
- *  routes to a backend, exactly as xdg-desktop-portal does, and none of that is
- *  visible here: this client never names a backend, never reads a .portal file,
- *  never calls io.github.sjtrotter.impl.portal.* - which it could not be
- *  permitted to do anyway - and cannot tell which backend served it. A machine
- *  that installs a different backend changes nothing in this file. That
- *  invisibility is the property the split exists to have, and it is why the
- *  restructuring changed the names here and nothing else.
+ *  IT TALKS TO xdg-desktop-portal AND TO NOTHING ELSE. The portal routes to a
+ *  backend, and none of that is visible here: this client never names a backend,
+ *  never reads a .portal file, never calls org.freedesktop.impl.portal.* - which
+ *  it could not be permitted to do anyway - and cannot tell which backend served
+ *  it. A machine that installs a different backend changes nothing in this file.
  *
- *  If no portal is reachable - no session bus, nothing owning the bus name, no
- *  backend configured for the interface, no display - this reports unavailable
- *  rather than failing, so the caller can fall through to another provider such
- *  as FreeRDP's terminal paste flow. Note the middle one: a frontend that finds
- *  no backend does not export the interface at all, so "unavailable" now covers
- *  one more case than it did, and it is not distinguishable from the others by
- *  design.
+ *  THE INTERFACE IS EXPERIMENTAL AND GATED, AND THAT IS THE COMMON FAILURE.
+ *  org.freedesktop.portal.experimental.WebAuthentication is not exported unless
+ *  xdg-desktop-portal was started with XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL
+ *  containing "web-authentication" (or "all"). With the gate off the interface is
+ *  absent from introspection entirely - Properties.Get on it fails, and Start()
+ *  gets UnknownMethod. That is not an error to report as a failure: it is
+ *  ENTRA_WEBAUTH_UNAVAILABLE, the CLI maps it to exit 40, and the diagnostic
+ *  should NAME THE ENVIRONMENT VARIABLE, because on a developer's machine that is
+ *  almost always what is wrong.
+ *
+ *  The same "absent interface" also means: no session bus, nothing owning
+ *  org.freedesktop.portal.Desktop, or a portal with the gate on but no backend
+ *  configured for the interface - the frontend returns early when it finds no
+ *  impl, so it exports nothing. Those cases are indistinguishable from the gate
+ *  being off, by design, and all of them are "unavailable" so that a dispatcher
+ *  can fall through to another provider such as FreeRDP's terminal paste flow.
  *
  *  The completion URI this client passes is always the one from its own cloud
  *  table. It is never taken from the client's caller. See
@@ -46,20 +52,29 @@
  *  Sketch only; nothing here is implemented.
  */
 
-#define ENTRA_PORTAL_BUS_NAME "io.github.sjtrotter.portal.WebAuthentication"
-#define ENTRA_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/WebAuthentication"
-#define ENTRA_PORTAL_INTERFACE "io.github.sjtrotter.portal.WebAuthentication1"
-#define ENTRA_PORTAL_REQUEST_INTERFACE "io.github.sjtrotter.portal.Request"
+#define ENTRA_PORTAL_BUS_NAME "org.freedesktop.portal.Desktop"
+#define ENTRA_PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
+#define ENTRA_PORTAL_INTERFACE "org.freedesktop.portal.experimental.WebAuthentication"
+#define ENTRA_PORTAL_REQUEST_INTERFACE "org.freedesktop.portal.Request"
+
+/** What XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL must contain for
+ *  ENTRA_PORTAL_INTERFACE to exist at all. This client cannot set it - it is read
+ *  by xdg-desktop-portal at startup - and quotes it in the exit-40 diagnostic. */
+#define ENTRA_PORTAL_EXPERIMENTAL_FLAG "web-authentication"
 
 typedef enum
 {
 	ENTRA_WEBAUTH_COMPLETED = 0,  /**< @completion_uri is set */
 	ENTRA_WEBAUTH_CANCELLED = 1,  /**< the user closed the window, or we called Close() */
 	ENTRA_WEBAUTH_OTHER = 2,      /**< timeout, or the transaction ended some other way */
-	ENTRA_WEBAUTH_UNAVAILABLE     /**< nothing implementing the interface to call */
+	ENTRA_WEBAUTH_UNAVAILABLE     /**< the interface is not exported: no bus, no portal,
+	                                *  no backend, or the experimental gate is off.
+	                                *  The CLI maps this to exit 40 and the message
+	                                *  names ENTRA_PORTAL_EXPERIMENTAL_FLAG. */
 } EntraWebAuthResult;
 
-/** Whether the portal can be reached, without starting a transaction. */
+/** Whether the interface is exported, without starting a transaction. Checked by
+ *  reading its `version` property, which fails cleanly when the gate is off. */
 gboolean entra_webauth_available(GError** error);
 
 /** Run one interactive transaction and return the completion URI. Subscribes to

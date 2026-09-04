@@ -40,14 +40,20 @@ is ceremony without benefit.
 Keep **one repository for the sketch**, with clearly independent top-level components:
 
 ```
-service/frontend/       webauth-portal-frontend  a complete, standalone meson project
-service/backends/gtk/   webauth-portal-gtk       a complete, standalone meson project
-clients/entra/          entra-token-client       a complete, standalone meson project
+backend/         xdg-desktop-portal-webauth  a complete, standalone meson project
+clients/entra/   entra-token-client          a complete, standalone meson project
 ```
 
-Each is separately configurable and buildable today (`meson setup build-frontend service/frontend`),
-and there is **no build-time dependency between any of them in any direction**. The top-level
-`meson.build` is a convenience umbrella that includes all three as meson subprojects and does
+> **Amendment (0010).** There were three of these; the first,
+> `service/frontend/  webauth-portal-frontend`, is gone. The frontend is a branch of
+> xdg-desktop-portal, so it is neither a component here nor a repository this decision has to
+> split anything into. `service/backends/gtk/` became `backend/`. Two components, one of which is
+> a portal backend and one of which is an application, is the same argument this ADR makes with
+> one fewer term in it.
+
+Each is separately configurable and buildable today (`meson setup build-backend backend`),
+and there is **no build-time dependency between them in either direction**. The top-level
+`meson.build` is a convenience umbrella that includes both as meson subprojects and does
 nothing else; it disappears at the split.
 
 **Split into two repositories at the first tagged interface release**, with tagged interface
@@ -63,13 +69,15 @@ says exactly which files go where.
 - Until the split, every change must be reviewed with the split in mind: a shared header, a shared
   build flag, or a helper reached across the boundary is a defect, not a convenience. The absence
   of build-time coupling is what makes that reviewable rather than aspirational.
-- The claim "the portal is protocol-independent" stays testable: it is true only while `service/`
+- The claim "the portal is protocol-independent" stays testable: it is true only while `backend/`
   contains no Entra, Azure, OAuth or RDP identifier. That is a grep, and it should be one in CI.
-  A second grep now joins it: `service/frontend/` must contain no toolkit dependency, because the
-  frontend that moves upstream cannot bring GTK with it.
+  A second grep used to join it — the frontend directory had to contain no toolkit dependency,
+  because the frontend that moves upstream cannot bring GTK with it — and it is gone with the
+  frontend ([0010](0010-backend-only-frontend-lives-upstream.md)); upstream enforces it now by
+  simply not being this repository.
 - The repository name is currently `entra-token-helper`, which is the *old* name and now describes
-  only the smaller half. The working title is `webauth-service`; the rename waits until the
-  interface name is settled, because renaming twice is worse than renaming late.
+  only the smaller half. The backend is `xdg-desktop-portal-webauth`; renaming the repository
+  itself waits, because renaming twice is worse than renaming late.
 - A second consumer, which
   [0005](0005-service-shape.md) makes a precondition for pursuing standardisation, is also the
   natural trigger to check the split has actually happened. If a second consumer would find it

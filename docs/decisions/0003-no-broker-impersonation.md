@@ -23,10 +23,13 @@ own public API is not guaranteed stable before 1.0.
 ## Decision
 
 Do not take, implement, or shadow Microsoft's Identity Broker D-Bus name. Use a new, narrowly
-scoped interface of our own — for the token client, the contract in
-[ENTRA-CLIENT-CLI.md](../ENTRA-CLIENT-CLI.md); for the web authentication service,
-`io.github.sjtrotter.portal.WebAuthentication1` in
-[PUBLIC-INTERFACE.md](../PUBLIC-INTERFACE.md), on a bus name this project controls.
+scoped interface — for the token client, the contract in
+[ENTRA-CLIENT-CLI.md](../ENTRA-CLIENT-CLI.md); for web authentication,
+`org.freedesktop.portal.experimental.WebAuthentication`, summarised in
+[PUBLIC-INTERFACE.md](../PUBLIC-INTERFACE.md) and defined by the xdg-desktop-portal branch
+([0010](0010-backend-only-frontend-lives-upstream.md)). Note that this ADR's argument is about
+*impersonating somebody else's* bus name, and is untouched by which namespace our own interface
+ends up in.
 
 ## Consequences
 

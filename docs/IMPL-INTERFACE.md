@@ -1,25 +1,48 @@
 # The backend (impl) interface
 
-Status: **incubating, version 1, nothing implemented.** The machine-readable description is
-[`service/backends/gtk/data/io.github.sjtrotter.impl.portal.WebAuthentication1.xml`](../service/backends/gtk/data/io.github.sjtrotter.impl.portal.WebAuthentication1.xml);
-this document explains what it means, and — more importantly — **which side of the boundary each
-rule is enforced on and why**.
+Status: **experimental, version 1, nothing implemented.** This document explains what the interface
+means, and — more importantly — **which side of the boundary each rule is enforced on and why**.
 
-The public half is [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md). Applications should read that one and
-stop there.
+The public half is [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), which is itself a pointer to the
+branch. Applications should read that one and stop there.
 
-> **This interface is not for applications.** It is the contract between a portal frontend and a
+> **This interface is not for applications.** It is the contract between xdg-desktop-portal and a
 > desktop's backend. An application calling it directly bypasses every check the frontend exists to
 > perform, and gets in exchange an interface with no stability promise at all. How that is
 > prevented, and how far the prevention goes, is in [SECURITY.md](SECURITY.md).
 
 ```
-bus name       io.github.sjtrotter.impl.portal.WebAuthentication.gtk   (this backend)
-object path    /io/github/sjtrotter/portal/WebAuthentication           (same path as the frontend's)
-interface      io.github.sjtrotter.impl.portal.WebAuthentication1
+bus name       org.freedesktop.impl.portal.desktop.webauth   (this backend)
+object path    /org/freedesktop/portal/desktop               (same path as the frontend's)
+interface      org.freedesktop.impl.portal.experimental.WebAuthentication
 request objects the frontend's handle path, exported on the BACKEND's bus name
-declared in    $datadir/webauth-portal/portals/webauth-gtk.portal
+declared in    $datadir/xdg-desktop-portal/portals/webauth.portal
 ```
+
+## The XML this repository ships is a copy, and it must track its source
+
+[`../backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml)
+is a **verbatim copy**, apart from a header comment saying so, of
+
+```
+xdg-desktop-portal, branch experimental/certificate-webauthentication, commit 3a32e9b
+data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
+```
+
+The interface belongs to the frontend. This repository does not get to change it, and a divergence
+between the two files is not a difference of opinion — it is a backend that no longer implements
+the interface it claims in `backend/data/webauth.portal`. To update: copy the branch's file again
+and change the commit id in the header.
+
+Upstream keeps `org.freedesktop.impl.portal.*.xml` in xdg-desktop-portal itself and backends
+consume it from that project's pkg-config interfaces directory. This copy exists only because the
+branch is unmerged and no released xdg-desktop-portal ships the file. When the branch lands, the
+copy is deleted and the file comes from the interfaces directory like every other backend's.
+
+**`experimental` is not a claim of acceptance.** It is the namespace upstream set aside for portals
+that are not finished — see [UPSTREAMING.md](UPSTREAMING.md) — and an interface in it is not
+exported unless the portal was started with
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`.
 
 ## The signature, and how it is derived from the public one
 
@@ -36,10 +59,14 @@ Start(o handle, s app_id, s parent_window, s start_uri, s completion_uri, a{sv} 
     → (u response, a{sv} results)
 ```
 
+That signature survived the move upstream **unchanged**, which is the strongest single piece of
+evidence that [decisions/0008](decisions/0008-build-to-the-upstream-shape.md)'s shape argument was
+right. Note the argument order: `app_id` comes before `parent_window`.
+
 with two things prepended and one thing changed:
 
 - **`handle`** — the object path of the public Request. The backend exports its own
-  `io.github.sjtrotter.impl.portal.Request` there, on its own bus name, so the frontend can forward
+  `org.freedesktop.impl.portal.Request` there, on its own bus name, so the frontend can forward
   a `Close()`.
 - **`app_id`** — the application identity **the frontend derived**. Empty means the frontend could
   not establish one.
@@ -62,8 +89,8 @@ returned has nothing left to get wrong.
 | Key | Type | Status when it arrives |
 |---|---|---|
 | `activation_token` | `s` | Passed through unchanged; the backend decides whether to use it. |
-| `session_mode` | `s` | A **decision**, already validated and already narrowed by policy. Not a request. |
-| `timeout` | `u` | Already clamped to the ceiling. |
+| `session_mode` | `s` | A **decision**, already validated and already narrowed by policy. Not a request. A backend that cannot honour `ephemeral` must **fail** rather than quietly use the shared store. |
+| `timeout` | `u` | Already clamped to the 900 s ceiling, and always forwarded (default 300). The backend enforces its own deadline as well. |
 | `title` | `s` | Untrusted application text, already length-limited. |
 | `app_id_kind` | `s` | `sandboxed`, `cgroup` or `host`. The honesty level of `app_id`, so the chrome can say "an unidentified application" rather than showing an empty name. |
 
@@ -112,10 +139,12 @@ backend delivering an attacker-chosen URI — carrying, in the AVD case, an auth
 application that asked for a different one. The frontend is where "you get what you asked for" can
 be promised, so that is where it is promised.
 
-**The cost, stated plainly:** one rule now has two implementations, and they can drift. The mitigation
-is the shared fixture table in [../tests/README.md](../tests/README.md), which both must pass; the
-cure is upstream, where the matcher belongs in shared code linked by both halves
-([UPSTREAMING.md](UPSTREAMING.md)).
+**The cost, stated plainly:** one rule has two implementations, and they can drift. The mitigation
+is the shared fixture table in [../tests/README.md](../tests/README.md), which both must pass. One
+of the two is now written and tested — `web-authentication.c:completion_uri_matches()`, covered by
+`test_completion_mismatch_rejected` and its negative control — and the other, this repository's
+[`../backend/src/completion.h`](../backend/src/completion.h), is not written at all. Read the
+implemented one before writing this one.
 
 **And a third check that is not this one at all:** the application's own validation of the URI as a
 *protocol* response — OAuth `state`, exactly one `code` — using a secret nothing in the portal ever
@@ -128,6 +157,7 @@ Each is a real obligation, and each is the price of
 
 | Situation | Who answers | What the application sees |
 |---|---|---|
+| The experimental gate is off | Frontend, at startup | The interface is **not exported**. This is the default state of every machine, and is indistinguishable from the row below by design. |
 | No backend implements the interface | Frontend, at startup | The interface is **not exported**. The application sees "no such interface" and reports *unavailable*, exactly as if no portal were installed. |
 | The backend cannot start (no display, no engine) | Frontend | `2`, reason `no_backend` |
 | The backend dies mid-transaction | Frontend | `2`, reason `backend_disappeared` |
@@ -144,7 +174,9 @@ their meanings, and new option and result keys may be added — a backend must i
 does not recognise, and a frontend must ignore result keys it does not recognise.
 
 A frontend paired with an older backend is a supported configuration only to the extent that the
-older backend implements all of version 1. Version 1 has **no capability negotiation**, deliberately,
+older backend implements all of version 1 — and note that "version 1" of an **experimental**
+interface carries no promise at all: the branch's own XML says it can change or be removed without
+a version bump, so in practice a backend tracks a commit, not a version. Version 1 has **no capability negotiation**, deliberately,
 because upstream's impl interfaces have none: a backend implements the whole interface or does not
 claim it in its `.portal` file. A mechanism that cannot implement all of it — a paste-only fallback,
 a loopback-only system-browser session — is a *different backend* an administrator selects, not a
@@ -159,15 +191,16 @@ wrong call, the fix is a `GetCapabilities`-style addition argued upstream rather
 
 The interface exists so this is possible; the steps are upstream's, unchanged:
 
-1. Implement `io.github.sjtrotter.impl.portal.WebAuthentication1` in a D-Bus-activatable executable
-   that owns `io.github.sjtrotter.impl.portal.WebAuthentication.<name>` and exports the interface at
-   `/io/github/sjtrotter/portal/WebAuthentication`.
-2. Install `<name>.portal` into `$datadir/webauth-portal/portals/`:
+1. Implement `org.freedesktop.impl.portal.experimental.WebAuthentication` in a D-Bus-activatable
+   executable that owns `org.freedesktop.impl.portal.desktop.<name>` and exports the interface at
+   `/org/freedesktop/portal/desktop`.
+2. Install `<name>.portal` into `$datadir/xdg-desktop-portal/portals/` — the real directory, which
+   is where the frontend looks:
 
    ```
    [portal]
-   DBusName=io.github.sjtrotter.impl.portal.WebAuthentication.<name>
-   Interfaces=io.github.sjtrotter.impl.portal.WebAuthentication1;
+   DBusName=org.freedesktop.impl.portal.desktop.<name>
+   Interfaces=org.freedesktop.impl.portal.experimental.WebAuthentication;
    UseIn=<desktop>
    ```
 
@@ -175,10 +208,15 @@ The interface exists so this is possible; the steps are upstream's, unchanged:
 
    ```
    [preferred]
-   io.github.sjtrotter.impl.portal.WebAuthentication1=<name>
+   org.freedesktop.impl.portal.experimental.WebAuthentication=<name>
    ```
 
+4. Start xdg-desktop-portal with
+   `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`, or nothing will ever call you.
+   [`../tools/dev-stack.sh`](../tools/dev-stack.sh) does all four on a private bus.
+
 A backend must satisfy **everything** in [SECURITY.md](SECURITY.md) that the table above marks as
-backend-enforced. A backend that shows a page without the security chrome, or that loads the
+backend-enforced, and must not hand-edit the interface XML: it is a tracking copy of the frontend
+branch's file. A backend that shows a page without the security chrome, or that loads the
 completion URI before matching it, has not implemented this interface — it has implemented something
 that looks like it and is a phishing launcher with a credential leak.

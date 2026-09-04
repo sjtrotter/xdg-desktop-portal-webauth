@@ -1,11 +1,17 @@
 # Tests
 
-There are no tests, because there is no implementation. This file describes the strategy, so that
-the first code written has somewhere to be tested from.
+There are no tests **here**, because there is no implementation here. This file describes the
+strategy, so that the first code written has somewhere to be tested from.
+
+**Half of it exists already, in the frontend's repository.** The xdg-desktop-portal branch
+`experimental/certificate-webauthentication` ships `tests/templates/webauthentication.py` (a
+python-dbusmock backend) and `tests/test_webauthentication.py` (38 passing cases, each run once as
+`AppInfoHost` and once as `AppInfoFlatpak`). Everything below that is a frontend obligation is that
+suite; what is left for this repository is the backend's half.
 
 ## Principle: the interesting parts are testable offline
 
-Almost everything security-critical in all three components is a pure function over strings: does this
+Almost everything security-critical in both components is a pure function over strings: does this
 URI match that one, is this a valid authorization response, may this field be logged, does this JSON
 parse into that request. None of it needs a network, a card, a browser or a tenant. That is
 deliberate — the parts that *do* need those are the parts a test cannot cover, so the boundary
@@ -16,7 +22,7 @@ Anything requiring a real tenant, a real card or a real browser is a **spike**
 
 ## Fixtures
 
-### Completion matching (`service/backends/gtk/src/completion.h` **and the frontend's re-check**)
+### Completion matching (`backend/src/completion.h` **and the frontend's re-check**)
 
 The single most valuable fixture set in the project: a table of
 `(completion_uri, candidate, expected)` triples, each with a comment saying what it is testing.
@@ -24,7 +30,10 @@ The single most valuable fixture set in the project: a table of
 **This table must be run against both implementations.** One rule is enforced in two places — the
 backend, against live navigations, and the frontend, against the URI a backend returns
 ([../docs/IMPL-INTERFACE.md](../docs/IMPL-INTERFACE.md)) — and two implementations of one rule can
-drift. Shared fixtures are the only thing standing between "they agree" and "they agreed when they
+drift. **One of the two is written and tested already**, in another repository:
+`desktop-portal/web-authentication.c:completion_uri_matches()` on the xdg-desktop-portal branch,
+covered by `test_completion_mismatch_rejected` and `test_completion_normalisation_accepted`. Read it
+before writing this one, and port the fixtures both ways. Shared fixtures are the only thing standing between "they agree" and "they agreed when they
 were written". A fixture that passes in one and fails in the other is a release blocker, not a
 discrepancy to reconcile later.
 
@@ -39,9 +48,12 @@ authority-sensitive position; and any URI known to parse differently between two
 Every non-match needs its own line. A matcher that is *right* on the happy path and wrong on one
 edge is worse than one that is obviously wrong, because it will be trusted.
 
-### The impl boundary (`service/frontend/src/webauthentication.h`)
+### The impl boundary (upstream's half — `desktop-portal/web-authentication.c`)
 
-Cheap, offline, and entirely new work that the single-service design did not need. With a stub
+Cheap, offline, and **largely written already**: the branch's `tests/test_webauthentication.py` has
+38 passing cases against a python-dbusmock backend, covering the happy path, cancellation from both
+directions, four invalid-option cases and six invalid-URI cases. What follows is the list this
+repository wrote in advance; it is kept as the checklist to read that suite against. With a stub
 backend that returns canned replies, assert that:
 
 - an unknown option key is **dropped** and never reaches the backend, and an unknown *value* for a
@@ -61,7 +73,7 @@ backend that returns canned replies, assert that:
 And on the backend side, with a stub frontend: that a `Start` from any sender other than the
 frontend is refused, and that dropping the frontend's connection destroys the window.
 
-### Redaction (`service/backends/gtk/src/redact.h`, `clients/entra/src/log/redact.h`)
+### Redaction (`backend/src/redact.h`, `clients/entra/src/log/redact.h`)
 
 For each field kind, assert what `webauth_redact_field()` / `entra_redact_field()` renders. The
 loggable kinds render their value; the non-loggable kinds render kind and length and **never** any
@@ -105,7 +117,7 @@ test per field, including scope *order* (which must **not** matter, since the ke
 set) and the PoP binding (which must, since a token bound to one `kid` is useless for another). A
 missing field here means a token returned to the wrong requester.
 
-### Transaction races (`service/backends/gtk/src/transaction.h`, `service/frontend/src/request.h`)
+### Transaction races (`backend/src/transaction.h`, and upstream's `xdp-request-dex.c`)
 
 Not a fixture set but a deterministic-scheduler test: exactly one terminal result and exactly one
 `Response`, under a committed completion racing a `Close()`, a timeout firing after a close, a
@@ -131,9 +143,11 @@ Likewise the refresh-to-PoP question is [S1](../docs/SPIKES.md), against a real 
 
 ## Running
 
-There is nothing to run. When there is, tests belong in each component's own meson project —
-`service/frontend/tests/`, `service/backends/gtk/tests/` and `clients/entra/tests/` — and not in
-this directory, which will be deleted at the repository split
+There is nothing to run **here**. The frontend's half runs in another repository:
+`cd xdg-desktop-portal/tests && BUILDDIR=../build ./run-test.sh ./test_webauthentication.py`, on the
+branch. When there is something to run in this one, tests belong in each component's own meson
+project — `backend/tests/` and `clients/entra/tests/` — and not in this directory, which will be
+deleted at the repository split
 ([docs/decisions/0006-two-repositories.md](../docs/decisions/0006-two-repositories.md)).
 
 The completion fixture table is the exception that proves the rule: it is one table consumed by two

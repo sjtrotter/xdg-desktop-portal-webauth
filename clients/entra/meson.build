@@ -11,7 +11,7 @@
 # direction, and there must never be one: the whole claim of the design is that
 # the portal is protocol-independent.
 #
-# It calls the portal FRONTEND's public interface. It has no knowledge of the
+# It calls xdg-desktop-portal's public interface. It has no knowledge of the
 # impl interface, of .portal files, or of which backend runs -- exactly as a
 # Flatpak application calling org.freedesktop.portal.FileChooser has none.
 
@@ -66,8 +66,10 @@ summary(
 
 summary(
   {
-    'portal (run time, D-Bus)': 'io.github.sjtrotter.portal.WebAuthentication1',
-    'on bus name': 'io.github.sjtrotter.portal.WebAuthentication',
+    'portal (run time, D-Bus)': 'org.freedesktop.portal.experimental.WebAuthentication',
+    'on bus name': 'org.freedesktop.portal.Desktop',
+    'needs the portal started with': 'XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication',
+    'if the gate is off': 'the interface is absent; the client exits 40 (unavailable)',
     'backend interface used': 'none: applications never call impl interfaces',
     'implemented': false,
   },

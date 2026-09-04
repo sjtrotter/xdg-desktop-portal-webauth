@@ -1,16 +1,49 @@
 # 7. Certificate handling behind an adapter: portal preferred, in-process retained until proven
 
 Date: 2026-09-03
-Status: accepted (for the sketch); the adapter now lives in the BACKEND, per
-[0008](0008-build-to-the-upstream-shape.md)
+Status: accepted (for the sketch); the adapter lives in the BACKEND, per
+[0008](0008-build-to-the-upstream-shape.md), and calls a different interface since
+[0010](0010-backend-only-frontend-lives-upstream.md)
+
+> **Amendment (0010).** The adapter's *shape* is unchanged and the decision below still holds. What
+> changed is what it calls, and what that call can do.
+>
+> **The names.** The `portal` adapter now calls
+> `org.freedesktop.portal.experimental.Certificate` on `org.freedesktop.portal.Desktop` at
+> `/org/freedesktop/portal/desktop`. Both this project's portal and the certificate portal are now
+> hosted by one frontend — the xdg-desktop-portal branch
+> `experimental/certificate-webauthentication` — and the separate repository still called
+> `smartcard-portal` ships only the certificate **backend**,
+> `xdg-desktop-portal-certificate`.
+>
+> **`OpenPkcs11Endpoint` is gone.** It is on neither the public nor the impl Certificate interface:
+> the branch deferred it as a follow-up, because an fd-returning method needs its own review and the
+> mock backend the frontend is tested against cannot hand back a usable fd. That is a material loss
+> to this decision's "two ways to use the grant". Only **brokered `Sign`** is left, and brokered
+> `Sign` is viable here only if WebKitGTK/glib-networking expose an external-signer path — which is
+> not known to exist. So the `inproc` fallback is not merely retained, it is currently the only
+> implementation that can work at all, and the sentence below about retiring it is further away
+> rather than nearer.
+>
+> **`context` is gone too.** The challenging origin was to be passed in a `context` option; there is
+> no such option, so it can only travel in `reason`, which is application-supplied text presented as
+> such.
+>
+> **The delegation gap is solvable now, in-process only.** Under one frontend hosting both
+> interfaces, the app id derived for the web-authentication request is already in hand when that
+> frontend calls its own certificate side, so it can be passed without crossing a bus. The frontend
+> does not do this yet. The caveat is permanent: **never cross-process attestation** — across a
+> process boundary, passing an app id along is an unattested assertion of someone else's identity,
+> which is exactly the identity-laundering [../SECURITY.md](../SECURITY.md) forbids, and it is not
+> to be built as a stopgap.
 
 > **Amendment (0008).** Nothing in this decision changed, but its home did: the adapter and both
-> its implementations are now in `service/backends/gtk/src/tls/`, because the TLS handshake and the
-> window belong to the backend. Two consequences worth stating. First, the `portal` adapter calls
-> the smart card portal's **public** interface as an ordinary client — a backend never calls
-> another project's backend. Second, the identity that portal sees is now unambiguously
-> *webauth-portal-gtk*'s rather than the application's, which was true before and is merely
-> impossible to overlook now; see the delegation note in [../SECURITY.md](../SECURITY.md).
+> its implementations are now in the backend, because the TLS handshake and the window belong to
+> the backend. Two consequences worth stating. First, the `portal` adapter calls the certificate
+> portal's **public** interface as an ordinary client — a backend never calls another project's
+> backend. Second, the identity that portal sees is this backend's rather than the application's,
+> which was true before and is merely impossible to overlook now; see the delegation note in
+> [../SECURITY.md](../SECURITY.md).
 
 ## Context
 
@@ -26,10 +59,9 @@ moment the user authorises a hardware token to authenticate on their behalf: a u
 by a different window in every application has no way to learn which window to trust. There should
 be one, and it should not belong to whichever component happened to need a certificate first.
 
-So: a separate project, the **certificate portal** (repository `smartcard-portal`; public interface
-`io.github.sjtrotter.portal.Certificate1`, on its own incubating bus name
-`io.github.sjtrotter.portal.Certificate`, now that its restructuring has landed), owns the chooser
-and the PIN.
+So: a separate project (repository `smartcard-portal`, shipping the backend
+`xdg-desktop-portal-certificate`) owns the chooser and the PIN, behind the public
+`org.freedesktop.portal.experimental.Certificate` interface.
 
 **But it cannot be a hard dependency for v0, because the mechanism that would connect it to this
 service is unproven at exactly the point that matters.**
@@ -55,7 +87,7 @@ needs a restricted facade that does not exist yet.
 ## Decision
 
 Model the certificate path as an **internal adapter interface**
-([`service/backends/gtk/src/tls/client_cert.h`](../../service/backends/gtk/src/tls/client_cert.h)):
+([`backend/src/tls/client_cert.h`](../../backend/src/tls/client_cert.h)):
 
 ```c
 select_and_present(challenge) → GTlsCertificate*
@@ -63,13 +95,14 @@ select_and_present(challenge) → GTlsCertificate*
 
 with two implementations, chosen at run time:
 
-- **`portal`** — call the smart card service: `AcquireCredential` (not "RequestCertificate": it
-  grants private-key use and the name should say so), with `purpose: "client_auth"` and `context`
-  set to the destination host, returns a grant carrying the certificate, its chain, the permitted
-  operations and mechanisms, and an expiry. The operation is then satisfied either by **brokered
-  `Sign`** through a GnuTLS external-signer path — unproven, and dependent on WebKitGTK/glib-networking
-  actually exposing one — or by the **experimental `OpenPkcs11Endpoint`** compatibility endpoint.
-  **Preferred when available.**
+- **`portal`** — call the Certificate portal: `CreateSession` (a Request, whose Response carries
+  the session handle) and then `AcquireCredential` (not "RequestCertificate": it grants private-key
+  use and the name should say so), with `purpose: "client_auth"`, returning a grant carrying the
+  certificate, its chain, the permitted operations and mechanisms, and an expiry. The operation is
+  then satisfied by **brokered `Sign`** through a GnuTLS external-signer path — unproven, and
+  dependent on WebKitGTK/glib-networking actually exposing one. **Preferred when available**, and
+  see the amendment above: since `OpenPkcs11Endpoint` is not on the interface, this is the only
+  option rather than the first of two.
 - **`inproc`** — the proven in-process path: enumerate with p11-kit, show this service's own chooser
   and PIN prompt, and build the certificate with `g_tls_certificate_new_from_pkcs11_uris()` against
   the **system** p11-kit configuration. No forwarded module, no dynamic registration, nothing
@@ -115,7 +148,9 @@ contract from "return a new remote module" to "return a URI an already-registere
 That is a change to the *other* project's interface, not to this adapter's shape, which is the point
 of having the adapter.
 
-**Prefer the brokered-signing API to the module endpoint** in the smart card service's own design. A
+**Prefer the brokered-signing API to the module endpoint** in the certificate portal's own design —
+which is, as it turns out, exactly what its frontend branch shipped, by leaving the endpoint out
+entirely. A
 module endpoint grants a generic cryptographic interface whose calls carry little trustworthy
 context: once a client has a sign-capable PKCS#11 session, "client authentication" is largely
 indistinguishable from arbitrary signing. Brokered `Sign`/`Decrypt` cannot prove its input came from
@@ -127,8 +162,8 @@ requested by callers that need it, discoverable by capability, and not returned 
 `org.freedesktop.portal.Camera` already uses. But note the limits: this is not yet a credible
 freedesktop API — object and operation scoping are unresolved, application identity versus a
 delegated network subprocess is unresolved, and the proposal mixes credential selection, PIN agent
-behaviour, cryptographic operations and module transport. `io.github.sjtrotter.portal.Certificate1` is
-the right namespace for incubation, and the conversation to have is with the
+behaviour, cryptographic operations and module transport. The `experimental` namespace is the right
+place for it while that is true, and the conversation to have is with the
 [linux-credentials](https://github.com/linux-credentials) maintainers about whether
 certificate-backed signing belongs as a credential type under their proposal — a "ClientCertificate"
 or "CryptographicCredential" boundary is better than one named after a physical device, since the

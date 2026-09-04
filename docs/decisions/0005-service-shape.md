@@ -2,7 +2,14 @@
 
 Date: 2026-09-03
 Status: accepted (for the sketch); its "one service, not a frontend and a backend" position is
-superseded by [0008](0008-build-to-the-upstream-shape.md)
+superseded by [0008](0008-build-to-the-upstream-shape.md), and its "Naming" section by
+[0010](0010-backend-only-frontend-lives-upstream.md)
+
+> **Amendment (0010).** One line changes: the shipped name is no longer this project's to pick.
+> The frontend is a branch of xdg-desktop-portal and the interface is
+> `org.freedesktop.portal.experimental.WebAuthentication` — `experimental` being the namespace
+> upstream set aside for unfinished portals, which is not the ownership claim the "Naming" section
+> below argues against. Everything else in this decision stands untouched.
 
 > **Amendment (0008).** Everything this decision is *about* — URL in, completion out, no tokens, no
 > accounts, no caching, exact matching, the nine objections, the exit criterion — stands unchanged
@@ -139,8 +146,8 @@ Not every flow needs a service-owned engine, and the ones that do not should not
    packaging, and outright failure under private browsing or enterprise policy.
 
 Under [0008](0008-build-to-the-upstream-shape.md) each of these is a separate **backend** — a
-process implementing `io.github.sjtrotter.impl.portal.WebAuthentication1`, declaring itself in a
-`.portal` file, and selected in `portals.conf` — rather than an implementation behind an in-process
-vtable with a capability mask. The list above is unchanged; only who chooses, and when, has moved.
-See [`service/backends/gtk/src/webkit_session.h`](../../service/backends/gtk/src/webkit_session.h)
+process implementing `org.freedesktop.impl.portal.experimental.WebAuthentication`, declaring itself
+in a `.portal` file, and selected in `portals.conf` — rather than an implementation behind an
+in-process vtable with a capability mask. The list above is unchanged; only who chooses, and when,
+has moved. See [`backend/src/webkit_session.h`](../../backend/src/webkit_session.h)
 and [../IMPL-INTERFACE.md](../IMPL-INTERFACE.md).

@@ -8,10 +8,10 @@
  * parses the four verbs and their options, validates them, and would hand a request
  * object (see ipc/request.h) to the OAuth components under clients/entra/, which do
  * the interactive part by calling the web authentication portal's PUBLIC interface
- * (webauth_client.h) rather than by owning a web view. It talks to the portal
- * frontend and to nothing else: it never sees, names or depends on whichever
- * backend the frontend routes to. None of those components exist: this is a design
- * sketch, so every verb reports ETH_EXIT_INTERNAL with
+ * (webauth_client.h) rather than by owning a web view. It talks to
+ * xdg-desktop-portal and to nothing else: it never sees, names or depends on
+ * whichever backend the portal routes to. None of those components exist: this is
+ * a design sketch, so every verb reports ETH_EXIT_INTERNAL with
  * "not implemented (design sketch)".
  */
 
@@ -107,11 +107,23 @@ static void eth_usage(FILE* out)
 	        "  20 cancelled by user         50 authorization server error\n"
 	        "  64 usage                     70 internal\n"
 	        "\n"
+	        "THE PORTAL, AND WHY IT MAY NOT BE THERE\n"
+	        "  Interactive sign-in goes through xdg-desktop-portal:\n"
+	        "    org.freedesktop.portal.experimental.WebAuthentication\n"
+	        "  on org.freedesktop.portal.Desktop at /org/freedesktop/portal/desktop.\n"
+	        "  This client calls the portal and never a backend.\n"
+	        "\n"
+	        "  That interface is EXPERIMENTAL and is not exported unless the portal was\n"
+	        "  started with\n"
+	        "    XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication\n"
+	        "  With the gate off the interface is absent entirely, and an interactive\n"
+	        "  request exits 40 (unavailable) saying so, so that a dispatcher can fall\n"
+	        "  through to another provider -- FreeRDP's terminal paste flow, say. The\n"
+	        "  same 40 covers a portal with the gate on but no backend installed, which\n"
+	        "  is indistinguishable by design.\n"
+	        "\n"
 	        "STATUS\n"
 	        "  Design sketch. Nothing is implemented: every verb exits 70.\n"
-	        "  Interactive sign-in would go through the web authentication portal:\n"
-	        "    io.github.sjtrotter.portal.WebAuthentication1\n"
-	        "  on io.github.sjtrotter.portal.WebAuthentication -- the frontend, never a backend.\n"
 	        "  See docs/ENTRA-CLIENT-CLI.md and docs/ARCHITECTURE.md.\n");
 }
 
@@ -412,8 +424,8 @@ int main(int argc, char** argv)
 	}
 
 	/* Everything past this point would build the request object of ipc/request.h and
-	 * hand it to the OAuth components, which would call the web authentication
-	 * portal's frontend when interaction is needed. None of that exists. */
+	 * hand it to the OAuth components, which would call xdg-desktop-portal when
+	 * interaction is needed. None of that exists. */
 	rc = eth_not_implemented(&req);
 
 out:
