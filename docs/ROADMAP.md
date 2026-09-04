@@ -15,34 +15,51 @@ S1 decides what the client can promise; S2 decides whether the smart-card delega
 and where the support floor sits. S3 (keyring availability) can run alongside. **Days, not weeks** —
 and nothing below starts until both have answers.
 
-S2 has an external dependency: the smart card service's own spike, in its own repository, must first
+S2 has an external dependency: the smart card portal's own spike, in its own repository, must first
 establish that a scoped forwarded module can be produced. Run that one first, or stand in for it
 with a hand-run `p11-kit server` — which is worth doing regardless, because it isolates whether a
 failure is in the forwarding or in the consuming.
 
 ---
 
-## Phase 0 — Reference service and Entra client — **9–15 person-weeks**
+## Phase 0 — Reference frontend, reference backend and Entra client — **10–17 person-weeks**
 
-One D-Bus-activated service and one token client, both working, on the machines the author
+One portal frontend, one backend and one token client, all working, on the machines the author
 controls. Not packaged for the world, not proposed to anyone.
 
-### 0a. Service: transaction layer and completion matching — **1–2 weeks**
+The estimate rose by about a person-week against the single-service plan, and that increase is the
+price of [decisions/0008](decisions/0008-build-to-the-upstream-shape.md): a second D-Bus interface,
+a second activation path, backend discovery, and the failure paths that only exist when the two
+halves can die independently. It is spent here rather than spent twice later.
 
-The D-Bus interface exactly as in [SERVICE-INTERFACE.md](SERVICE-INTERFACE.md): `Start`, the
-`Request` object, `Close()`, one `Response`. Exact parsed completion matching and its rejection
-rules. The transaction object and every race it has to survive. Caller identity resolution and its
-three honesty levels. Storage mode policy. Rate limiting. Structural redaction.
+### 0a. Frontend: the portal — **1–2 weeks**
 
-### 0b. Service: WebKitGTK browser session — **1–2 weeks**
+The public interface exactly as in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md): `Start`, the
+`Request` object, `Close()`, one `Response`. App-id derivation and its three honesty levels. Option
+filtering and argument validation. Storage-mode policy. Rate limiting. The re-check of the
+`completion_uri` a backend returns. Exact parsed completion matching and its rejection rules — the
+frontend's copy. Structural redaction discipline.
 
-The GTK4/WebKitGTK 6.0 session behind the `browser_session.h` vtable: window, navigation policy,
-interception before load, storage partitioning across *all* engine state, disabled downloads and
-autofill, no TLS-error bypass.
+Deliberately toolkit-free: GLib and GIO only, forever.
+
+### 0b. Frontend: backend discovery and lifetime — **0.5–1 week**
+
+`.portal` file parsing, the `portals.conf` `[preferred]` search, not exporting the interface when
+nothing implements it, proxying with a `G_MAXINT` timeout, forwarding `Close()`, and the answers the
+frontend owes when a backend cannot start, dies, or misbehaves
+([IMPL-INTERFACE.md](IMPL-INTERFACE.md)). Small, and entirely new work that the single-service plan
+did not contain.
+
+### 0c. Backend: WebKitGTK web view — **1–2 weeks**
+
+The GTK4/WebKitGTK 6.0 backend: the impl skeleton and its Request object, `parent_window` parsing
+and parenting, window, navigation policy, interception before load, the backend's copy of the
+completion matcher, storage partitioning across *all* engine state, disabled downloads and autofill,
+no TLS-error bypass, structural redaction.
 
 A web view with a strict navigation policy, and nothing about certificates.
 
-### 0c. Service: certificate adapter — **2–4 weeks**
+### 0d. Backend: certificate adapter — **2–4 weeks**
 
 `tls/client_cert.h` and both implementations. The adapter itself is trivial; the two things behind
 it are not.
@@ -63,62 +80,74 @@ exit path — the cancellation and timeout paths especially. On the independent-
 
 The wide range is S2's fault and narrows once S2 has run.
 
-### 0d. Service: security chrome and accessibility — **1–2 weeks**
+### 0e. Backend: security chrome and accessibility — **1–2 weeks**
 
 The chrome that shows the verified caller and the real origin independently of caller text, and the
-accessibility acceptance criteria from [SERVICE-INTERFACE.md](SERVICE-INTERFACE.md) — AT-SPI
+accessibility acceptance criteria from [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) — AT-SPI
 exposure including the in-process chooser and PIN prompt, keyboard-only certificate selection and
-PIN entry, focus order and restoration across any hand-off to another service's windows,
+PIN entry, focus order and restoration across any hand-off to another portal's windows,
 screen-reader announcement, contrast and scaling. Budgeted as its own item because treating it as
 polish is how it does not happen, and because this chrome carries a security decision that WebKit's
 own accessibility does not cover.
 
-### 0e. Client: OAuth, clouds, refresh, cache — **2–3 weeks**
+### 0f. Client: OAuth, clouds, refresh, cache — **2–3 weeks**
 
 Authorization-code exchange with `state` and PKCE S256; the strict response classifier and its
 percent-decoder; the commercial/Government cloud table; ARM bearer acquisition; RDS-AAD PoP
 acquisition using the caller's `req_cnf`; refresh for both token kinds; token-response and
 OAuth-error parsing with redaction; the in-memory access-token cache and its key.
 
-### 0f. Client: secret storage, concurrency, cancellation — **1–2 weeks**
+### 0g. Client: secret storage, concurrency, cancellation — **1–2 weeks**
 
 Secret Service storage for refresh tokens and account records; the explicit "no persistent cache"
 mode; per-account serialization; cancellation and its races; `accounts` and `logout`, including
-asking the service to discard the account's web session.
+asking the portal to discard the account's web session.
 
-### 0g. Integration — **1 week**
+### 0h. Integration — **1 week**
 
 The Remmina adapter using FreeRDP's existing `GetCommonAccessToken` seam (save, install, chain on
 decline — exactly as `sso-mib` does), and a small reference client proving non-Remmina use. No
 FreeRDP changes required for either.
 
-### 0h. Tests and security cleanup — **2–3 weeks**
+### 0i. Tests and security cleanup — **2–3 weeks**
 
-Offline fixture tests (see [../tests/README.md](../tests/README.md)); end-to-end tests against a
-real Government tenant for both ARM bearer and RDS-AAD PoP acquisition; and the independent review
-of the five items named in [SECURITY.md](SECURITY.md).
+Offline fixture tests (see [../tests/README.md](../tests/README.md)), including the completion
+fixture table run against **both** copies of the matcher; end-to-end tests against a real Government
+tenant for both ARM bearer and RDS-AAD PoP acquisition; and the independent review of the items
+named in [SECURITY.md](SECURITY.md), which now includes the impl boundary itself.
 
-**Phase 0 total: 9–15 person-weeks, in this repository. Allow 12–18 for something suitable for
+**Phase 0 total: 10–17 person-weeks, in this repository. Allow 13–20 for something suitable for
 general distribution** rather than a controlled-environment build. The gap is distro variance,
 packaging, and the error paths that only appear on machines you do not own.
 
-The estimate has not fallen even though the smart card service exists, because the in-process
-adapter is still built here — that is the whole point of retaining it. What the smart card service
+The estimate has not fallen even though the smart card portal exists, because the in-process
+adapter is still built here — that is the whole point of retaining it. What the smart card portal
 buys is not a smaller phase 0; it is that the card code is eventually written *once*, for every
 application, rather than faster for this one.
 
-**And note the coordination cost.** The `AcquireCredential` contract, its grant semantics and the
-lifetime of anything it returns must be agreed between two sketches being written in parallel — and
-neither should be frozen until S2 has said whether the module transport works at all.
+**And note the coordination cost**, which has grown. The `AcquireCredential` contract, its grant
+semantics and the lifetime of anything it returns must be agreed between two sketches being written
+in parallel — and neither should be frozen until S2 has said whether the module transport works at
+all. On top of that, both projects now want the same singleton `…portal.Desktop` bus name, which
+needs an agreement of its own: see
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "The Desktop bus name". A shared
+`incubating-portal-frontend` is proposed there and is not budgeted above, because it is a third
+project and neither interface is settled.
 
 ---
 
 ## Phase 1 — Distribution and a second consumer
 
-Packaging for the distributions the S2 matrix identified, with a D-Bus service file and a stated
-support floor. The smart card service is a *recommended*, not a required, dependency: without it the
-in-process adapter runs. Testing on GNOME and KDE, on Wayland and X11, including `parent_window`
-parenting and `activation_token` behaviour.
+Packaging for the distributions the S2 matrix identified, with **two** D-Bus service files, a
+`.portal` file, a documented `portals.conf`, and a stated support floor. The smart card portal is a
+*recommended*, not a required, dependency: without it the in-process adapter runs. Testing on GNOME
+and KDE, on Wayland and X11, including `parent_window` parenting and `activation_token` behaviour.
+
+Two packaging questions are new and neither has an answer yet: whether the frontend and the backend
+are one package or two (two, if the point of the split is to be honoured), and what a distribution
+does when both this frontend and the smart card portal's want the same bus name — which is the
+argument for the shared incubating frontend in
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
 
 And, more important than any of that: **a second, unrelated consumer.** Not a second RDP client —
 something that is not AVD and not FreeRDP, that needs an interactive web sign-in and would rather
@@ -134,27 +163,31 @@ Also in this phase: the repository split from
 
 ## Phase 2 — Propose the interface to freedesktop
 
-Only after phases 0 and 1. The eventual name would be
-`org.freedesktop.portal.WebAuthentication`; today's `io.github.sjtrotter.WebAuthentication1` is the
-incubating one, and shipping the freedesktop name before acceptance would assert an ownership that
-does not exist.
+Only after phases 0 and 1. The eventual names would be `org.freedesktop.portal.WebAuthentication` and
+`org.freedesktop.impl.portal.WebAuthentication`; today's `io.github.sjtrotter.portal.*` and
+`io.github.sjtrotter.impl.portal.*` are the incubating ones, and shipping a freedesktop name before
+acceptance would assert an ownership that does not exist. The full mapping, file by file, is
+[UPSTREAMING.md](UPSTREAMING.md).
 
 The acceptance path, in order:
 
 1. Implement the independent prototype and publish the introspection XML.
 2. Document the threat model, completion matching, caller identity, cookie/storage model and UI
    security chrome. (Most of that is [SECURITY.md](SECURITY.md) and
-   [SERVICE-INTERFACE.md](SERVICE-INTERFACE.md) already, but written against a real
+   [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) already, but written against a real
    implementation.)
 3. Demonstrate AVD **and at least one unrelated consumer**.
 4. Test on GNOME and KDE/Wayland, including parenting and activation.
 5. Open a design discussion in [`flatpak/xdg-desktop-portal`](https://github.com/flatpak/xdg-desktop-portal),
    where the project directs requests for new portals.
-6. Agree the public interface and what the frontend enforces.
-7. Add xdg-desktop-portal frontend routing and an `org.freedesktop.impl.portal.*` backend
-   interface — the frontend/backend D-Bus split that this project deliberately does **not** have
-   in version 0.
-8. Implement at least one backend and obtain interest from another desktop.
+6. Agree the public interface and what the frontend enforces. This project has taken a concrete
+   position on both — [IMPL-INTERFACE.md](IMPL-INTERFACE.md) — precisely so there is something to
+   disagree with rather than a blank page.
+7. Move the frontend into xdg-desktop-portal and rename both interfaces. Because of
+   [decisions/0008](decisions/0008-build-to-the-upstream-shape.md) this step is a rename and a
+   move, not the design work it used to be; [UPSTREAMING.md](UPSTREAMING.md) is the patch, written
+   in advance.
+8. Obtain interest from another desktop, and a second backend. One backend already exists.
 9. Add conformance tests and documentation before declaring the incubating interface obsolete.
 
 The proposal will have to answer *"what protected host resource is being mediated?"* — portals
@@ -198,11 +231,22 @@ proposed, and the interface here may well be argued down.
 
 Not "never" — "not yet, and not before something asks for it".
 
-- **A frontend/backend D-Bus split** (`org.freedesktop.impl.portal.WebAuthentication`). Premature
-  for version 0: imitating the names does not confer the properties, and it would double the D-Bus
-  surface, activation and crash handling, versioning obligations, packaging, capability
-  negotiation, error translation and transaction-lifetime bugs. Version 0 is one service with an
-  in-process browser-session vtable, which is where the split will happen when it is real.
+- ~~**A frontend/backend D-Bus split.**~~ **Done, deliberately and early**, against the advice
+  recorded here and in the design review. The costs that advice named are real, are accepted, and
+  are listed in [decisions/0008](decisions/0008-build-to-the-upstream-shape.md) rather than
+  deleted. What has *not* been done, and remains exactly as deferred as it was, is claiming an
+  `org.freedesktop.*` name.
+- **A capability-negotiating impl interface.** The split cost the old vtable's capability mask, and
+  version 1 replaces it with "a backend implements the whole interface or does not claim it". If
+  that turns out to be too rigid — a paste backend that can serve some flows, say — the answer is a
+  `GetCapabilities`-shaped addition argued upstream, not invented here.
+- **A shared `incubating-portal-frontend`** hosting both this interface and the smart card
+  portal's, so that two incubating portals can be installed at once. Proposed in
+  [decisions/0008](decisions/0008-build-to-the-upstream-shape.md); needs agreement from both
+  projects, which is why it is here and not in phase 0.
+- **A system-browser backend, and a paste backend.** Formerly "a system-browser session": under the
+  split these are separate backends selected by `portals.conf` rather than implementations behind a
+  vtable.
 - **A system-browser session.** The right first choice for flows whose completion the browser can
   return safely — loopback HTTP, claimed HTTPS app links, registered custom schemes. Deferred only
   because the AVD case cannot use it; it should be built as soon as a consumer can.
@@ -211,12 +255,14 @@ Not "never" — "not yet, and not before something asks for it".
 - **A per-application persistent session mode.** Blocked on caller identity being credible enough
   to key one. If it ever lands it should be called `app_persistent`.
 - **A browser extension session.** Experimental, explicitly installed, never the reference.
-- **A Qt user interface.** One GTK/WebKitGTK implementation serves every caller, because the
-  service is a separate process and its window need not match the caller's toolkit. A KDE-native
-  *backend* is a different matter, and is what phase 2's step 7 is for.
+- **A Qt user interface.** One GTK/WebKitGTK backend serves every caller, because the backend is a
+  separate process and its window need not match the caller's toolkit. A KDE-native *backend* is a
+  different matter and is now a straightforward one: implement the impl interface, ship a `.portal`
+  file, name it in `portals.conf`. That it became straightforward is most of the point of
+  [decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
 - **Retiring the in-process certificate adapter.** The intended end state, once the portal path has
   completed a real WebKitGTK mutual-TLS handshake across the support matrix. Deliberately *not*
-  scheduled: doing it before then would make the service depend on an unproven mechanism. If it
+  scheduled: doing it before then would make the backend depend on an unproven mechanism. If it
   never becomes possible, [0007](decisions/0007-certificate-adapter.md) should be reopened rather
   than left to drift.
 - **Persisting a certificate choice across transactions.** A distinct, reviewable policy under
@@ -227,9 +273,9 @@ Not "never" — "not yet, and not before something asks for it".
   the authorities on its allowlist.
 - **Additional keyring backends** beyond Secret Service, plus the explicit "no persistent cache"
   mode. Await S3.
-- **A client-side daemon.** The two-layer split already removed most of the reason for one: the
-  warm browser session a client daemon would have bought is now the service's shared store, and the
-  service is already long-lived.
+- **A client-side daemon.** The layering already removed most of the reason for one: the warm
+  browser session a client daemon would have bought is now the backend's shared store, and both
+  portal processes are already long-lived.
 - **A FreeRDP provider registry**, until the client's request contract has been exercised against a
   real client.
 

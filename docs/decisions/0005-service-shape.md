@@ -1,7 +1,18 @@
 # 5. URL in, completion out: no protocol semantics in the authentication service
 
 Date: 2026-09-03
-Status: accepted (for the sketch)
+Status: accepted (for the sketch); its "one service, not a frontend and a backend" position is
+superseded by [0008](0008-build-to-the-upstream-shape.md)
+
+> **Amendment (0008).** Everything this decision is *about* — URL in, completion out, no tokens, no
+> accounts, no caching, exact matching, the nine objections, the exit criterion — stands unchanged
+> and is unaffected by the frontend/backend split. What is superseded is the process shape recorded
+> under "Backend preference" below: the alternatives listed there are no longer implementations
+> behind an in-process vtable but separate **backends** selected by `portals.conf`, and the
+> preference order becomes an administrator's configuration rather than a runtime choice. The
+> incubating name in "Naming" also gains a `portal` component
+> (`io.github.sjtrotter.portal.WebAuthentication1`) to mirror upstream's namespace layout; it is no
+> more a freedesktop name than it was.
 
 ## Context
 
@@ -57,7 +68,7 @@ interactions that finish through navigation without falsely claiming to understa
   store) is what remains, and it is much weaker.
 - `response_mode=form_post` and SAML HTTP-POST do not fit and are explicitly unsupported in
   version 1. Version 1 is honestly "web authorization navigation", not universal protocol-agnostic
-  authentication. See [../SERVICE-INTERFACE.md](../SERVICE-INTERFACE.md).
+  authentication. See [../PUBLIC-INTERFACE.md](../PUBLIC-INTERFACE.md).
 
 **Boundaries that follow, and must not be crossed casually.** No token exchange, no credential
 storage beyond web session state, no choice of identity provider or tenant, no policy about who
@@ -107,7 +118,7 @@ an ill-defined trust model. This is a real outcome to plan for, not a formality.
 ## Naming
 
 The shipped name is project-controlled and versioned:
-`io.github.sjtrotter.WebAuthentication1`. `org.freedesktop.portal.WebAuthentication` appears in
+`io.github.sjtrotter.portal.WebAuthentication1`. `org.freedesktop.portal.WebAuthentication` appears in
 this repository only as the name that might eventually be proposed, and only alongside the
 acceptance path in [../ROADMAP.md](../ROADMAP.md). Shipping a `org.freedesktop.portal.*` name from
 an independent project asserts an ownership that does not exist, and the D-Bus specification
@@ -127,5 +138,9 @@ Not every flow needs a service-owned engine, and the ones that do not should not
    concurrent-transaction correlation, profile selection, extension update trust, native-host
    packaging, and outright failure under private browsing or enterprise policy.
 
-A browser session advertises its capabilities so the transaction layer can choose; see
-[`service/src/browser_session.h`](../../service/src/browser_session.h).
+Under [0008](0008-build-to-the-upstream-shape.md) each of these is a separate **backend** — a
+process implementing `io.github.sjtrotter.impl.portal.WebAuthentication1`, declaring itself in a
+`.portal` file, and selected in `portals.conf` — rather than an implementation behind an in-process
+vtable with a capability mask. The list above is unchanged; only who chooses, and when, has moved.
+See [`service/backends/gtk/src/webkit_session.h`](../../service/backends/gtk/src/webkit_session.h)
+and [../IMPL-INTERFACE.md](../IMPL-INTERFACE.md).

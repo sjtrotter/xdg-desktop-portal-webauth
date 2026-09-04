@@ -73,7 +73,7 @@ and chains to the saved one on decline — exactly the pattern `sso-mib` already
   gracefully — hence exit code `40` (provider unavailable) and the retained terminal paste flow.
 - The contracts are now public and must be kept. That is the point of
   [ENTRA-CLIENT-CLI.md](../ENTRA-CLIENT-CLI.md), of
-  [SERVICE-INTERFACE.md](../SERVICE-INTERFACE.md), and of their version numbers.
+  [PUBLIC-INTERFACE.md](../PUBLIC-INTERFACE.md), and of their version numbers.
 - The token client is one-shot, so per-account serialization has to be a lock in the runtime
   directory rather than a queue in memory. The related worry — keeping a browser session warm
   across connections — turned out to belong to layer 1, which is D-Bus-activated and long-lived

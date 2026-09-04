@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-# entra-token-client: layer 2, the Entra ID / AVD token client.
+# entra-token-client: the Entra ID / AVD token client -- a CONSUMER of the portal.
 #
 # This is a COMPLETE, STANDALONE meson project. It can be built on its own:
 #
 #     meson setup build-entra clients/entra && ninja -C build-entra
 #
-# It depends on layer 1 only over D-Bus, at run time, and only for interactive
-# sign-in. There is no build-time dependency between the two in either direction, and
-# there must never be one: the whole claim of the two-layer design is that the
-# authentication service is protocol-independent.
+# It depends on the web authentication portal only over D-Bus, at run time, and
+# only for interactive sign-in. There is no build-time dependency in either
+# direction, and there must never be one: the whole claim of the design is that
+# the portal is protocol-independent.
+#
+# It calls the portal FRONTEND's public interface. It has no knowledge of the
+# impl interface, of .portal files, or of which backend runs -- exactly as a
+# Flatpak application calling org.freedesktop.portal.FileChooser has none.
 
 project(
   'entra-token-client',
@@ -62,7 +66,9 @@ summary(
 
 summary(
   {
-    'web auth service (run time, D-Bus)': 'io.github.sjtrotter.WebAuthentication1',
+    'portal (run time, D-Bus)': 'io.github.sjtrotter.portal.WebAuthentication1',
+    'on bus name': 'io.github.sjtrotter.portal.Desktop',
+    'backend interface used': 'none: applications never call impl interfaces',
     'implemented': false,
   },
   section: 'entra-token-client status',

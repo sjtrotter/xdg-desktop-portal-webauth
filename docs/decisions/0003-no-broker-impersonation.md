@@ -25,8 +25,8 @@ own public API is not guaranteed stable before 1.0.
 Do not take, implement, or shadow Microsoft's Identity Broker D-Bus name. Use a new, narrowly
 scoped interface of our own — for the token client, the contract in
 [ENTRA-CLIENT-CLI.md](../ENTRA-CLIENT-CLI.md); for the web authentication service,
-`io.github.sjtrotter.WebAuthentication1` in
-[SERVICE-INTERFACE.md](../SERVICE-INTERFACE.md), on a bus name this project controls.
+`io.github.sjtrotter.portal.WebAuthentication1` in
+[PUBLIC-INTERFACE.md](../PUBLIC-INTERFACE.md), on a bus name this project controls.
 
 ## Consequences
 

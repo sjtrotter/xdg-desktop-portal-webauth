@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 the webauth-portal authors
+#
+# The backend declaration, in xdg-desktop-portal's .portal format. Compare
+# xdg-desktop-portal-gtk's data/gtk.portal.in, which is the same three keys:
+#
+#   [portal]
+#   DBusName=org.freedesktop.impl.portal.desktop.gtk
+#   Interfaces=org.freedesktop.impl.portal.FileChooser;...;
+#   UseIn=gnome
+#
+# DBusName is the backend's D-Bus activation name; Interfaces is the
+# semicolon-separated list of impl interfaces it implements; UseIn is the
+# deprecated legacy desktop-environment key, kept because upstream still ships
+# it and because a portals.conf may not exist.
+# https://flatpak.github.io/xdg-desktop-portal/docs/writing-a-new-backend.html
+# https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html
+#
+# Installed to $datadir/webauth-portal/portals/ -- this project's own directory,
+# NOT $datadir/xdg-desktop-portal/portals/. An unaccepted prototype must not
+# advertise itself to the real xdg-desktop-portal, which would neither know the
+# interface nor be able to route it. At acceptance the directory changes to
+# upstream's and the interface name loses its incubating prefix; nothing else
+# about this file changes. See docs/UPSTREAMING.md.
+#
+# UseIn is listed as every desktop this backend is willing to serve rather than
+# one: it is a GTK/WebKitGTK window, and until a KDE backend exists it is better
+# for a KDE user to get a working sign-in in the wrong toolkit than no sign-in
+# at all. A desktop that disagrees says so in portals.conf, which wins.
+
+[portal]
+DBusName=io.github.sjtrotter.impl.portal.desktop.gtk
+Interfaces=io.github.sjtrotter.impl.portal.WebAuthentication1;
+UseIn=gnome;KDE;X-Cinnamon;MATE;XFCE;

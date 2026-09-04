@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#ifndef WEBAUTH_TLS_PIN_H
-#define WEBAUTH_TLS_PIN_H
+#ifndef WEBAUTH_GTK_TLS_PIN_H
+#define WEBAUTH_GTK_TLS_PIN_H
 
 #include <glib.h>
 
@@ -8,7 +8,7 @@
  *  The PIN prompt used by the in-process adapter.
  *
  *  Never reached when the portal adapter is in use: the PIN is then entered in the smart
- *  card service's window and never enters this process at all. That difference is the
+ *  card portal's window and never enters this process at all. That difference is the
  *  strongest argument for the portal adapter, and it is why this file's rules matter
  *  only for as long as the fallback exists.
  *
@@ -22,7 +22,7 @@
  *  A prompt is bound to the certificate transaction that raised it, and is answered once
  *  per challenge plus at most one retry the TLS stack itself initiated. Anything beyond
  *  that is refused: automatically re-answering is how a card gets locked, and burning a
- *  user's last PIN attempt is not a bug this service is allowed to have. Retry
+ *  user's last PIN attempt is not a bug this backend is allowed to have. Retry
  *  exhaustion is reported in plain language, not as a generic failure.
  *
  *  Sketch only; nothing here is implemented.
@@ -38,8 +38,8 @@ void webauth_pin_present(gpointer parent, const char* origin, const char* token_
                          guint attempt, GCancellable* cancellable, WebAuthPinDone done,
                          gpointer user_data);
 
-/** Tell the user their card has no attempts left, and why the service will not ask
+/** Tell the user their card has no attempts left, and why the backend will not ask
  *  again. */
 void webauth_pin_report_locked(gpointer parent, const char* token_label);
 
-#endif /* WEBAUTH_TLS_PIN_H */
+#endif /* WEBAUTH_GTK_TLS_PIN_H */

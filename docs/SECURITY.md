@@ -3,17 +3,26 @@
 Status: design sketch. This document states the rules the implementation must satisfy. None of them
 are enforced yet, because there is no implementation.
 
-There are three boundaries. Two are in this repository.
+There are four boundaries. Three are in this repository.
 
-The **web authentication service** boundary protects the browser session: whoever can drive it can
+The **portal frontend** boundary establishes who is asking and what may be asked: it owns the bus
+name applications call, derives the app id, validates the arguments, applies the policy a caller may
+not influence, and guarantees exactly one answer. It draws nothing and it never sees a card, a PIN
+or a page. The **portal backend** boundary protects the browser session: whoever can drive it can
 show the user a page of their choosing, cause a request for a card signature, and learn the URI a
 flow ended at. The **Entra client** boundary protects the identity: whoever can drive it can mint
-tokens for a cloud account. The third — the **smart card service**, a separate project — protects
+tokens for a cloud account. The fourth — the **smart card portal**, a separate project — protects
 the card itself: it owns the certificate chooser, the PIN prompt, and the PIN.
 
-They are separated so that none has to be trusted with another's job. The web authentication service
-never sees a token and never sees a PIN; the Entra client never touches a card and never opens a
-window; the smart card service never learns what protocol any of it is for.
+They are separated so that none has to be trusted with another's job. The frontend never sees a
+page; the backend never sees an application; neither ever sees a token; the Entra client never
+touches a card and never opens a window; the smart card portal never learns what protocol any of it
+is for.
+
+The frontend/backend split is new, and its security consequences cut both ways. It is recorded in
+[decisions/0008-build-to-the-upstream-shape.md](decisions/0008-build-to-the-upstream-shape.md); the
+parts of it that are security judgements rather than plumbing are in this document, marked as they
+arise.
 
 The standard for both is set by the client side. A refresh token for an AVD tenant is in practice
 **months of standing access** to whatever that account can reach, redeemable without the smart card
@@ -22,20 +31,23 @@ because the RDP client never held anything that durable.
 
 ---
 
-# Part 1 — the web authentication service
+# Part 1 — the web authentication portal
+
+Two processes, one contract. Where a rule belongs to one of them specifically, it says so; the
+enforcement table is in [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
 
 ## What is being protected
 
 Naming the assets first, because "it just shows a web page" understates every one of them:
 
 - **Persistent authenticated web sessions.** The shared store holds live sign-in sessions for
-  whatever has been signed into through this service.
+  whatever has been signed into through this portal.
 - **The ability to induce smart-card operations.** A flow here can end with a hardware token
   authenticating. It cannot happen silently — a chooser and a PIN prompt stand in the way, whichever
   adapter shows them — but the ability to *provoke* that prompt, naming an origin of the caller's
   choosing, is a capability and not a rendering feature.
 - **The engine's remembered client-certificate selections**, which live in the storage partition.
-- **The user's trust in service-controlled UI.** If the chrome can be made to lie, everything above
+- **The user's trust in portal-controlled UI.** If the chrome can be made to lie, everything above
   it is worthless.
 - **Returned authorization codes and assertions.** A completion URI routinely carries the
   credential the entire flow was for.
@@ -48,7 +60,7 @@ Naming the assets first, because "it just shows a web page" understates every on
   reach another user's storage.
 - A same-UID process starting a transaction with a hostile `start_uri`, or with a `completion_uri`
   chosen to capture a completion from a flow it did not start.
-- A same-UID process using the service as a **phishing launcher** — showing a convincing corporate
+- A same-UID process using the portal as a **phishing launcher** — showing a convincing corporate
   sign-in page under an application name that is not its own.
 - A hostile application starting a flow that rides an already-authenticated shared session.
 - A hostile or compromised page inside the web view attempting to complete the transaction early,
@@ -59,7 +71,7 @@ Naming the assets first, because "it just shows a web page" understates every on
 **Out of scope.**
 
 - An attacker already running as the same UID with a debugger attached. Same-UID isolation is what
-  the OS gives us; no user-space process defends against `ptrace` from its own user. **This service
+  the OS gives us; no user-space process defends against `ptrace` from its own user. **This portal
   materially helps sandboxed applications; it cannot claim strong separation between mutually
   hostile unsandboxed ones**, and it must not be described as though it can.
 - The security of WebKit's own sandbox, beyond using it correctly and keeping up with it.
@@ -67,14 +79,41 @@ Naming the assets first, because "it just shows a web page" understates every on
 
 ## Access control
 
-**Same UID only.** The service serves one user's session bus. The peer's UID is checked against the
-service's own *before* the request is parsed, not after. No cross-user mode, no root mode. Same-UID
+**Same UID only.** The frontend serves one user's session bus. The peer's UID is checked against the
+frontend's own *before* the request is parsed, not after. No cross-user mode, no root mode. Same-UID
 is a necessary check and not a complete authorization policy — which is why everything in "Caller
 identity" exists.
 
+### The impl interface is not for applications
+
+This is the split's own security obligation, and it did not exist when there was one process.
+
+`io.github.sjtrotter.impl.portal.WebAuthentication1` takes an `app_id` as an *argument*. An
+application that reached it directly would name itself, choose its own storage mode, bypass rate
+limiting, and bypass the frontend's re-check of the returned URI. So:
+
+- **The backend refuses any sender that is not its frontend.** It knows the frontend's unique name
+  from the connection that called it and checks every invocation. A refusal is an error return and a
+  logged outcome symbol, never a window.
+- **Distributions should apply D-Bus policy** to the backend's bus name, as upstream backends
+  expect: the impl service is addressed by the portal frontend and nothing else. This is defence in
+  depth, not the primary mechanism, because a session-bus policy on a same-UID desktop is a
+  convention more than a wall.
+- **The backend is not activatable into a useful state by anyone else.** With no frontend to answer,
+  a `Start` from an application gets an error; there is no path that opens a window for a caller the
+  backend cannot check.
+- **And the honest limit, stated rather than hidden:** on an unrestricted desktop a same-UID process
+  can talk to any session-bus name it likes, and the checks above are the frontend's word against a
+  peer's. This is the same limit "Out of scope" already names — same-UID isolation is weak — and the
+  split neither fixes it nor makes it worse. What the split *does* fix is that the honest app id now
+  comes from somewhere the application cannot influence at all. What it costs is one more name on
+  the bus that must be treated as privileged.
+
 **Caller identity is resolved, never asserted.** An executable path is not an application identity:
 a same-UID process can execute another path, manipulate its launch context, or connect straight to
-the bus. So the service distinguishes three honesty levels and says which one it has:
+the bus. **The frontend resolves it; the backend is told and never asks** — a backend that resolved
+its own peer would resolve the frontend. The frontend distinguishes three honesty levels and says
+which one it has:
 
 | Kind | Source | Status |
 |---|---|---|
@@ -88,27 +127,35 @@ Consequences, enforced rather than advised:
 
 - **Every result is bound to the initiating unique D-Bus connection.** If that connection goes
   away, the transaction is cancelled and nobody else receives the completion.
-- The chrome displays what was verified, and says plainly when it was not.
+- The chrome displays what the frontend verified, and says plainly when it could not — from the
+  `app_id` and `app_id_kind` it was given, never from anything it re-derived.
 - An unverified label is **never** the sole key for a storage partition. An unverifiable host caller
   gets `shared` or `ephemeral` — never a partition it named. This is a large part of why there is no
   per-application persistent mode in version 1.
 - First use by an unidentified host caller may warrant an explicit confirmation, particularly before
-  a certificate request is made on its behalf. Note that the smart card service makes its own
-  decision here too, and this service must pass through enough about the *original* caller for that
+  a certificate request is made on its behalf. Note that the smart card portal makes its own
+  decision here too, and the backend must pass through enough about the *original* caller for that
   decision to be made honestly — presenting every request as its own would launder the caller's
-  identity, which is the opposite of what either service is for.
+  identity, which is the opposite of what either project is for.
 - **Requests are rate-limited.** Repeated background requests from one connection are the cheapest
-  way to turn this service into a phishing launcher.
+  way to turn this portal into a phishing launcher.
 
 ## URI rules
 
-Each rule with the reason. The full definition is in [SERVICE-INTERFACE.md](SERVICE-INTERFACE.md).
+Each rule with the reason. The full definition is in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md).
 
-- **`start_uri` must be absolute `https` with a host.** The service will not open `file:`, `data:`,
-  `javascript:` or a scheme handler; a service that opens arbitrary URIs on request is a
+- **`start_uri` must be absolute `https` with a host.** The frontend will not forward, and the backend
+  will not open, `file:`, `data:`, `javascript:` or a scheme handler; a portal that opens arbitrary
+  URIs on request is a
   general-purpose way to make a desktop open anything.
 - **`completion_uri` must be absolute, `https` or an exactly named custom scheme, with no userinfo
   and no wildcard.**
+- **The frontend validates before forwarding, and re-checks what comes back.** A malformed request
+  is a D-Bus error before any backend is woken and any window is opened; a returned `completion_uri`
+  that is not the one the application asked for becomes response `2` with reason
+  `backend_completion_mismatch` and is discarded. The second check is what makes the answer a
+  statement the *frontend* makes on the bus name the application trusts, rather than a relay of
+  whatever backend a distribution installed.
 - **Matching is exact, on parsed URIs, with no prefix mode.** Scheme and host case-insensitive (host
   IDNA-normalised), ports normalised, **path exactly equal**, userinfo forbidden, query and fragment
   carrying the result and taking no part in matching. A string prefix would accept
@@ -135,14 +182,14 @@ storage partition is used; arbitrary certificate trust; PIN persistence; an unli
 the verified application label shown to the user. An implementation that makes any of these an
 option has changed the interface, not configured it.
 
-The `title` option is a **hint**, rendered beneath the service's own text and marked as
+The `title` option is a **hint**, rendered beneath the portal's own text and marked as
 application-supplied. Otherwise a malicious caller labels itself "Microsoft Login", which is the
 entire phishing attack in one string.
 
 ## Sessions and storage
 
 - **Two modes, `shared` and `ephemeral`.** `shared` is the default and means shared among *this
-  service's* transactions. The documentation and the UI must say so plainly: it is **not** the
+  backend's* transactions. The documentation and the UI must say so plainly: it is **not** the
   user's Firefox or Chrome profile, and it inherits none of their accounts, enterprise policies,
   extensions, device registration or browser-bound credentials.
 - **`ephemeral` must use an ephemeral website data manager from creation.** "Use the persistent
@@ -154,8 +201,10 @@ entire phishing attack in one string.
   and disk caches, service workers, HSTS and related network state, HTTP authentication credentials,
   permission decisions, and client-certificate selection memory. Downloads and autofill are
   disabled rather than partitioned.
-- **The transaction layer chooses the partition; the browser session obeys.** A session that derived
-  its own partition would be a second place where the isolation rule lives.
+- **The frontend chooses the partition; the backend obeys.** A backend that derived its own
+  partition would be a second place where the isolation rule lives — and it would have to judge how
+  much an app id can be believed, which is frontend knowledge that does not survive the hop as
+  anything but a label. A backend may refuse a mode it cannot honour; it may never downgrade one.
 - **Shared state amplifies a malicious caller.** A hostile application can start a flow riding a
   session the user already established. OAuth `state` protects transaction correlation; it does
   nothing for the user's understanding of *which native application* asked. The mitigation is the
@@ -165,13 +214,25 @@ entire phishing attack in one string.
 
 ## Client certificates
 
-The service satisfies a client-certificate challenge through an adapter with two implementations,
+The backend satisfies a client-certificate challenge through an adapter with two implementations,
 and the security position differs between them. Both are documented because both will exist for a
 while; see [decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md).
 
 ### Under the `portal` adapter — preferred
 
-- **The PIN never reaches this process.** It is entered in the smart card service's window, against
+**Read this first: the delegation gap the split made unmissable.** Under this adapter the backend
+calls the smart card portal as an ordinary client of *its public interface*. That portal therefore
+derives **the backend's** app id — `webauth-portal-gtk` — and not the application's. Its consent
+window names the wrong thing, and the original app id can only be passed as untrusted text (the
+`reason` hint, with the challenging origin in `context`). This was equally true before the split and
+merely easier to overlook; it must be presented honestly, because presenting a passed-through app id
+as an established identity would launder a caller's identity through someone else's trusted window,
+which is the opposite of what either project is for. Attested delegation across one portal hop is a
+protocol neither project has — and one incubating frontend hosting both interfaces would not need
+one, since the derived app id would already be in hand. See
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
+
+- **The PIN never reaches this process.** It is entered in the smart card portal's window, against
   another process's memory. There is no buffer here to scrub and no bug here that can leak one.
 - **The grant is bounded**: a certificate, a set of permitted operations and mechanisms, and an
   expiry. Brokered signing gives precise accounting, revocation and per-operation consent — though
@@ -180,7 +241,7 @@ while; see [decisions/0007-certificate-adapter.md](decisions/0007-certificate-ad
 - **The module-endpoint variant (`OpenPkcs11Endpoint`) is experimental, opt-in, and its isolation is
   weaker than it sounds.** Stock `p11-kit server` forwards a whole *token*, not a scoped object, and
   carries no login state across the boundary; what this endpoint returns instead is a Unix socket fd
-  backed by the smart card service's own broker-controlled synthetic facade — one slot, the granted
+  backed by the smart card portal's own broker-controlled synthetic facade — one slot, the granted
   objects only, read-only sessions. Two things about it are unresolved and must not be described as
   solved: a PKCS#11 URI cannot name a socket, and `g_tls_certificate_new_from_pkcs11_uris()` has no
   module parameter, so whether this process can make the returned fd and URIs resolvable to GLib at
@@ -189,13 +250,15 @@ while; see [decisions/0007-certificate-adapter.md](decisions/0007-certificate-ad
   over per grant.
 - **Whatever the adapter held is released on every exit path** — completion, failure, timeout,
   cancellation. A finished transaction must not leave a live grant or endpoint behind. This is the
-  one card-related discipline that is entirely this service's responsibility either way.
-- **Consent UI belongs to the other service**, which names the requesting application, origin,
-  certificate identity and purpose. This service's contribution is that the caller and origin it has
-  been displaying all along are the same ones that window restates: if this service's chrome can be
-  made to lie, the other service's window inherits the lie. It must therefore pass through enough
-  about the *original* caller for that service's own consent decision to be made honestly, rather
-  than presenting every request as its own.
+  one card-related discipline that is entirely the backend's responsibility either way, and the
+  split adds one exit path to it: the frontend's connection dropping.
+- **Consent UI belongs to the other portal**, which names the requesting application, origin,
+  certificate identity and purpose. The backend's contribution is that the caller and origin it has
+  been displaying all along are the same ones that window restates: if the backend's chrome can be
+  made to lie, the other portal's window inherits the lie. It must therefore pass through enough
+  about the *original* caller for that project's own consent decision to be made honestly, rather
+  than presenting every request as its own — subject to the delegation gap above, which means
+  "honestly" currently includes "and this is a claim we cannot attest".
 
 ### Under the `inproc` adapter — the fallback
 
@@ -210,7 +273,7 @@ ones the proven implementation already follows:
   logged, not even redacted: a redacted PIN still says one was entered and how long it was.
 - **A challenge is answered once, plus at most one retry the TLS stack itself initiated.**
   Automatically re-answering is how a card gets locked, and burning a user's last PIN attempt is not
-  a bug this service is allowed to have. Retry exhaustion is reported in plain language.
+  a bug this portal is allowed to have. Retry exhaustion is reported in plain language.
 - **The PKCS#11 login is ended where practical**, with no pretence that a card, middleware daemon or
   token firmware can be made to forget authentication on demand — several cache it internally.
 
@@ -227,12 +290,27 @@ ones the proven implementation already follows:
   the subject. Only counts.
 - **When neither adapter can run**, the challenge is declined and the transaction ends `2` with
   reason `no_certificate_adapter`.
-- **The residual risk delegation does not remove:** this service can still provoke a certificate
-  prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting and honest
-  caller display stand between that and a nuisance; under the portal adapter, that service's own
-  consent policy is the backstop.
+- **The residual risk delegation does not remove:** the backend can still provoke a certificate
+  prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting in the frontend and honest
+  caller display in the backend stand between that and a nuisance; under the portal adapter, that
+  project's own consent policy is the backstop.
 
 ## Transactions
+
+The specification below did not change when the design was split; the number of places it can be got
+wrong did. Which side enforces each part is in [IMPL-INTERFACE.md](IMPL-INTERFACE.md), and three
+obligations are new:
+
+- **The frontend owes an answer when the backend dies.** One `Response(2, { reason:
+  "backend_disappeared" })`, not silence. An application waiting forever on a dead backend is a
+  denial of service the single-process design could not produce, because there was nobody left to
+  wait on.
+- **The backend cancels when the frontend dies.** Its connection dropping destroys the window at
+  once. A window belonging to no request is the leaked-window failure this interface promises not to
+  have, and it would be a window with security chrome and no request behind it.
+- **The deadline exists twice.** The backend's is authoritative and slightly shorter, so a live
+  backend answers first with a clean `timeout`; the frontend's is the backstop for one that has
+  stopped answering. Neither may be the only one.
 
 - Exactly one terminal result and exactly one `Response` per transaction. A second matching
   navigation, a window closed after a match, a timeout expiring after a close — all ignored.
@@ -264,14 +342,14 @@ reporting *what*; phase timings; and loader or TLS error text **cut before any e
 
 ## Accessibility as a security property
 
-Listed here as well as in [SERVICE-INTERFACE.md](SERVICE-INTERFACE.md) because it belongs in both:
+Listed here as well as in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) because it belongs in both:
 the chrome carries a security decision, and a user who cannot perceive it cannot make that decision.
-AT-SPI exposure for every service-owned control including the in-process chooser and PIN prompt,
+AT-SPI exposure for every backend-owned control including the in-process chooser and PIN prompt,
 keyboard-only certificate selection and PIN entry, meaningful focus order including across any
-hand-off to another service's windows, screen-reader announcement of the verified caller and the
+hand-off to another portal's windows, screen-reader announcement of the verified caller and the
 current origin, no meaning conveyed by colour alone, accessible error and cancellation states, and
 focus restored to the calling application on close. Under the portal adapter the chooser and PIN
-prompt carry the same obligation on that service's side.
+prompt carry the same obligation on that project's side.
 
 ---
 
@@ -314,26 +392,26 @@ derives the authorization endpoint, the token endpoint and the completion URI fr
 optionally refined by OpenID discovery *against that same authority*. A request containing any URL
 is a usage error, not a configuration. This is the one rule that stops a same-UID caller pointing a
 credential-bearing exchange at a server it controls — and it is why the **client**, not its caller,
-chooses the `completion_uri` it hands to the service.
+chooses the `completion_uri` it hands to the portal.
 
 ## OAuth rules
 
 - **`state` on every authorization request**, cryptographically random, compared in **constant
-  time**. `state` is the secret a response has to know, and the service never sees it.
+  time**. `state` is the secret a response has to know, and no part of the portal ever sees it.
 - **PKCE S256 on every authorization request**, verifier sent only with the token request. A public
   client cannot keep a secret; PKCE is what binds the code to the process that asked.
 - **Exact redirect matching** on the returned URI: scheme, host, port and path equal to the
   transaction's redirect (empty path and `/` are the same resource). Not redundant with the
-  service's check: the service answered a question about URIs, the client answers a question about
-  OAuth, using a secret the service never held. A `strstr` for `code=` — what FreeRDP's existing
+  portal's checks: the backend and the frontend each answered a question about URIs, the client
+  answers a question about OAuth, using a secret no part of the portal ever held. A `strstr` for `code=` — what FreeRDP's existing
   fallback does — accepts a redirect to an entirely different host.
 - **Reject userinfo and fragment.**
 - **Exactly one of `code` or `error`, each occurring exactly once.** A parameter present without a
   value counts as an occurrence, so a second `code` cannot be smuggled in as a bare `code`.
-- **Strict percent-decoding**, on the same terms as the service's and for the same reason.
+- **Strict percent-decoding**, on the same terms as the portal's and for the same reason.
 - **Single-use transactions.** One terminal result. A second response is a replay or an answer to a
   request this process did not make.
-- **Bounded transactions**, with a deadline passed to the service as `timeout` and enforced locally
+- **Bounded transactions**, with a deadline passed to the portal as `timeout` and enforced locally
   as well.
 
 ## Secrets
@@ -345,7 +423,7 @@ chooses the `completion_uri` it hands to the service.
 | **PoP token** | As above, additionally keyed by the `req_cnf` binding. | A PoP token bound to one `kid` is useless for another; a cache key ignoring the binding would return a token the caller cannot use. |
 | **Authorization code** | In memory for the seconds between the completion and the token request. Scrubbed. | Exchangeable for a refresh token by anyone holding it plus the public client id. PKCE is what stops that, and PKCE is not a reason to be careless with the code. |
 | **PKCE verifier, `state`** | In memory for the transaction. Scrubbed. | The verifier binds the code to this process; `state` binds the response to this request. |
-| **PIN** | Never seen by the Entra client. Under the web authentication service's `portal` adapter, never seen there either; under `inproc`, held in that service only long enough to answer the challenge and then scrubbed. | A component having no path to a secret is better than a component being careful with one — which is the strongest argument for finishing the portal path and retiring the fallback. |
+| **PIN** | Never seen by the Entra client. Under the portal backend's `portal` adapter, never seen there either; under `inproc`, held in that backend only long enough to answer the challenge and then scrubbed. | A component having no path to a secret is better than a component being careful with one — which is the strongest argument for finishing the portal path and retiring the fallback. |
 | **Private key on the card** | Never leaves the card. | That is the point of the card. |
 | **PoP key** | Never seen by the client. FreeRDP generates and retains it; the client receives only `req_cnf`. | The client cannot leak what it never has. |
 | **Account records** (account id, authority, tenant, client id) | Keyring, beside the refresh token. | Not secret in the same sense, but they name a person and a tenant. |
@@ -356,7 +434,7 @@ silent downgrade from "keyring" to "file in the home directory" is the kind of t
 until it is in a backup.
 
 **Logout must be complete.** `logout` removes the refresh token, the account record, *and* asks the
-service to discard the web session that account established. A logout leaving the Entra session
+portal to discard the web session that account established. A logout leaving the Entra session
 cookie behind has not logged anybody out.
 
 ## Logging
@@ -367,12 +445,12 @@ carrying a query string from the authorization server; the authorization server'
 `error_description`, which routinely names the account, the tenant and the policy that failed; HTTP
 response bodies from the token endpoint; cookies and `Authorization` headers.
 
-**Structural redaction**, as on the service side.
+**Structural redaction**, as on the portal side.
 
 **What a DEBUG log may contain:** outcome symbols from the callback classifier (`CODE`, `ERROR`,
 `UNRELATED`, `INVALID`); the authority host — a public constant, and the single most useful field
 when diagnosing a wrong-cloud failure; OAuth error *codes* without their descriptions
-(`invalid_grant`, `interaction_required`, `AADSTS50011`); cache hit and miss counts; the service's
+(`invalid_grant`, `interaction_required`, `AADSTS50011`); cache hit and miss counts; the portal's
 response code; and phase timings.
 
 **What a DEBUG log must not become:** a way to reproduce the sign-in. If a support bundle containing
@@ -386,10 +464,14 @@ production.
 
 Before either interface is frozen, five things want an independent pair of eyes:
 
-1. The service's completion matcher and its percent-decoder.
-2. The service's peer check and caller-identity resolution, and everything downstream that trusts
-   the answer — the chrome, the partition choice, the result binding, and what is passed to the
-   smart card service about the original caller.
+1. The completion matcher and its percent-decoder — **both copies**, against the same fixtures. Two
+   implementations of one rule is a cost of the split and this is where it is paid.
+2. The frontend's peer check and app-id derivation, and everything downstream that trusts the
+   answer — the chrome, the partition choice, the result binding, and what is passed to the smart
+   card portal about the original caller.
+2a. The impl boundary itself: that the backend refuses non-frontend senders, that the frontend's
+   option filter drops what it should, and that the frontend's re-check of the returned
+   `completion_uri` cannot be skipped on any path.
 3. The lifetime of whatever the certificate adapter holds — a grant, an endpoint, a PKCS#11 session
    — especially on the cancellation and timeout paths.
 4. The client's callback classifier.
@@ -403,7 +485,7 @@ Those are the places where a subtle mistake is not visible in testing.
 
 Recorded here as well as in [decisions/0005-service-shape.md](decisions/0005-service-shape.md),
 because it is a security judgement: **if caller identity, displayed origin and storage partitioning cannot be made convincing,
-collapse the browser layer back into the Entra client.** A narrowly scoped Entra/AVD helper is better than a generic authentication service with an
+collapse the browser layer back into the Entra client.** A narrowly scoped Entra/AVD helper is better than a generic authentication portal with an
 ill-defined trust model, and this is a real outcome to plan for rather than a formality.
 
 ## Reporting

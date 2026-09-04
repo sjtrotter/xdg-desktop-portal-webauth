@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#ifndef WEBAUTH_PORTAL_REDACT_H
-#define WEBAUTH_PORTAL_REDACT_H
+#ifndef WEBAUTH_GTK_REDACT_H
+#define WEBAUTH_GTK_REDACT_H
 
 #include <glib.h>
 
@@ -12,7 +12,15 @@
  *  deliberately no "log this URL" entry point that a later edit could be pointed at a
  *  redirect, and no format string a caller can slip a token through. A field whose
  *  kind is not loggable renders as its kind and its length, "<url:212>", never its
- *  value. The service therefore logs what happened and never what it was carrying.
+ *  value. The backend therefore logs what happened and never what it was
+ *  carrying.
+ *
+ *  The frontend is under exactly the same obligation and has no copy of this
+ *  file: it must never log a start URI, a completion URI or a query string
+ *  either, and upstream's frontend offers no entry point that could. Duplicating
+ *  the implementation would be worse than sharing the rule; at upstream
+ *  acceptance the redaction helpers belong in xdg-desktop-portal's shared code
+ *  next to the completion matcher, for the same reason.
  *
  *  Sketch only; nothing here is implemented. See docs/SECURITY.md for the artifacts
  *  that must never appear at any level.
@@ -43,4 +51,4 @@ char* webauth_redact_field(WebAuthFieldKind kind, const char* value);
 /** Cut @message before any embedded URI, for loader and TLS error text. */
 char* webauth_redact_error_text(const char* message);
 
-#endif /* WEBAUTH_PORTAL_REDACT_H */
+#endif /* WEBAUTH_GTK_REDACT_H */

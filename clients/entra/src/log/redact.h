@@ -5,9 +5,9 @@
 #include <glib.h>
 
 /** @file
- *  Client side redaction, on the same structural principle as the service's.
+ *  Client side redaction, on the same structural principle as the portal backend's.
  *
- *  The client handles the artifacts the service never sees — authorization codes,
+ *  The client handles the artifacts the portal never sees — authorization codes,
  *  access tokens, refresh tokens, PKCE verifiers, state values, and the
  *  authorization server's error_description, which routinely names the account, the
  *  tenant and the policy that failed. None of them may reach a log at any level, and

@@ -7,9 +7,11 @@
 #include "transaction.h"
 
 /** @file
- *  Classifying the URI the web authentication service returned.
+ *  Classifying the URI the web authentication portal returned.
  *
- *  The service guarantees only that the URI matched the completion URI it was given.
+ *  The portal guarantees only that the URI matched the completion URI it was given -
+ *  checked twice, by the backend against the live navigation and by the frontend
+ *  against what the backend handed back.
  *  Deciding whether it is a valid authorization response is OAuth knowledge and
  *  therefore lives here. A URI is accepted only when its scheme, host, port and path
  *  equal the
@@ -20,7 +22,8 @@
  *  in as a bare "code". Every percent escape must be well formed and %00 is rejected.
  *
  *  This is the check FreeRDP's aad/oauth-hardening branch performs; keeping it in the
- *  client rather than the service is what lets the service stay protocol agnostic.
+ *  client rather than the portal is what lets the portal stay protocol agnostic: it
+ *  needs the PKCE verifier and the state, which nothing in the portal ever sees.
  *
  *  Sketch only; nothing here is implemented. See docs/SECURITY.md.
  */

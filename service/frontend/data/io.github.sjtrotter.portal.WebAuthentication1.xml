@@ -1,0 +1,275 @@
+<?xml version="1.0"?>
+<!--
+ Copyright (C) 2026 the webauth-portal authors
+
+ SPDX-License-Identifier: GPL-2.0-or-later
+
+ INCUBATING PUBLIC PORTAL INTERFACE, version 1.
+
+ This is the interface APPLICATIONS call. It is a project-controlled reverse-DNS
+ name and is deliberately NOT in the org.freedesktop.portal.* namespace: that
+ namespace belongs to xdg-desktop-portal, and shipping a name from it would assert
+ an acceptance that does not exist.
+
+ The SHAPE, however, is xdg-desktop-portal's, deliberately and exactly:
+
+   io.github.sjtrotter.portal.WebAuthentication1   <-> org.freedesktop.portal.<Name>
+   io.github.sjtrotter.portal.Desktop (bus name)   <-> org.freedesktop.portal.Desktop
+   /io/github/sjtrotter/portal/desktop             <-> /org/freedesktop/portal/desktop
+   io.github.sjtrotter.portal.Request              <-> org.freedesktop.portal.Request
+
+ Modelled on org.freedesktop.portal.Account and org.freedesktop.portal.FileChooser:
+ https://github.com/flatpak/xdg-desktop-portal/blob/main/data/org.freedesktop.portal.Account.xml
+ https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html
+ https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html
+
+ The frontend that exports this interface performs NO user interaction. It derives
+ the caller's app id, validates the arguments, and forwards the call to a backend
+ implementing io.github.sjtrotter.impl.portal.WebAuthentication1 (see
+ ../../backends/gtk/data/io.github.sjtrotter.impl.portal.WebAuthentication1.xml and
+ docs/IMPL-INTERFACE.md). Applications must never call the impl interface; see
+ docs/SECURITY.md.
+
+ The eventual upstream name would be org.freedesktop.portal.WebAuthentication.
+ Nothing has been proposed to anyone. See docs/UPSTREAMING.md and docs/ROADMAP.md.
+-->
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+
+  <!--
+      io.github.sjtrotter.portal.WebAuthentication1:
+      @short_description: One interactive web authentication transaction
+
+      Performs one interactive web authentication transaction and returns an
+      uninterpreted completion artifact.
+
+      The caller supplies a URI to open and the exact URI whose navigation ends
+      the transaction. A backend opens the start URI in a web view it owns,
+      presents security chrome the caller cannot influence, answers TLS client
+      certificate challenges (including PKCS#11 tokens that require a PIN),
+      watches every top level navigation, and completes the transaction on the
+      first navigation whose URI matches the completion URI. The web view is
+      closed before that navigation is loaded, so the completion page is never
+      fetched and never rendered.
+
+      Neither the frontend nor the backend interprets the URI that is returned.
+      Neither has any knowledge of OAuth, OpenID Connect or SAML, neither
+      exchanges anything, and neither stores credentials. Callers implement
+      their protocol on top.
+
+      A TLS client certificate challenge is satisfied by the backend, through an
+      adapter with two implementations: the smart card portal
+      (io.github.sjtrotter.portal.Smartcard1) where it is available and proven,
+      and an in-process chooser and PIN prompt otherwise. Which one ran is not
+      visible through this interface. When neither can run, the challenge is
+      declined and the transaction ends with response 2 and reason
+      "no_certificate_adapter".
+
+      Version 1 supports navigation (GET) completions only. A response that
+      arrives as an HTTP POST body - OpenID Connect response_mode=form_post, or
+      SAML HTTP-POST binding - is NOT supported and cannot be represented as a
+      completion URI. Supporting it would need a separately reviewed result of
+      the shape { method, uri, content_type, body_fd }; squeezing a form body
+      into a synthetic URI is not an acceptable substitute.
+
+      This interface is exported on the bus name
+      io.github.sjtrotter.portal.Desktop, at the object path
+      /io/github/sjtrotter/portal/desktop, alongside every other interface that
+      incubating frontend hosts - exactly as xdg-desktop-portal hosts every
+      portal interface on org.freedesktop.portal.Desktop.
+
+      This documentation describes version 1 of this interface.
+  -->
+  <interface name="io.github.sjtrotter.portal.WebAuthentication1">
+
+    <!--
+        Start:
+        @parent_window: Identifier for the calling application's window, in the
+          xdg-desktop-portal window identifier format ("x11:&lt;xid&gt;",
+          "wayland:&lt;exported handle&gt;"). May be empty. Passed through to the
+          backend uninterpreted; the backend parses it. An invalid or expired
+          identifier degrades to an unparented window; it never aborts the
+          transaction.
+        @start_uri: The URI to open. Must be an absolute https URI with a host.
+        @completion_uri: The URI whose navigation ends the transaction. Matched
+          exactly on the parsed URI; see "Completion matching" in
+          docs/PUBLIC-INTERFACE.md. Query and fragment carry the result and take
+          no part in matching.
+        @options: Vardict with optional further information
+        @request_handle: Object path of the io.github.sjtrotter.portal.Request
+          object for this call
+
+        Supported keys in the @options vardict:
+        <variablelist>
+          <varlistentry>
+            <term>handle_token s</term>
+            <listitem><para>
+              A caller-chosen unguessable token used as the last element of
+              @request_handle, so the caller can subscribe to ::Response before
+              calling Start and avoid the response race. Must be a valid object
+              path element.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>activation_token s</term>
+            <listitem><para>
+              An XDG activation token authorizing the window to take focus.
+              Parenting and activation are related but not interchangeable: a
+              background caller without a valid activation token does not
+              silently steal focus.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>session_mode s</term>
+            <listitem><para>
+              "shared" (default) or "ephemeral". This is a WEB SESSION STORAGE
+              mode, not an io.github.sjtrotter.portal.Session object: this
+              interface creates no Session, because a transaction is not a long
+              lived session. "shared" means shared among this backend's
+              transactions - NOT with Firefox, Chrome or the user's default
+              browser. "ephemeral" runs the transaction in a website data store
+              created for it and destroyed with it. A caller may request
+              ephemeral; it may never defeat a policy that forces ephemeral.
+              There is no per-application mode in version 1.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>timeout u</term>
+            <listitem><para>
+              Seconds before the transaction is abandoned. A caller may only
+              shorten the default of 300; the hard ceiling is 900. Smart card
+              and MFA flows make short fixed timeouts hostile. The frontend
+              clamps the value it forwards; the backend enforces its own
+              deadline as well.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>title s</term>
+            <listitem><para>
+              A purpose hint, shown beneath the backend's own security chrome
+              and never as the window's trusted identity. It is caller-supplied
+              text and is treated as such: a caller cannot label itself
+              "Microsoft Login". Length-limited by the frontend.
+            </para></listitem>
+          </varlistentry>
+        </variablelist>
+
+        Unknown option keys are DROPPED by the frontend rather than forwarded,
+        so an option can be added without a version bump and a backend never
+        sees a key the frontend does not know. Unknown VALUES for a known key
+        are an error: silently falling back from "ephemeral" to "shared" would
+        be a security decision made by a typo.
+
+        The result is delivered through
+        io.github.sjtrotter.portal.Request::Response with these keys:
+        <variablelist>
+          <varlistentry>
+            <term>completion_uri s</term>
+            <listitem><para>
+              The matched URI, complete and undecoded, exactly as the web view
+              was asked to navigate to it, including query and fragment.
+              Obtained from the engine rather than reconstructed. Present only
+              when @response is 0. The frontend re-checks this value against the
+              @completion_uri it forwarded before emitting it; see
+              docs/IMPL-INTERFACE.md.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>reason s</term>
+            <listitem><para>
+              Optional stable symbol explaining a non-zero @response. A
+              diagnostic only.
+            </para></listitem>
+          </varlistentry>
+        </variablelist>
+
+        @response values follow the portal convention:
+        0 the transaction completed and @results carries "completion_uri",
+        1 the user cancelled, or the caller called Close(),
+        2 the transaction ended some other way - timeout expired, no backend
+        available, no web engine, no display, malformed request, the backend
+        terminated, the backend returned a completion URI that is not the one
+        that was requested, or a client certificate was required and no
+        certificate adapter could run.
+
+        A response of 1 or 2 may carry an optional "reason s" key: a stable
+        symbol such as "timeout", "no_display", "no_backend",
+        "backend_disappeared", "backend_completion_mismatch" or
+        "no_certificate_adapter". It is a diagnostic, never a substitute for the
+        response code, and a consumer must tolerate its absence.
+    -->
+    <method name="Start">
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="start_uri" direction="in"/>
+      <arg type="s" name="completion_uri" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In3" value="QVariantMap"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="o" name="request_handle" direction="out"/>
+    </method>
+
+    <!--
+        version:
+
+        The version of this interface that is implemented. 1.
+    -->
+    <property name="version" type="u" access="read"/>
+  </interface>
+
+  <!--
+      io.github.sjtrotter.portal.Request:
+      @short_description: A pending portal request
+
+      The same shape and the same semantics as org.freedesktop.portal.Request,
+      under this project's own name, and shared by every interface this
+      incubating frontend hosts. There is deliberately no separate Cancel
+      method: Close() is the cancellation mechanism, exactly as in the portal
+      pattern.
+
+      Object path:
+      /io/github/sjtrotter/portal/desktop/request/&lt;SENDER&gt;/&lt;TOKEN&gt;
+      where &lt;SENDER&gt; is the caller's unique name with the initial ":"
+      removed and every "." replaced by "_", and &lt;TOKEN&gt; is the caller's
+      handle_token - the convention documented at
+      https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html
+
+      Upstream ships this interface in its own file
+      (data/org.freedesktop.portal.Request.xml) because every portal shares it.
+      It is carried here only so this repository is self-contained; at
+      acceptance this node is deleted and the existing shared interface is used
+      unchanged. See docs/UPSTREAMING.md.
+  -->
+  <interface name="io.github.sjtrotter.portal.Request">
+
+    <!--
+        Close:
+
+        Cancels the request. The frontend calls Close() on the backend's
+        io.github.sjtrotter.impl.portal.Request object, which closes the web
+        view and every dialog belonging to the transaction, and emits
+        ::Response with @response 1 if it has not already responded. Close()
+        never produces a later success response. Closing an already answered
+        request is not an error and does nothing: a caller that times out
+        locally at the moment the user finishes must not get an error and must
+        not get two responses.
+
+        A completion that has already been committed atomically wins over a
+        simultaneous Close(); every other late event is discarded.
+    -->
+    <method name="Close"/>
+
+    <!--
+        Response:
+        @response: 0 completed, 1 cancelled, 2 ended some other way
+        @results: Vardict, carrying "completion_uri s" when @response is 0
+
+        Emitted exactly once per request. After it is emitted the request object
+        is unexported and the transaction is forgotten. The result is bound to
+        the D-Bus connection that called Start: if that connection goes away the
+        transaction is cancelled and no result is delivered to anyone else.
+    -->
+    <signal name="Response">
+      <arg type="u" name="response"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
+      <arg type="a{sv}" name="results"/>
+    </signal>
+  </interface>
+</node>

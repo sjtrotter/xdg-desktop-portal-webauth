@@ -3,10 +3,16 @@
 Status: design sketch. The `entra-token-helper` binary in this repository parses these options and
 then exits `70`.
 
-This is the contract for **layer 2**, the Entra ID / AVD token client — the interface FreeRDP
-frontends and other programs are expected to depend on. Layer 1, the web authentication service the
+This is the contract for **layer 3**, the Entra ID / AVD token client — the interface FreeRDP
+frontends and other programs are expected to depend on. Layer 2, the web authentication portal the
 client calls when it needs a window, has its own contract in
-[SERVICE-INTERFACE.md](SERVICE-INTERFACE.md); the two are independent and versioned separately.
+[PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md); the two are independent and versioned separately.
+
+The client calls the portal's **frontend**, on `io.github.sjtrotter.portal.Desktop`, and nothing
+else. That the portal is internally a frontend and a backend
+([decisions/0008](decisions/0008-build-to-the-upstream-shape.md)) is invisible here: no verb, exit
+code or field below changed when the split was made, and none would change again if a machine
+installed a different backend.
 
 It is versioned: the JSON objects carry `"schema": 1`, and the compatibility promise at the end of
 this document says what may change without a bump.
@@ -15,7 +21,7 @@ this document says what may change without a bump.
 
 | Verb | Purpose | Interactive? |
 |---|---|---|
-| `login` | Establish an account: run an interactive sign-in through the service and store the resulting refresh token. Does not print an access token. | Always (unless a usable account already exists and `--prompt auto`) |
+| `login` | Establish an account: run an interactive sign-in through the portal and store the resulting refresh token. Does not print an access token. | Always (unless a usable account already exists and `--prompt auto`) |
 | `token` | Acquire an access token. Silent if possible, interactive if permitted. | Depends on `--prompt` and cache state |
 | `accounts` | List stored accounts. | Never |
 | `logout` | Forget one account or all accounts: remove refresh tokens and account records from the keyring. | Never |
@@ -33,7 +39,7 @@ human can manage state without a connection in flight.
 | `--scope <scope>` | `login`, `token` | Repeatable. One scope per occurrence, given decoded. Order is not significant; the cache key uses the sorted set. |
 | `--req-cnf <b64url>` | `token` | Base64url-encoded JSON confirmation object, e.g. `{"kid": "<key-id>"}`, produced by FreeRDP. Presence of this option makes the request a proof-of-possession request; absence makes it a bearer request. |
 | `--account <id>` | `token`, `logout` | Which stored account to use. Omitted on `token`: use the only account matching authority+tenant+client, or fail with exit `30` if there is more than one. |
-| `--prompt {auto,always,never}` | `login`, `token` | `auto` (default): silent if possible, call the service if not. `always`: force an interactive transaction even if a cached token would do. `never`: silent only; exit `10` rather than calling the service. `login` treats `never` as an error (exit `64`). |
+| `--prompt {auto,always,never}` | `login`, `token` | `auto` (default): silent if possible, call the portal if not. `always`: force an interactive transaction even if a cached token would do. `never`: silent only; exit `10` rather than calling the portal. `login` treats `never` as an error (exit `64`). |
 | `--json` | all | Emit a JSON object on stdout instead of the plain form. |
 | `--config <path>` | all | Alternative configuration file. Overrides `ENTRA_TOKEN_HELPER_CONFIG`. |
 | `--verbose` | all | Raise the log level on **stderr**. Never changes what stdout contains. |
@@ -86,12 +92,12 @@ For `accounts --json` the object carries an `"accounts"` array instead of `token
 |---|---|---|
 | `0` | success | The request succeeded. For `token`, stdout holds the token. |
 | `10` | interaction required | An interactive transaction would have been needed and `--prompt never` was given. The caller may retry with `--prompt auto`. Not an error condition; it is the documented way to ask "can you do this silently?" |
-| `20` | cancelled | The service responded `1`: the user closed the sign-in window, or cancelled the certificate chooser or the PIN prompt. A caller should **not** immediately retry interactively — the user just said no. |
+| `20` | cancelled | The portal responded `1`: the user closed the sign-in window, or cancelled the certificate chooser or the PIN prompt. A caller should **not** immediately retry interactively — the user just said no. |
 | `30` | no such account | No account matched, or `--account` named one that is not stored, or the account exists but has no usable refresh token (signed out, expired, revoked). The caller should run `login`. |
-| `40` | provider unavailable | The client cannot do its job in this environment: nothing implementing `io.github.sjtrotter.WebAuthentication1` to call for an interactive request, no session bus, or no Secret Service keyring. Also the mapping for a service `Response` of `2` when it means no window could be shown at all. A dispatcher should treat this as "decline" and fall through to the next provider (e.g. FreeRDP's terminal paste flow). |
+| `40` | provider unavailable | The client cannot do its job in this environment: nothing implementing `io.github.sjtrotter.portal.WebAuthentication1` to call for an interactive request — which now includes a frontend that is running but has no backend configured, since it does not export the interface at all — no session bus, or no Secret Service keyring. Also the mapping for a portal `Response` of `2` when it means no window could be shown at all. A dispatcher should treat this as "decline" and fall through to the next provider (e.g. FreeRDP's terminal paste flow). |
 | `50` | authorization server error | The authority refused: `invalid_grant`, `interaction_required` from the server, a Conditional Access claims challenge, a consent problem, `AADSTS50011`. The details are on stderr, redacted. |
 | `64` | usage | Bad arguments. (`64` is `EX_USAGE` from `sysexits.h`.) |
-| `70` | internal | An unexpected failure in the client itself — including a service `Response` of `2` for a reason other than unavailability, such as a timeout. (`70` is `EX_SOFTWARE`.) **Every verb currently returns this** with the message `not implemented (design sketch)`. |
+| `70` | internal | An unexpected failure in the client itself — including a portal `Response` of `2` for a reason other than unavailability, such as a timeout, a `backend_disappeared` or a `backend_completion_mismatch`. (`70` is `EX_SOFTWARE`.) **Every verb currently returns this** with the message `not implemented (design sketch)`. |
 
 The distinction that matters to a dispatcher is `40` (decline, try someone else) versus `20`
 (stop, the user said no) versus `50` (stop, the server said no). Collapsing these into a boolean
@@ -129,12 +135,13 @@ convention.
 - `token_kind` is `"bearer"` or `"pop"`; `"pop"` requires `req_cnf`.
 - `scopes` are **decoded**. Whether a scope arrives encoded or decoded is exactly the kind of
   ambiguity the current FreeRDP varargs convention leaves open, so it is pinned here.
-- `parent_window` is optional and advisory. It is passed straight through to the service's
-  `Start` so the sign-in window can be parented to the application that asked, and it is never
-  trusted for authorization by either layer.
+- `parent_window` is optional and advisory. It is passed straight through to the portal's `Start`
+  — and by the frontend, uninterpreted, to whichever backend parses it — so the sign-in window can
+  be parented to the application that asked, and it is never trusted for authorization by any
+  layer.
 - Fields a caller may **not** set, in any transport: token endpoint, authorization endpoint,
   redirect URI, or any URL at all. The client derives every URL from the authority and its own
-  cloud table, and it is the client — not its caller — that gives the service its `completion_uri`.
+  cloud table, and it is the client — not its caller — that gives the portal its `completion_uri`.
   See [SECURITY.md](SECURITY.md).
 
 ### Response
@@ -168,7 +175,7 @@ value, a PIN, or a raw authorization-server `error_description`.
 
 **No environment variable is required.** The client runs correctly with an empty environment apart
 from what the desktop session itself provides. It needs `DBUS_SESSION_BUS_ADDRESS` to reach the
-service and `XDG_RUNTIME_DIR` for its per-account lock; a display is the *service's* requirement,
+portal and `XDG_RUNTIME_DIR` for its per-account lock; a display is the *backend's* requirement,
 not the client's, which is why a client invoked from a headless context gets a clean `40` rather
 than a crash.
 
@@ -197,7 +204,9 @@ A change to any of the above requires `"schema": 2` and a documented migration. 
 project has acquired a single real token, the schema should be considered provisional: `1` is
 what it will be *when it works*, not a promise made about a sketch.
 
-The service interface version is separate. A caller of this CLI never sees it, and the client is
+The portal interface version is separate. A caller of this CLI never sees it, and the client is
 expected to work against anything implementing version 1 of
-[`io.github.sjtrotter.WebAuthentication1`](SERVICE-INTERFACE.md) — including, one day, a
-desktop-native implementation rather than this project's own.
+[`io.github.sjtrotter.portal.WebAuthentication1`](PUBLIC-INTERFACE.md) — including, one day, a
+desktop-native backend rather than this project's own, or the frontend having moved into
+xdg-desktop-portal entirely ([UPSTREAMING.md](UPSTREAMING.md)). The backend interface version is
+separate again and is nobody's business here.

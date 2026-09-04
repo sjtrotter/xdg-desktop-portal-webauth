@@ -30,7 +30,7 @@ License this project **GPL-2.0-or-later**. Ship the full GPLv2 text as `LICENSE`
 `SPDX-License-Identifier: GPL-2.0-or-later` headers in every source file.
 
 The Remmina-derived chooser and PIN code, when lifted, keeps its Remmina copyright attribution
-alongside the SPDX header. Note where it lands: `service/src/tls/`, the in-process certificate
+alongside the SPDX header. Note where it lands: `service/backends/gtk/src/tls/`, the in-process certificate
 adapter ([0007](0007-certificate-adapter.md)). So the licence question travels with the components
 at the repository split ([0006](0006-two-repositories.md)), the two halves need not stay on the same
 licence forever, and if the portal adapter is ever proven and the in-process one retired, this

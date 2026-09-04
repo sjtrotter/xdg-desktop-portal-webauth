@@ -5,7 +5,7 @@ the first code written has somewhere to be tested from.
 
 ## Principle: the interesting parts are testable offline
 
-Almost everything security-critical in both components is a pure function over strings: does this
+Almost everything security-critical in all three components is a pure function over strings: does this
 URI match that one, is this a valid authorization response, may this field be logged, does this JSON
 parse into that request. None of it needs a network, a card, a browser or a tenant. That is
 deliberate — the parts that *do* need those are the parts a test cannot cover, so the boundary
@@ -16,10 +16,17 @@ Anything requiring a real tenant, a real card or a real browser is a **spike**
 
 ## Fixtures
 
-### Completion matching (`service/src/completion.h`)
+### Completion matching (`service/backends/gtk/src/completion.h` **and the frontend's re-check**)
 
 The single most valuable fixture set in the project: a table of
 `(completion_uri, candidate, expected)` triples, each with a comment saying what it is testing.
+
+**This table must be run against both implementations.** One rule is enforced in two places — the
+backend, against live navigations, and the frontend, against the URI a backend returns
+([../docs/IMPL-INTERFACE.md](../docs/IMPL-INTERFACE.md)) — and two implementations of one rule can
+drift. Shared fixtures are the only thing standing between "they agree" and "they agreed when they
+were written". A fixture that passes in one and fails in the other is a release blocker, not a
+discrepancy to reconcile later.
 
 Must include, at least: the exact match; the same URI with query and fragment added (matches, since
 neither participates); explicit `:443` versus the default port; upper-case scheme and host; an
@@ -32,7 +39,29 @@ authority-sensitive position; and any URI known to parse differently between two
 Every non-match needs its own line. A matcher that is *right* on the happy path and wrong on one
 edge is worse than one that is obviously wrong, because it will be trusted.
 
-### Redaction (`service/src/redact.h`, `clients/entra/src/log/redact.h`)
+### The impl boundary (`service/frontend/src/webauthentication.h`)
+
+Cheap, offline, and entirely new work that the single-service design did not need. With a stub
+backend that returns canned replies, assert that:
+
+- an unknown option key is **dropped** and never reaches the backend, and an unknown *value* for a
+  known key is rejected before the backend is called at all;
+- `timeout` is clamped, `title` is length-limited, and `handle_token` is rejected when it is not a
+  valid object path element;
+- a malformed `start_uri` or `completion_uri` produces a D-Bus **error** and no impl call;
+- `app_id` reaching the backend is the derived one, and a caller cannot influence it — there is no
+  argument for it, so the test is that no option or argument path can set it;
+- a backend returning a *different* `completion_uri` produces `2` /
+  `backend_completion_mismatch` and the URI never reaches the application;
+- a backend that vanishes mid-call produces exactly one `Response(2, backend_disappeared)`;
+- a backend returning a malformed vardict produces `2` / `backend_protocol_error`;
+- with no backend configured, the interface is **not exported**;
+- a `Close()` from the application reaches the backend's impl Request.
+
+And on the backend side, with a stub frontend: that a `Start` from any sender other than the
+frontend is refused, and that dropping the frontend's connection destroys the window.
+
+### Redaction (`service/backends/gtk/src/redact.h`, `clients/entra/src/log/redact.h`)
 
 For each field kind, assert what `webauth_redact_field()` / `entra_redact_field()` renders. The
 loggable kinds render their value; the non-loggable kinds render kind and length and **never** any
@@ -76,12 +105,18 @@ test per field, including scope *order* (which must **not** matter, since the ke
 set) and the PoP binding (which must, since a token bound to one `kid` is useless for another). A
 missing field here means a token returned to the wrong requester.
 
-### Transaction races (`service/src/transaction.h`)
+### Transaction races (`service/backends/gtk/src/transaction.h`, `service/frontend/src/request.h`)
 
 Not a fixture set but a deterministic-scheduler test: exactly one terminal result and exactly one
 `Response`, under a committed completion racing a `Close()`, a timeout firing after a close, a
 second matching navigation after a completion, and a caller disconnect mid-flight. Each ordering
 asserted explicitly rather than by running it a thousand times and hoping.
+
+Now with a second axis, because the transaction spans two processes: a backend reply arriving after
+the frontend has already answered a timeout; a `Close()` in flight when the backend returns success;
+a backend death in the same instant as a completion. The specification did not change — a committed
+completion wins, every other late event is discarded — but the number of orderings did, and each new
+one needs its own line.
 
 ## What cannot be tested this way
 
@@ -97,5 +132,11 @@ Likewise the refresh-to-PoP question is [S1](../docs/SPIKES.md), against a real 
 ## Running
 
 There is nothing to run. When there is, tests belong in each component's own meson project —
-`service/tests/` and `clients/entra/tests/` — and not in this directory, which will be deleted at
-the repository split ([docs/decisions/0006-two-repositories.md](../docs/decisions/0006-two-repositories.md)).
+`service/frontend/tests/`, `service/backends/gtk/tests/` and `clients/entra/tests/` — and not in
+this directory, which will be deleted at the repository split
+([docs/decisions/0006-two-repositories.md](../docs/decisions/0006-two-repositories.md)).
+
+The completion fixture table is the exception that proves the rule: it is one table consumed by two
+projects, which is exactly the duplication upstream removes by putting the matcher in shared code
+([docs/UPSTREAMING.md](../docs/UPSTREAMING.md)). Until then it is copied, and a CI check that the
+two copies are byte-identical is worth more than either copy.

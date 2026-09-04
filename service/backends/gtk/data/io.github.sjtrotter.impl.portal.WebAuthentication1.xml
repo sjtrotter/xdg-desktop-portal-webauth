@@ -1,0 +1,196 @@
+<?xml version="1.0"?>
+<!--
+ Copyright (C) 2026 the webauth-portal authors
+
+ SPDX-License-Identifier: GPL-2.0-or-later
+
+ INCUBATING BACKEND (impl) INTERFACE, version 1.
+
+ THIS INTERFACE IS NOT FOR APPLICATIONS. It is the contract between the portal
+ frontend (io.github.sjtrotter.portal.Desktop) and a desktop's backend, and it
+ is the incubating stand-in for org.freedesktop.impl.portal.<Name>. An
+ application that calls it directly is bypassing every check the frontend
+ exists to perform - app id derivation, argument validation, rate limiting, the
+ binding of a result to the connection that asked - and gets, in exchange, an
+ interface with no stability promise whatsoever. docs/SECURITY.md says how that
+ is prevented and, honestly, how far that prevention goes.
+
+ The signature convention is upstream's, exactly: the frontend's public method
+
+     Start(parent_window, start_uri, completion_uri, options) -> o handle
+
+ becomes the impl method
+
+     Start(handle, app_id, parent_window, start_uri, completion_uri, options)
+         -> (response, results)
+
+ with the request object path and the DERIVED app id prepended, and the result
+ delivered as the method's own reply rather than as a signal. Compare
+ org.freedesktop.impl.portal.Account:
+
+     GetUserInformation(o handle, s app_id, s window, a{sv} options)
+         -> (u response, a{sv} results)
+
+ https://github.com/flatpak/xdg-desktop-portal/blob/main/data/org.freedesktop.impl.portal.Account.xml
+ https://flatpak.github.io/xdg-desktop-portal/docs/writing-a-new-backend.html
+
+ A backend implementing this interface exports it at the object path
+ /io/github/sjtrotter/portal/desktop on its own bus name (here
+ io.github.sjtrotter.impl.portal.desktop.gtk), and declares it in a .portal file
+ - see webauth-gtk.portal.in.
+-->
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+
+  <!--
+      io.github.sjtrotter.impl.portal.WebAuthentication1:
+      @short_description: Backend for the web authentication portal
+
+      The backend owns everything the frontend cannot own: a window, a web
+      engine, the storage partition, the security chrome, the interception of
+      the completion navigation, and the answer to a TLS client certificate
+      challenge.
+
+      It trusts nothing about the caller except what the frontend tells it. It
+      never resolves its own D-Bus peer to identify the application - its peer
+      is the frontend - and it never accepts an application-supplied identity.
+      @app_id is a fact established by the frontend and is what the chrome
+      displays.
+  -->
+  <interface name="io.github.sjtrotter.impl.portal.WebAuthentication1">
+
+    <!--
+        Start:
+        @handle: Object path for the io.github.sjtrotter.portal.Request object
+          representing this call. The backend exports its own
+          io.github.sjtrotter.impl.portal.Request object at this same path, on
+          its own bus name, so that the frontend can Close() it.
+        @app_id: App ID of the application, as DERIVED by the frontend. An empty
+          string means the frontend could not establish one; the backend must
+          then display "an unidentified application", never an empty name and
+          never anything the application supplied.
+        @parent_window: Identifier for the application window, in the
+          xdg-desktop-portal window identifier format
+          ("x11:&lt;xid&gt;", "wayland:&lt;handle&gt;"), or empty. The BACKEND
+          parses this: only the backend has a display connection, and only the
+          backend has a window to parent. An identifier it cannot use degrades
+          to an unparented window and never aborts the transaction.
+          https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html
+        @start_uri: The URI to open. Already validated by the frontend as
+          absolute https with a host; the backend validates it again, because a
+          backend must not depend on a frontend having been correct.
+        @completion_uri: The URI whose navigation ends the transaction. The
+          backend performs the exact match against every top level navigation;
+          see @response below and docs/IMPL-INTERFACE.md.
+        @options: Vardict with optional further information, already filtered by
+          the frontend: unknown keys have been dropped, unknown values for known
+          keys have already been rejected, and the timeout has been clamped.
+        @response: Numeric response
+        @results: Vardict with the results of the call
+
+        Supported keys in the @options vardict:
+
+        * ``activation_token`` (``s``)
+
+          An XDG activation token authorizing the window to take focus.
+
+        * ``session_mode`` (``s``)
+
+          "shared" or "ephemeral". A DECISION, not a request: the frontend has
+          already applied policy, and the backend obeys. A backend that cannot
+          honour "ephemeral" must fail rather than silently use the shared
+          store.
+
+        * ``timeout`` (``u``)
+
+          Seconds, already clamped to the interface ceiling. The backend runs
+          its own deadline; the frontend runs one too, and the frontend's is
+          slightly longer so that a live backend answers first and a dead one
+          still produces exactly one Response.
+
+        * ``title`` (``s``)
+
+          A caller-supplied purpose hint, length-limited by the frontend and
+          UNTRUSTED. Rendered beneath the backend's own chrome and marked as
+          application-supplied. It is never the window's trusted identity.
+
+        * ``app_id_kind`` (``s``)
+
+          How honestly @app_id may be presented: "sandboxed", "cgroup" or
+          "host". Established by the frontend from the containment framework's
+          mediation. The backend renders the difference; it never re-derives it.
+
+        The following results get returned via the @results vardict:
+
+        * ``completion_uri`` (``s``)
+
+          The matched URI, complete and undecoded, obtained from the engine
+          rather than reconstructed, including query and fragment. Present only
+          when @response is 0. The frontend re-checks it against the
+          @completion_uri it passed in before handing it to the application.
+
+        * ``reason`` (``s``)
+
+          Optional stable symbol explaining a non-zero @response: "timeout",
+          "no_display", "no_engine", "session_terminated",
+          "no_certificate_adapter", "unrelated_certificate_challenge".
+
+        @response values follow the portal convention: 0 completed, 1 the user
+        cancelled, 2 ended some other way.
+
+        THE MATCHING RULE IS ENFORCED HERE, because only here is there a
+        navigation to enforce it against. Matching is exact and on parsed URIs,
+        with no prefix mode: scheme and host case-insensitive (host IDNA
+        normalised), effective ports normalised, path exactly equal, userinfo
+        forbidden, query and fragment carrying the result and taking no part in
+        matching, and malformed input rejected rather than normalised. The
+        matched navigation is intercepted and the window destroyed BEFORE it is
+        loaded, because the completion URI carries the credential the whole flow
+        was for. Top-level navigations only: a subframe reaching the completion
+        URI is not the end of the flow.
+    -->
+    <method name="Start">
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="start_uri" direction="in"/>
+      <arg type="s" name="completion_uri" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In5" value="QVariantMap"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="u" name="response" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
+      <arg type="a{sv}" name="results" direction="out"/>
+    </method>
+
+    <!--
+        version:
+
+        The version of this backend interface that is implemented. 1.
+    -->
+    <property name="version" type="u" access="read"/>
+  </interface>
+
+  <!--
+      io.github.sjtrotter.impl.portal.Request:
+      @short_description: Backend side of a pending request
+
+      The backend exports one of these at the @handle path the frontend passed
+      in, so that a Close() from the application - forwarded by the frontend -
+      reaches the window. It carries no Response signal: the backend answers by
+      returning from Start. Exactly upstream's
+      org.freedesktop.impl.portal.Request.
+
+      Carried here only so this repository is self-contained. At acceptance this
+      node is deleted in favour of the shared interface xdg-desktop-portal
+      already ships. See docs/UPSTREAMING.md.
+  -->
+  <interface name="io.github.sjtrotter.impl.portal.Request">
+    <!--
+        Close:
+
+        Close the dialog and end the interaction. The backend then returns from
+        Start with response 1, unless it had already committed a completion, in
+        which case the completion wins and Close() is a discarded late event.
+    -->
+    <method name="Close"/>
+  </interface>
+</node>

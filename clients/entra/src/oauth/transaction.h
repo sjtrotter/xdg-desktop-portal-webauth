@@ -14,7 +14,7 @@
  *  are scrubbed when the transaction ends, not merely freed, because a freed buffer
  *  is still readable and these two are what a stolen authorization code would need.
  *
- *  Since the web view now lives in the service, the transaction no longer owns a
+ *  Since the web view now lives in the portal's backend, the transaction no longer owns a
  *  window or a reference count shared with UI callbacks. It is a plain object owned
  *  by the acquisition that created it.
  *

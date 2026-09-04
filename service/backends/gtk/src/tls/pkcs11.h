@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#ifndef WEBAUTH_TLS_PKCS11_H
-#define WEBAUTH_TLS_PKCS11_H
+#ifndef WEBAUTH_GTK_TLS_PKCS11_H
+#define WEBAUTH_GTK_TLS_PKCS11_H
 
 #include <glib.h>
 
@@ -8,7 +8,7 @@
  *  Finding the client certificates on the machine's PKCS#11 tokens.
  *
  *  Used by the in-process adapter only; the portal adapter never gets here, because the
- *  smart card service does its own enumeration.
+ *  smart card portal does its own enumeration.
  *
  *  Enumeration is bounded and cancellable, because a card reader can block for a long
  *  time and a user who has changed their mind should not wait for it. The edge cases
@@ -38,4 +38,4 @@ GPtrArray* webauth_pkcs11_enumerate(GCancellable* cancellable, guint timeout_ms,
 
 void webauth_certificate_free(WebAuthCertificate* certificate);
 
-#endif /* WEBAUTH_TLS_PKCS11_H */
+#endif /* WEBAUTH_GTK_TLS_PKCS11_H */

@@ -1,7 +1,16 @@
 # 7. Certificate handling behind an adapter: portal preferred, in-process retained until proven
 
 Date: 2026-09-03
-Status: accepted (for the sketch)
+Status: accepted (for the sketch); the adapter now lives in the BACKEND, per
+[0008](0008-build-to-the-upstream-shape.md)
+
+> **Amendment (0008).** Nothing in this decision changed, but its home did: the adapter and both
+> its implementations are now in `service/backends/gtk/src/tls/`, because the TLS handshake and the
+> window belong to the backend. Two consequences worth stating. First, the `portal` adapter calls
+> the smart card portal's **public** interface as an ordinary client — a backend never calls
+> another project's backend. Second, the identity that portal sees is now unambiguously
+> *webauth-portal-gtk*'s rather than the application's, which was true before and is merely
+> impossible to overlook now; see the delegation note in [../SECURITY.md](../SECURITY.md).
 
 ## Context
 
@@ -17,8 +26,9 @@ moment the user authorises a hardware token to authenticate on their behalf: a u
 by a different window in every application has no way to learn which window to trust. There should
 be one, and it should not belong to whichever component happened to need a certificate first.
 
-So: a separate project, the **smart card service** (working name `smartcard-portal`, interface
-`io.github.sjtrotter.Smartcard1`), owns the chooser and the PIN.
+So: a separate project, the **smart card portal** (working name `smartcard-portal`; public
+interface `io.github.sjtrotter.portal.Smartcard1` once that project's own restructuring lands,
+`io.github.sjtrotter.Smartcard1` until then), owns the chooser and the PIN.
 
 **But it cannot be a hard dependency for v0, because the mechanism that would connect it to this
 service is unproven at exactly the point that matters.**
@@ -44,7 +54,7 @@ needs a restricted facade that does not exist yet.
 ## Decision
 
 Model the certificate path as an **internal adapter interface**
-([`service/src/tls/client_cert.h`](../../service/src/tls/client_cert.h)):
+([`service/backends/gtk/src/tls/client_cert.h`](../../service/backends/gtk/src/tls/client_cert.h)):
 
 ```c
 select_and_present(challenge) → GTlsCertificate*
@@ -116,7 +126,7 @@ requested by callers that need it, discoverable by capability, and not returned 
 `org.freedesktop.portal.Camera` already uses. But note the limits: this is not yet a credible
 freedesktop API — object and operation scoping are unresolved, application identity versus a
 delegated network subprocess is unresolved, and the proposal mixes credential selection, PIN agent
-behaviour, cryptographic operations and module transport. `io.github.sjtrotter.Smartcard1` is the
+behaviour, cryptographic operations and module transport. `io.github.sjtrotter.portal.Smartcard1` is the
 right namespace for incubation, and the conversation to have is with the
 [linux-credentials](https://github.com/linux-credentials) maintainers about whether
 certificate-backed signing belongs as a credential type under their proposal — a "ClientCertificate"

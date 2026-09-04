@@ -2,20 +2,20 @@
 
 Status: design sketch. None of these have been run.
 
-Two questions decide whether this project is worth building as described — one per layer. Both are
+Two questions decide whether this project is worth building as described — one per component. Both are
 answerable in days, with code that already exists, and both must be answered **before** any
 polished work starts. A third, smaller question is worth answering early because it changes the
 packaging story.
 
 | | Layer | Question | Decides |
 |---|---|---|---|
-| **S1** | 3, the Entra client | Can a refresh token mint a PoP token for a new key, silently? | The product promise |
-| **S2** | 2, the web auth service | Can WebKit complete mutual TLS with a certificate brokered by the smart card service? | The support floor, and whether the preferred certificate path exists at all |
-| **S3** | 3, the Entra client | What happens when there is no keyring? | How much the caching design is worth |
+| **S1** | the Entra client | Can a refresh token mint a PoP token for a new key, silently? | The product promise |
+| **S2** | the portal backend | Can WebKit complete mutual TLS with a certificate brokered by the smart card portal? | The support floor, and whether the preferred certificate path exists at all |
+| **S3** | the Entra client | What happens when there is no keyring? | How much the caching design is worth |
 
-S2 is the one that decides whether *layer 2* is buildable as described, so it is the more
-fundamental of the two; S1 decides what the *client* can promise. Run them in parallel if there are
-two people; run S2 first if there is one, because a service that cannot do cards is not worth a
+S2 is the one that decides whether the *portal backend* is buildable as described, so it is the
+more fundamental of the two; S1 decides what the *client* can promise. Run them in parallel if there are
+two people; run S2 first if there is one, because a portal that cannot do cards is not worth a
 client.
 
 The rule for all of them: a spike is throwaway code that answers one question. It does not become
@@ -35,8 +35,8 @@ Nobody has verified that this works. If it does not, every connection needs a se
 transaction, and the product promise changes.
 
 **Why it matters.** It is cheap to answer and it invalidates a lot of design if it fails. There is
-no point building an authentication service to make one card prompt per connection if the answer
-is two — though note that S2's outcome is what decides whether the service exists at all, and a
+no point building an authentication portal to make one card prompt per connection if the answer
+is two — though note that S2's outcome is what decides whether the portal exists at all, and a
 failing S1 makes its persistent shared session store *more* important, not less.
 
 ### Steps
@@ -60,7 +60,7 @@ failing S1 makes its persistent shared session store *more* important, not less.
 5. Inspect the response. Confirm the returned token is a PoP token and that its `cnf` claim binds
    to the **new** key, not the one from step 1.
 6. Drive the RDS-AAD handshake with the new key and the new token, against a real session host,
-   and confirm it is accepted. A token that parses is not the same as a token the service takes.
+   and confirm it is accepted. A token that parses is not the same as a token the session host takes.
 7. Probe the edges, since they determine what the error paths must handle:
    refresh-token expiry; a revoked session; a Conditional Access claims challenge
    (`claims` parameter in the error response); an `interaction_required` response; and a
@@ -83,14 +83,14 @@ the refresh token expires**, and the cache design in [ARCHITECTURE.md](ARCHITECT
 If the authority refuses to bind a refresh-token grant to a new `req_cnf`, or the session host
 rejects the resulting token, then:
 
-- The promise becomes **one card interaction per *token*, mitigated by the service's `shared`
+- The promise becomes **one card interaction per *token*, mitigated by the backend's `shared`
   session store** — the second acquisition still opens a transaction, but the user should not have
   to re-present the card if the Entra session cookie is still valid. That mitigation becomes
   load-bearing, and its lifetime must itself be measured: how long does the Entra session cookie
   survive, and does Conditional Access shorten it?
 - Caching remains worth building (it still saves the *first* interaction on reconnect), but the
   README and [ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md) must not promise silent PoP acquisition.
-- The service's persistent shared data store moves from "nice to have" to "required", and
+- The backend's persistent shared data store moves from "nice to have" to "required", and
   `session_mode: shared` stops being a convenient default and becomes something the client
   depends on — which in turn raises the stakes on everything in
   [SECURITY.md](SECURITY.md) about shared state amplifying a malicious caller.
@@ -103,12 +103,12 @@ undocumented one is not.
 
 ---
 
-## S2 (service) — Can WebKit complete a mutual-TLS handshake with a brokered certificate?
+## S2 (backend) — Can WebKit complete a mutual-TLS handshake with a brokered certificate?
 
-**The question.** The preferred certificate path takes the chooser and the PIN out of this service
-and into the smart card service. Whether that is *possible* comes down to one unproven step:
+**The question.** The preferred certificate path takes the chooser and the PIN out of the backend
+and into the smart card portal. Whether that is *possible* comes down to one unproven step:
 
-> Can a `GTlsCertificate` built from a credential the smart card service brokered — a p11-kit
+> Can a `GTlsCertificate` built from a credential the smart card portal brokered — a p11-kit
 > endpoint obtained at run time, or an external signer — actually satisfy a WebKitGTK client
 > certificate challenge and complete a mutual-TLS handshake?
 
@@ -123,16 +123,16 @@ certificate and a private key named by PKCS#11 URIs, with the key used only late
 - **WebKit's network process may not see a module registered after it started**, and it is not
   settled which process opens the socket, or when.
 
-Until this passes, the service keeps the in-process adapter and does **not** hard-depend on the
-smart card service ([decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md)).
+Until this passes, the backend keeps the in-process adapter and does **not** hard-depend on the
+smart card portal ([decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md)).
 
-**This is a joint spike** with the smart card service's repository: that project must be able to
+**This is a joint spike** with the smart card portal's repository: that project must be able to
 produce an endpoint or signer at all before this one can consume it. Stand in for it with a
 hand-run `p11-kit server` for the first pass — worth doing regardless, because it isolates whether a
 failure is in the producing or the consuming.
 
 **Why it is the more fundamental of the two.** It is the largest uncertainty in the effort estimate
-(see [ROADMAP.md](ROADMAP.md)), it sets the support floor, and it decides whether the three-layer
+(see [ROADMAP.md](ROADMAP.md)), it sets the support floor, and it decides whether the delegated-card
 story is real or aspirational. It must also be answered long before any interface is proposed to
 anyone.
 
@@ -186,13 +186,13 @@ becomes a scheduled decision rather than an aspiration.
 
 ### Fail
 
-The service ships with the **in-process adapter** and works. That is the point of having built the
+The backend ships with the **in-process adapter** and works. That is the point of having built the
 adapter, and it is why this failure is survivable rather than fatal.
 
 Then, in order of plausibility:
 
 - **One permanently registered broker module exposing synthetic grant-bound slots.** Registered once
-  at startup, multiplexing grants behind it. This changes the smart card service's contract from
+  at startup, multiplexing grants behind it. This changes the smart card portal's contract from
   "return a new remote module" to "return a URI an already-registered module resolves" — a change to
   the other project's interface, not to this adapter's shape.
 - **A dedicated WebKit network process or environment per transaction**, so registration happens
@@ -201,15 +201,19 @@ Then, in order of plausibility:
   more attractive on security grounds anyway, and dependent on GLib exposing enough control.
 - **Integrating the broker into glib-networking/GnuTLS**, which is a much longer road.
 
-Publishing the smart card service's API should wait for one of these to work. An API claiming
+Publishing the smart card portal's API should wait for one of these to work. An API claiming
 object-scoped modules, service-owned login, broad application compatibility or connection-bound
 lifetime, published before any of it is demonstrated, is a promise that will have to be broken.
 
 If instead **interception** is what fails, that is a different problem: the browser-extension
 mechanism from the "Why not X" section stops being a rejected alternative and becomes a second
-browser session implementation behind `browser_session.h`, and neither
-[SERVICE-INTERFACE.md](SERVICE-INTERFACE.md), nor [ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md), nor the
-FreeRDP integration changes.
+**backend** — a separate process implementing
+`io.github.sjtrotter.impl.portal.WebAuthentication1`, declared in its own `.portal` file and
+selected in `portals.conf` — and neither [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), nor
+[IMPL-INTERFACE.md](IMPL-INTERFACE.md), nor [ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md), nor the
+FreeRDP integration changes. That an alternative mechanism is now a package rather than a patch is
+the clearest practical dividend of
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
 
 ---
 

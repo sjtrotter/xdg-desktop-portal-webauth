@@ -16,7 +16,7 @@
  *  "fix" it: the redirect is the commercial nativeclient URL for BOTH clouds. There
  *  is no .us variant, and asking for one is rejected with AADSTS50011.
  *
- *  This table belongs to the client and never to the service, which knows nothing
+ *  This table belongs to the client and never to the portal, which knows nothing
  *  about Entra ID. Sketch only; nothing here is implemented.
  */
 

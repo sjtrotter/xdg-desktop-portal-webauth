@@ -46,7 +46,7 @@ typedef struct
 	char* req_cnf;  /**< base64url confirmation object; its presence means PoP */
 	char* account;
 	char* prompt;        /**< auto, always, never */
-	char* parent_window; /**< advisory, passed to the web auth service, never trusted */
+	char* parent_window; /**< advisory, passed to the portal frontend, never trusted */
 } EntraRequest;
 
 typedef struct

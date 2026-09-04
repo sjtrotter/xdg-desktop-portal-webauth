@@ -54,7 +54,7 @@ gboolean entra_keyring_rotate_refresh_token(const EntraCacheKey* key, const char
 GPtrArray* entra_keyring_list_accounts(GError** error);
 
 /** Forget an account: its refresh token, its record, and any web session
- *  the authentication service still holds for it. */
+ *  the web authentication portal still holds for it. */
 gboolean entra_keyring_forget(const char* account, GError** error);
 
 #endif /* ENTRA_CACHE_KEYRING_H */

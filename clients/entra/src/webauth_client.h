@@ -5,25 +5,51 @@
 #include <glib.h>
 
 /** @file
- *  Calling io.github.sjtrotter.WebAuthentication1: the client's only interactive
+ *  Calling the web authentication portal: the client's only interactive
  *  dependency.
  *
- *  Everything interactive this client does is one Start call and one Response. It
- *  hands over a URI to open and the exact URI whose navigation ends the flow, and
- *  gets back the URI the flow ended at. The service knows nothing about OAuth, and
- *  the client owns no windows, no web view, no certificate chooser and no PIN prompt.
- *  That division is the point of the two-layer design: an RDP client should not
- *  contain a browser, and a browser should not contain an OAuth stack.
+ *      bus name      io.github.sjtrotter.portal.Desktop
+ *      object path   /io/github/sjtrotter/portal/desktop
+ *      interface     io.github.sjtrotter.portal.WebAuthentication1
+ *      method        Start(s parent_window, s start_uri, s completion_uri,
+ *                          a{sv} options) -> o request_handle
+ *      result        io.github.sjtrotter.portal.Request::Response(u, a{sv})
+ *      request path  /io/github/sjtrotter/portal/desktop/request/<sender>/<token>
  *
- *  If no service is reachable — no session bus, nothing implementing the interface,
- *  no display — this reports unavailable rather than failing, so the caller can fall
- *  through to another provider such as FreeRDP's terminal paste flow.
+ *  Everything interactive this client does is one Start call and one Response.
+ *  It hands over a URI to open and the exact URI whose navigation ends the flow,
+ *  and gets back the URI the flow ended at. The portal knows nothing about
+ *  OAuth, and this client owns no windows, no web view, no certificate chooser
+ *  and no PIN prompt.
  *
- *  The completion URI this client passes is always the one from its own cloud table.
- *  It is never taken from the client's caller. See docs/SERVICE-INTERFACE.md.
+ *  IT TALKS TO THE FRONTEND AND TO NOTHING ELSE. The portal is a frontend that
+ *  routes to a backend, exactly as xdg-desktop-portal does, and none of that is
+ *  visible here: this client never names a backend, never reads a .portal file,
+ *  never calls io.github.sjtrotter.impl.portal.* - which it could not be
+ *  permitted to do anyway - and cannot tell which backend served it. A machine
+ *  that installs a different backend changes nothing in this file. That
+ *  invisibility is the property the split exists to have, and it is why the
+ *  restructuring changed the names here and nothing else.
+ *
+ *  If no portal is reachable - no session bus, nothing owning the bus name, no
+ *  backend configured for the interface, no display - this reports unavailable
+ *  rather than failing, so the caller can fall through to another provider such
+ *  as FreeRDP's terminal paste flow. Note the middle one: a frontend that finds
+ *  no backend does not export the interface at all, so "unavailable" now covers
+ *  one more case than it did, and it is not distinguishable from the others by
+ *  design.
+ *
+ *  The completion URI this client passes is always the one from its own cloud
+ *  table. It is never taken from the client's caller. See
+ *  docs/PUBLIC-INTERFACE.md.
  *
  *  Sketch only; nothing here is implemented.
  */
+
+#define ENTRA_PORTAL_BUS_NAME "io.github.sjtrotter.portal.Desktop"
+#define ENTRA_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
+#define ENTRA_PORTAL_INTERFACE "io.github.sjtrotter.portal.WebAuthentication1"
+#define ENTRA_PORTAL_REQUEST_INTERFACE "io.github.sjtrotter.portal.Request"
 
 typedef enum
 {
@@ -33,14 +59,14 @@ typedef enum
 	ENTRA_WEBAUTH_UNAVAILABLE     /**< nothing implementing the interface to call */
 } EntraWebAuthResult;
 
-/** Whether the service can be reached, without starting a transaction. */
+/** Whether the portal can be reached, without starting a transaction. */
 gboolean entra_webauth_available(GError** error);
 
 /** Run one interactive transaction and return the completion URI. Subscribes to
- *  Response on the handle derived from a fresh handle_token BEFORE calling Start, so
- *  a fast completion cannot race the subscription. Blocks until the service responds,
- *  the timeout expires, or @cancellable fires — in which case it calls Close() and
- *  waits for the response it is still owed. */
+ *  Response on the handle derived from a fresh handle_token BEFORE calling Start,
+ *  so a fast completion cannot race the subscription. Blocks until the portal
+ *  responds, the timeout expires, or @cancellable fires - in which case it calls
+ *  Close() and waits for the response it is still owed. */
 EntraWebAuthResult entra_webauth_start(const char* parent_window, const char* activation_token,
                                        const char* start_uri, const char* completion_uri,
                                        const char* session_mode, guint timeout_seconds,

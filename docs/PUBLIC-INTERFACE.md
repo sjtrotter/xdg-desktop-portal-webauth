@@ -1,25 +1,40 @@
-# The web authentication service interface
+# The public portal interface
 
 Status: **incubating, version 1, nothing implemented.** The machine-readable description is
-[`service/data/io.github.sjtrotter.WebAuthentication1.xml`](../service/data/io.github.sjtrotter.WebAuthentication1.xml);
+[`service/frontend/data/io.github.sjtrotter.portal.WebAuthentication1.xml`](../service/frontend/data/io.github.sjtrotter.portal.WebAuthentication1.xml);
 this document explains what it means and why it is shaped this way.
 
-**On the name.** This interface lives in a project-controlled reverse-DNS namespace with a major
-version in it, as the D-Bus specification recommends. It is deliberately **not**
-`org.freedesktop.portal.*`: that namespace belongs to xdg-desktop-portal, and shipping a name from
-it would assert an ownership and an acceptance that do not exist. Becoming a freedesktop portal is
-a possible *destination*, with a long list of things to do first — see [ROADMAP.md](ROADMAP.md).
-The transaction pattern below is copied closely from `org.freedesktop.portal.Request`, because
-that pattern is right and callers already know it. Copying a pattern is not claiming a namespace.
+**This is the interface applications call, and the only one they may.** Behind it is a portal
+frontend that routes to a backend over a second, private interface; that one is
+[IMPL-INTERFACE.md](IMPL-INTERFACE.md) and is not for applications. An application sees a portal,
+not an architecture: it never names a backend, never reads a `.portal` file, and cannot tell which
+backend served it.
+
+**On the names.** Both interfaces live in a project-controlled reverse-DNS namespace with a major
+version in it, as the D-Bus specification recommends. They are deliberately **not**
+`org.freedesktop.portal.*` / `org.freedesktop.impl.portal.*`: that namespace belongs to
+xdg-desktop-portal, and shipping a name from it would assert an ownership and an acceptance that do
+not exist. What *is* copied — closely, deliberately and in full — is xdg-desktop-portal's shape:
+the `Desktop` bus name, the object path, the `Request` pattern, the frontend/backend split and the
+`.portal` discovery mechanism. Copying a shape is not claiming a namespace. Why the shape was
+adopted before acceptance is
+[decisions/0008-build-to-the-upstream-shape.md](decisions/0008-build-to-the-upstream-shape.md); the
+exact rename that acceptance would mean is [UPSTREAMING.md](UPSTREAMING.md).
 
 ```
-bus name         io.github.sjtrotter.WebAuthentication1
-object path      /io/github/sjtrotter/WebAuthentication1
-interface        io.github.sjtrotter.WebAuthentication1
-request objects  /io/github/sjtrotter/WebAuthentication1/request/<sender>/<handle_token>
+bus name         io.github.sjtrotter.portal.Desktop
+object path      /io/github/sjtrotter/portal/desktop
+interface        io.github.sjtrotter.portal.WebAuthentication1
+request objects  /io/github/sjtrotter/portal/desktop/request/<sender>/<handle_token>
+request interface io.github.sjtrotter.portal.Request
 ```
 
-## What the service is for
+The bus name is shared by every interface this incubating frontend hosts, exactly as
+`org.freedesktop.portal.Desktop` is shared by every portal xdg-desktop-portal hosts — with the
+coordination problem that creates, and its resolution, in
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
+
+## What the portal is for
 
 An application needs the user to complete a sign-in that only works in a browser. It knows the URI
 to open, and it knows what the end of the flow looks like: a navigation to a URI it recognises. It
@@ -27,19 +42,19 @@ needs that browsing to happen somewhere it can trust — somewhere that will ans
 challenge, and that will stop *before* the final URI is fetched.
 
 That is the whole job: **one interactive web authentication transaction, returning an
-uninterpreted completion artifact.** The service does not know what OAuth is. It knows just enough about smart cards to recognise a
-client-certificate challenge and hand it to an adapter — preferably one in another process
-altogether. See "Client certificates" below.
+uninterpreted completion artifact.** Neither half of the portal knows what OAuth is. The backend
+knows just enough about smart cards to recognise a client-certificate challenge and hand it to an
+adapter — preferably one in another process altogether. See "Client certificates" below.
 
 ## Interface summary
 
 ```
-io.github.sjtrotter.WebAuthentication1
+io.github.sjtrotter.portal.WebAuthentication1
 
   Start(s parent_window, s start_uri, s completion_uri, a{sv} options) → o request_handle
   property u version                                                        (1)
 
-io.github.sjtrotter.WebAuthentication1.Request
+io.github.sjtrotter.portal.Request
 
   Close()                                  cancel — there is no separate Cancel method
   Response(u response, a{sv} results)      emitted exactly once
@@ -63,7 +78,7 @@ io.github.sjtrotter.WebAuthentication1.Request
 | `activation_token` | `s` | XDG activation token authorising the window to take focus. |
 | `session_mode` | `s` | `shared` (default) or `ephemeral`. See "Sessions and storage". |
 | `timeout` | `u` | Seconds. The caller may only *shorten* the default of 300; the hard ceiling is 900. |
-| `title` | `s` | A purpose hint. Shown beneath the service's own chrome and marked as coming from the application. Never the window's trusted identity. |
+| `title` | `s` | A purpose hint. Shown beneath the portal's own chrome and marked as coming from the application. Never the window's trusted identity. |
 
 Unknown option **keys** are ignored, so an option can be added without a version bump. Unknown
 **values** for a known key are an error: silently falling back from `ephemeral` to `shared` would
@@ -82,23 +97,31 @@ Emitted exactly once per transaction, on `request_handle`.
 |---|---|---|
 | `0` | A top-level navigation matched `completion_uri`. | `completion_uri s` — the matched URI, complete and **undecoded**, including query and fragment, obtained from the engine rather than reconstructed. |
 | `1` | Cancelled: the user closed the window, cancelled in a certificate chooser or PIN prompt, or the caller called `Close()`. | optionally `reason s` |
-| `2` | Ended some other way: timeout, no engine, no display, malformed request, the browser session terminated, or a client certificate was needed and no adapter could run. | optionally `reason s` |
+| `2` | Ended some other way: timeout, no backend configured, no engine, no display, the backend terminated or misbehaved, or a client certificate was needed and no adapter could run. | optionally `reason s` |
 
 These are the portal convention's codes with the portal convention's meanings. The distinction
 between `1` and `2` matters: `1` means the user said no and an immediate automatic retry is wrong;
-`2` means the service could not do its job, and falling through to another mechanism is reasonable.
+`2` means the portal could not do its job, and falling through to another mechanism is reasonable.
 
 `completion_uri` is returned undecoded because the caller must do its own strict parsing, and any
 normalisation performed here would have to be either undone or trusted.
 
 A non-zero response may carry an optional `reason` key: a stable symbol such as `timeout`,
-`no_display`, `session_terminated` or `no_certificate_adapter`. It is a diagnostic, never a
-substitute for the response code, and consumers must tolerate its absence.
+`no_display`, `session_terminated`, `no_certificate_adapter`, or one of the split's own —
+`no_backend`, `backend_disappeared`, `backend_completion_mismatch`, `backend_protocol_error`
+([IMPL-INTERFACE.md](IMPL-INTERFACE.md)). It is a diagnostic, never a substitute for the response
+code, and consumers must tolerate its absence.
+
+A malformed *request* is not a response at all: the frontend returns a D-Bus error from `Start`,
+before any backend is woken and any window is opened.
 
 ## Completion matching
 
-This is the security-critical rule of the interface. Matching is **exact**, on **parsed** URIs, and
-there is **no prefix mode in version 1**.
+This is the security-critical rule of the interface, and this section is its single definition —
+[IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains where it is enforced (the backend, against live
+navigations; and the frontend again, against what the backend returns) and why one rule needs two
+enforcement points. Matching is **exact**, on **parsed** URIs, and there is **no prefix mode in
+version 1**.
 
 A top-level navigation completes the transaction when all of the following hold:
 
@@ -131,7 +154,7 @@ NUL, so a different host or path can pass as the expected one.
 structural matching, no wildcard schemes, and — importantly — **never dispatched externally**. The
 navigation is intercepted before any attempt at external protocol handling. Naming a scheme does
 not prove owning it: scheme ownership belongs to the identity provider's client registration and
-to the caller's own validation, and this service's contribution is to show the verified caller
+to the caller's own validation, and the portal's contribution is to show the frontend-derived caller
 identity in its chrome and bind the result to the connection that asked.
 
 **One completion URI in version 1.** Intermediate HTTP and JavaScript redirects are ordinary
@@ -155,18 +178,19 @@ honestly "web authorization **navigation**", not universal protocol-agnostic aut
 
 ## Client certificates
 
-The service satisfies a TLS client-certificate challenge through an **internal adapter** with two
+The backend satisfies a TLS client-certificate challenge through an **internal adapter** with two
 implementations. Which one ran is not visible through this interface, and callers must not depend on
 either.
 
-**`portal` — preferred where available.** Ask the smart card service (working name
-`smartcard-portal`, interface `io.github.sjtrotter.Smartcard1`, a separate project). Its
+**`portal` — preferred where available.** The backend asks the smart card portal (working name
+`smartcard-portal`, public interface `io.github.sjtrotter.portal.Smartcard1`, a separate project),
+as an ordinary client of *its* public interface — a backend never calls another backend. Its
 `AcquireCredential` returns a grant — the certificate and chain, the permitted operations and
 mechanisms, an expiry — after the user has chosen and unlocked in *its* windows. The PIN never
-reaches this service. The operation is then satisfied either by **brokered signing** (a `Sign` call
+reaches the backend. The operation is then satisfied either by **brokered signing** (a `Sign` call
 per operation, behind a GnuTLS external-signer path) or by an **experimental PKCS#11 endpoint**.
 
-**`inproc` — the fallback, and the path known to work.** Enumerate with p11-kit, show this service's
+**`inproc` — the fallback, and the path known to work.** Enumerate with p11-kit, show the backend's
 own chooser and PIN prompt, and build the certificate with `g_tls_certificate_new_from_pkcs11_uris()`
 against the **system** p11-kit configuration.
 
@@ -184,21 +208,26 @@ certificate and key URIs with the key accessed only later during use, and
 - **WebKit's network process may not see a module registered after it started** — and it is not even
   settled which process opens the socket, or when.
 
-So "call the service and build a certificate from a returned URI" is an assumption until spike
+So "call the smart card portal and build a certificate from a returned URI" is an assumption until spike
 [S2](SPIKES.md) has completed a real WebKitGTK mutual-TLS handshake that way. Until then this
-service has **no hard dependency** on the smart card service: a machine without one still signs in.
+portal has **no hard dependency** on the smart card portal: a machine without one still signs in.
 
 Stock `p11-kit server` also scopes to a *token*, not to an object, so "a module scoped to the chosen
 certificate" needs a restricted facade that does not exist yet. If dynamic registration turns out to
 be impossible, the most plausible shape is one permanently registered broker module exposing
 synthetic grant-bound slots — a change to the other project's interface, not to this one.
 
-### What this service owns either way
+### What the backend owns either way
 
 Recognising the challenge, determining and displaying the origin that raised it, refusing challenges
 from hosts unrelated to the page being shown, binding the whole thing to one cancellable
 transaction, and releasing whatever the adapter held on **every** exit path. Cancelling in either
 chooser or either PIN prompt cancels this transaction, producing response `1`.
+
+One thing the split did **not** fix and made visible: under the `portal` adapter the smart card
+portal derives *the backend's* identity, not the application's, so its consent window names
+`webauth-portal-gtk`. The original app id can only be passed as untrusted text. Attested delegation
+across one portal hop is a protocol neither project has; see [SECURITY.md](SECURITY.md).
 
 When neither adapter can run, the challenge is declined and the transaction ends with response `2`
 and reason `no_certificate_adapter`.
@@ -211,10 +240,10 @@ See [decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.m
 session_mode = shared | ephemeral        (default: shared)
 ```
 
-**`shared`** is one website data store used by all of this service's transactions. It is the
-normal desktop SSO behaviour, and it is the closest thing this service has to what
+**`shared`** is one website data store used by all of the backend's transactions. It is the
+normal desktop SSO behaviour, and it is the closest thing this portal has to what
 `ASWebAuthenticationSession` and Custom Tabs do by default. It must be described plainly, in the
-documentation and in the UI: **shared means shared among this service's own transactions. It is
+documentation and in the UI: **shared means shared among the backend's own transactions. It is
 not Firefox, not Chrome, and not the user's default browser.** It does not inherit their accounts,
 enterprise policies, extensions, device registration or browser-bound credentials.
 
@@ -225,7 +254,9 @@ race-prone. A caller may *request* ephemeral; a caller may never *defeat* a poli
 **There is no per-application persistent mode in version 1.** Per-app jars are not what the
 platform analogues do, they sacrifice cross-application SSO while keeping long-lived tracking and
 stale-session risk, and — decisively — they would have to be keyed on a caller identity that, for
-an unsandboxed host caller, cannot be established (see "Caller identity"). If experience later
+an unsandboxed host caller, cannot be established (see "Caller identity"). The frontend/backend
+split makes such a mode *more* plausible than it was, since a sandboxed app id derived by the
+frontend is authenticated metadata, but more plausible is not decided. If experience later
 shows a need, it should be called `app_persistent` and should define exactly how the partition
 identity is established.
 
@@ -237,7 +268,7 @@ Downloads and autofill are disabled rather than partitioned.
 The **PIN** is never partitioned, because it is never persisted: with the portal adapter it is
 entered in another process and never arrives here at all; with the in-process adapter it is read,
 passed to the challenge, and the buffer cleared on every exit path. A certificate choice is not
-remembered across transactions by this service under either adapter.
+remembered across transactions by the backend under either adapter.
 
 What *is* partitioned, and easy to forget, is the engine's own **client-certificate selection
 memory**: WebKit will happily remember which certificate satisfied which origin, and that memory
@@ -246,8 +277,11 @@ belongs to the storage partition like everything else.
 ## Caller identity
 
 An executable path is not an application identity. A same-UID process can execute another path,
-manipulate its launch context, or connect straight to the bus. The interface therefore
-distinguishes:
+manipulate its launch context, or connect straight to the bus. **The frontend derives it and the
+backend is told**, which is the largest single thing the split buys: the derivation happens in a
+process the application cannot talk to, and its result reaches the window that names the
+application as a fact rather than as a claim. Note that this interface has no `app_id` argument at
+all, precisely so that there is nothing for a caller to assert. The interface distinguishes:
 
 - **Sandboxed** — a Flatpak or Snap identity obtained through the containment framework's
   mediation. Authenticated metadata.
@@ -260,13 +294,13 @@ Consequences, all enforced rather than advised:
 
 - Every result is bound to the **initiating unique D-Bus connection**. If that connection goes
   away, the transaction is cancelled and nobody else receives the result.
-- The chrome displays what was verified, and says plainly when it was not.
+- The chrome displays what the frontend verified, and says plainly when it could not.
 - An unverified label is **never** the sole key for a storage partition, and an unverifiable host
   caller gets `shared` or `ephemeral` — never a partition it named.
 - First use by an unidentified host caller may warrant an explicit confirmation, particularly
   before client-certificate access.
 - Requests are rate-limited. Repeated background requests from one connection are the cheapest way
-  to turn this service into a phishing launcher.
+  to turn this portal into a phishing launcher.
 
 Same-UID is a necessary check, not a complete authorization policy. See [SECURITY.md](SECURITY.md).
 
@@ -278,18 +312,20 @@ makes one configurable has changed the interface.
 - Request handles and transaction binding; the response codes and their meanings.
 - URI parsing and matching rules, exactly as above.
 - Interception of the completion navigation **before load or submit**.
+- The frontend re-checking the returned completion URI against the requested one.
 - Caller bus disconnection cancels the transaction.
 - Exactly one terminal response per transaction; a committed completion wins over a simultaneous
   `Close()`; every other late event is discarded.
 - No TLS-error bypass; no arbitrary certificate trust exception.
-- Service-controlled security chrome, showing the real page origin and the verified or derived
-  caller identity independently of any caller-supplied text.
-- The storage partition is selected by service policy.
+- Portal-controlled security chrome, showing the real page origin and the frontend-derived caller
+  identity independently of any caller-supplied text.
+- The storage partition is selected by portal policy, in the frontend.
 - A default timeout and a hard maximum.
 - Maximum URI and response sizes.
 - No URI logging and no page-content logging, at any level.
-- Defined cleanup when the browser session crashes: one defined failure response, no leaked
-  windows, no orphaned partitions.
+- Defined cleanup when the backend crashes: one defined failure response, no leaked windows, no
+  orphaned partitions. With the split this is the frontend's obligation, and its reason symbol is
+  `backend_disappeared`.
 
 ## Cancellation and timeouts
 
@@ -316,7 +352,7 @@ no parent.
 
 `activation_token` is separate and not interchangeable. The parent makes the window transient and
 modal to the caller; the activation token authorises taking focus. An invalid or expired parent
-degrades to an unparented, service-controlled window and must never abort authentication. A
+degrades to an unparented, portal-controlled window and must never abort authentication. A
 background caller without a valid activation token does not silently steal focus.
 
 ## Accessibility
@@ -325,11 +361,11 @@ Acceptance criteria, not refinements. WebKit covers accessibility of the *web co
 neither the security chrome, nor the certificate and PIN dialogs, nor the transaction's state
 transitions — exactly the parts that carry the security decisions.
 
-- AT-SPI exposure for every service-owned control, including the in-process chooser and PIN prompt
-  where that adapter is in use. (Under the portal adapter those are the smart card service's
+- AT-SPI exposure for every portal-owned control, including the in-process chooser and PIN prompt
+  where that adapter is in use. (Under the portal adapter those are the smart card portal's
   controls and carry the same obligation on its side.)
 - Keyboard-only certificate selection and PIN entry.
-- Meaningful focus order, including across any hand-off to another service's windows.
+- Meaningful focus order, including across any hand-off to another portal's windows.
 - Screen-reader announcement of the verified requesting application and the current site.
 - Scalable text, high contrast, reduced-animation behaviour.
 - No information conveyed by colour alone.
@@ -352,7 +388,7 @@ Caller side, with the standard subscribe-before-call ordering:
 
 ```
 handle_token = unguessable_random()
-handle = "/io/github/sjtrotter/WebAuthentication1/request/<unique name>/" + handle_token
+handle = "/io/github/sjtrotter/portal/desktop/request/<unique name>/" + handle_token
 subscribe(handle, "Response", on_response)
 
 WebAuthentication1.Start(
@@ -371,10 +407,10 @@ on_response(0, { completion_uri:
 
 Note that the completion URI here is a **commercial-cloud** URL even though the sign-in ran
 against the US Government authority. That is what the Azure Virtual Desktop application
-registration says, and it is exactly the kind of protocol-specific fact this service must not know
+registration says, and it is exactly the kind of protocol-specific fact this portal must not know
 about and must not "correct".
 
 What the caller does next — check `state`, insist on exactly one of `code` or `error`, decode
 strictly, exchange the code — is in [ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md) and
 [`clients/entra/src/oauth/callback.h`](../clients/entra/src/oauth/callback.h). None of it is this
-service's business.
+portal's business.
