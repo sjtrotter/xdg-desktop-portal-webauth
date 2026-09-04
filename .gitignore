@@ -1,0 +1,32 @@
+# Meson / Ninja
+/build/
+/build-*/
+builddir/
+subprojects/*/build/
+subprojects/.wraplock
+subprojects/packagecache/
+.ninja_deps
+.ninja_log
+*.o
+*.a
+*.so
+*.so.*
+
+# Editors
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+compile_commands.json
+.cache/
+
+# Anything that could hold a real credential must never be committed. There is
+# nothing in this repository that should produce one, and that is the point:
+# if a file matching these ever appears, something is wrong, not just untidy.
+*.token
+*.jwt
+*.pem
+*.p12
+*.pfx
+*.log
