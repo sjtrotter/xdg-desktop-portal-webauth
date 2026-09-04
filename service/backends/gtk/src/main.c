@@ -5,10 +5,10 @@
  * Copyright (C) 2026 the webauth-portal authors
  *
  * This would be the D-Bus activated per-user process that owns
- * io.github.sjtrotter.impl.portal.desktop.gtk and implements
+ * io.github.sjtrotter.impl.portal.WebAuthentication.gtk and implements
  * io.github.sjtrotter.impl.portal.WebAuthentication1 on
- * /io/github/sjtrotter/portal/desktop -- the incubating stand-ins for
- * org.freedesktop.impl.portal.desktop.<backend> and
+ * /io/github/sjtrotter/portal/WebAuthentication -- this project's own
+ * incubating stand-ins for org.freedesktop.impl.portal.desktop.<backend> and
  * org.freedesktop.impl.portal.<Name>.
  *
  * It is the shape of xdg-desktop-portal-gtk: one file per portal in src/, one
@@ -37,8 +37,8 @@
 #define WEBAUTH_EXIT_INTERNAL 70
 
 #define WEBAUTH_VERSION "0.0.0"
-#define WEBAUTH_BACKEND_BUS_NAME "io.github.sjtrotter.impl.portal.desktop.gtk"
-#define WEBAUTH_BACKEND_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
+#define WEBAUTH_BACKEND_BUS_NAME "io.github.sjtrotter.impl.portal.WebAuthentication.gtk"
+#define WEBAUTH_BACKEND_OBJECT_PATH "/io/github/sjtrotter/portal/WebAuthentication"
 #define WEBAUTH_IMPL_INTERFACE "io.github.sjtrotter.impl.portal.WebAuthentication1"
 
 static void webauth_usage(FILE* out)
@@ -75,7 +75,7 @@ static void webauth_usage(FILE* out)
 	        "INSTALLED FILES\n"
 	        "  $datadir/webauth-portal/portals/webauth-gtk.portal\n"
 	        "      declares DBusName and Interfaces so the frontend can find it\n"
-	        "  $datadir/dbus-1/services/…impl.portal.desktop.gtk.service\n"
+	        "  $datadir/dbus-1/services/…impl.portal.WebAuthentication.gtk.service\n"
 	        "      D-Bus activation\n"
 	        "\n"
 	        "EXIT CODES\n"

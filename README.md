@@ -12,7 +12,7 @@ applications call, and a *backend* that owns the window.
 ```
    an application                      clients/entra/, or anything else
         │
-        │  io.github.sjtrotter.portal.Desktop
+        │  io.github.sjtrotter.portal.WebAuthentication
         │  io.github.sjtrotter.portal.WebAuthentication1        ← the ONLY interface
         ▼                                                        applications may call
    webauth-portal-frontend             service/frontend/
@@ -26,9 +26,9 @@ applications call, and a *backend* that owns the window.
         GTK4 + WebKitGTK 6.0: the window, the security chrome, the storage
         partition, the navigation interception, the TLS client certificate.
         │
-        │  io.github.sjtrotter.portal.Smartcard1  (as an ordinary client)
+        │  io.github.sjtrotter.portal.Certificate1  (as an ordinary client)
         ▼
-   the smart card portal               SEPARATE REPOSITORY, optional
+   the certificate portal              SEPARATE REPOSITORY, optional
 ```
 
 **Applications talk to the frontend and to nothing else.** They never name a backend, never read a
@@ -57,13 +57,15 @@ What the eventual rename would touch, file by file, is
 > [docs/ROADMAP.md](docs/ROADMAP.md) phase 2. Nothing has been proposed to anyone, and no maintainer
 > has been asked.
 >
-> **One bus name, two incubating projects.** `io.github.sjtrotter.portal.Desktop` is a singleton
-> stand-in for `org.freedesktop.portal.Desktop`, and the sibling `smartcard-portal` sketch — now
-> restructured into the same shape — claims it too. Only one incubating frontend can be installed at
-> a time. The resolution — one shared frontend process hosting both interfaces, exactly as the real
-> xdg-desktop-portal hosts all portals — is a concrete next step now that both sketches are built to
-> the portal shape; see
-> [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md), "The Desktop bus name".
+> **A bus name of its own.** This frontend owns **`io.github.sjtrotter.portal.WebAuthentication`**
+> at **`/io/github/sjtrotter/portal/WebAuthentication`** — this project's own incubating stand-in
+> for `org.freedesktop.portal.Desktop`, not a name shared with anyone. The sibling `smartcard-portal`
+> sketch's frontend owns its own name in the same way, `io.github.sjtrotter.portal.Certificate`, and
+> its interface is `io.github.sjtrotter.portal.Certificate1`. Both incubating frontends install and
+> run side by side; at acceptance both interfaces move onto the real
+> `org.freedesktop.portal.Desktop` and the per-project names disappear. See
+> [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names
+> during incubation".
 
 ## The missing primitive
 
@@ -85,7 +87,7 @@ This project is the middle of **three** layers: the missing primitive, and the f
 it. The bottom layer — the smart card portal — is a separate project in its own repository.
 
 ```
-  io.github.sjtrotter.portal.Smartcard1     layer 1   smartcard-portal — SEPARATE REPOSITORY
+  io.github.sjtrotter.portal.Certificate1   layer 1   smartcard-portal — SEPARATE REPOSITORY
     certificate chooser, PIN prompt, brokered signing            (optional, preferred)
         ▲
         │ D-Bus: AcquireCredential → grant   (the BACKEND calls it, as an ordinary client)
@@ -111,9 +113,10 @@ frontend/backend split is *inside* layer 2, and it is invisible from layers 1 an
 ## Layer 1 — the smart card portal (*a separate project, and not a hard dependency*)
 
 **Not in this repository.** `smartcard-portal`, public interface
-`io.github.sjtrotter.portal.Smartcard1` on the same `io.github.sjtrotter.portal.Desktop` bus name
-this repository's own frontend claims, now that its own parallel restructuring into a portal
-frontend and backend has landed. It owns the trusted certificate chooser and the PIN prompt **for
+`io.github.sjtrotter.portal.Certificate1` on its own incubating bus name,
+`io.github.sjtrotter.portal.Certificate` — a separate name from this repository's own frontend's,
+now that its own parallel restructuring into a portal frontend and backend has landed. It owns the
+trusted certificate chooser and the PIN prompt **for
 every application on the machine** — a mail client, a VPN dialog, a code-signing tool and a browser
 all need one — and returns a *grant*, held as a `Session` object: the certificate, the operations
 it permits, and either brokered `Sign`/`Decrypt` or a PKCS#11 endpoint.
@@ -141,7 +144,7 @@ and is explained in [docs/PUBLIC-INTERFACE.md](docs/PUBLIC-INTERFACE.md); the ba
 and [docs/IMPL-INTERFACE.md](docs/IMPL-INTERFACE.md).
 
 ```
-io.github.sjtrotter.portal.WebAuthentication1              on io.github.sjtrotter.portal.Desktop
+io.github.sjtrotter.portal.WebAuthentication1        on io.github.sjtrotter.portal.WebAuthentication
 
   Start(s parent_window, s start_uri, s completion_uri, a{sv} options) → o request_handle
         options: handle_token, activation_token,
@@ -505,14 +508,14 @@ Stated carefully, because none of it is adoption of this idea.
 service/frontend/           the portal FRONTEND — its own meson project.
                             The directory that MOVES INTO xdg-desktop-portal at acceptance.
   data/…portal.WebAuthentication1.xml    the incubating PUBLIC interface
-  data/…portal.Desktop.service.in        D-Bus activation, the contested bus name
+  data/…portal.WebAuthentication.service.in   D-Bus activation, this project's own bus name
   src/                                   request.h, session.h, app-info.h,
                                          portal-impl.h, webauthentication.h
 service/backends/gtk/       the reference BACKEND — its own meson project.
                             The directory that STAYS, as a desktop backend.
   data/…impl.portal.WebAuthentication1.xml   the incubating BACKEND interface
   data/webauth-gtk.portal.in                 DBusName, Interfaces, UseIn
-  data/…impl.portal.desktop.gtk.service.in   D-Bus activation
+  data/…impl.portal.WebAuthentication.gtk.service.in   D-Bus activation
   src/                                   webauthentication.h, request.h, transaction.h,
                                          webkit_session.h, chrome.h, externalwindow.h,
                                          storage.h, completion.h, redact.h

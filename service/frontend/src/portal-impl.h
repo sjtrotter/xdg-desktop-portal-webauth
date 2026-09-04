@@ -20,7 +20,7 @@
  *  A .portal file is a key file with one [portal] group:
  *
  *      [portal]
- *      DBusName=io.github.sjtrotter.impl.portal.desktop.gtk
+ *      DBusName=io.github.sjtrotter.impl.portal.WebAuthentication.gtk
  *      Interfaces=io.github.sjtrotter.impl.portal.WebAuthentication1;
  *      UseIn=gnome
  *

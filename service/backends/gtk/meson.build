@@ -97,8 +97,8 @@ service_conf = configuration_data()
 service_conf.set('libexecdir', get_option('prefix') / get_option('libexecdir'))
 
 configure_file(
-  input: 'data/io.github.sjtrotter.impl.portal.desktop.gtk.service.in',
-  output: 'io.github.sjtrotter.impl.portal.desktop.gtk.service',
+  input: 'data/io.github.sjtrotter.impl.portal.WebAuthentication.gtk.service.in',
+  output: 'io.github.sjtrotter.impl.portal.WebAuthentication.gtk.service',
   configuration: service_conf,
   install: true,
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
@@ -117,12 +117,12 @@ summary(
 
 summary(
   {
-    'bus name': 'io.github.sjtrotter.impl.portal.desktop.gtk',
-    'object path': '/io/github/sjtrotter/portal/desktop',
+    'bus name': 'io.github.sjtrotter.impl.portal.WebAuthentication.gtk',
+    'object path': '/io/github/sjtrotter/portal/WebAuthentication',
     'implements': 'io.github.sjtrotter.impl.portal.WebAuthentication1',
     'declared in': 'datadir/webauth-portal/portals/webauth-gtk.portal',
     'called by': 'the portal frontend only, never by applications',
-    'client certificates': 'adapter: portal (io.github.sjtrotter.portal.Smartcard1) or in-process',
+    'client certificates': 'adapter: portal (io.github.sjtrotter.portal.Certificate1) or in-process',
     'upstream shape': 'xdg-desktop-portal-gtk (data/gtk.portal, src/<name>.c)',
   },
   section: 'gtk backend interface',

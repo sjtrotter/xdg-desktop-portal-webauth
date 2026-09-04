@@ -22,17 +22,18 @@ adopted before acceptance is
 exact rename that acceptance would mean is [UPSTREAMING.md](UPSTREAMING.md).
 
 ```
-bus name         io.github.sjtrotter.portal.Desktop
-object path      /io/github/sjtrotter/portal/desktop
+bus name         io.github.sjtrotter.portal.WebAuthentication
+object path      /io/github/sjtrotter/portal/WebAuthentication
 interface        io.github.sjtrotter.portal.WebAuthentication1
-request objects  /io/github/sjtrotter/portal/desktop/request/<sender>/<handle_token>
+request objects  /io/github/sjtrotter/portal/WebAuthentication/request/<sender>/<handle_token>
 request interface io.github.sjtrotter.portal.Request
 ```
 
-The bus name is shared by every interface this incubating frontend hosts, exactly as
-`org.freedesktop.portal.Desktop` is shared by every portal xdg-desktop-portal hosts — with the
-coordination problem that creates, and its resolution, in
-[decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
+This is this project's own incubating bus name — not a stand-in shared with any sibling
+project — standing in for the interface's eventual home alongside every other portal on
+`org.freedesktop.portal.Desktop`. See
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names during
+incubation".
 
 ## What the portal is for
 
@@ -182,8 +183,8 @@ The backend satisfies a TLS client-certificate challenge through an **internal a
 implementations. Which one ran is not visible through this interface, and callers must not depend on
 either.
 
-**`portal` — preferred where available.** The backend asks the smart card portal (working name
-`smartcard-portal`, public interface `io.github.sjtrotter.portal.Smartcard1`, a separate project),
+**`portal` — preferred where available.** The backend asks the certificate portal (repository
+`smartcard-portal`, public interface `io.github.sjtrotter.portal.Certificate1`, a separate project),
 as an ordinary client of *its* public interface — a backend never calls another backend. Its
 `AcquireCredential` returns a grant — the certificate and chain, the permitted operations and
 mechanisms, an expiry — after the user has chosen and unlocked in *its* windows. The PIN never
@@ -388,7 +389,7 @@ Caller side, with the standard subscribe-before-call ordering:
 
 ```
 handle_token = unguessable_random()
-handle = "/io/github/sjtrotter/portal/desktop/request/<unique name>/" + handle_token
+handle = "/io/github/sjtrotter/portal/WebAuthentication/request/<unique name>/" + handle_token
 subscribe(handle, "Response", on_response)
 
 WebAuthentication1.Start(

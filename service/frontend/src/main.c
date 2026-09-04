@@ -5,11 +5,12 @@
  * Copyright (C) 2026 the webauth-portal authors
  *
  * This would be the D-Bus activated per-user process that owns
- * io.github.sjtrotter.portal.Desktop and exports
+ * io.github.sjtrotter.portal.WebAuthentication and exports
  * io.github.sjtrotter.portal.WebAuthentication1 on
- * /io/github/sjtrotter/portal/desktop -- the incubating stand-ins for
- * org.freedesktop.portal.Desktop, org.freedesktop.portal.<Name> and
- * /org/freedesktop/portal/desktop. It draws nothing: it derives the caller's app
+ * /io/github/sjtrotter/portal/WebAuthentication -- this project's own
+ * incubating bus name, standing in for the interface's eventual home on
+ * org.freedesktop.portal.Desktop at /org/freedesktop/portal/desktop once
+ * accepted. It draws nothing: it derives the caller's app
  * id, validates the arguments, finds a backend through a .portal file, forwards
  * the call over io.github.sjtrotter.impl.portal.WebAuthentication1, and turns the
  * backend's reply into exactly one Response.
@@ -40,8 +41,8 @@
 #define WEBAUTH_EXIT_INTERNAL 70
 
 #define WEBAUTH_VERSION "0.0.0"
-#define WEBAUTH_PORTAL_BUS_NAME "io.github.sjtrotter.portal.Desktop"
-#define WEBAUTH_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
+#define WEBAUTH_PORTAL_BUS_NAME "io.github.sjtrotter.portal.WebAuthentication"
+#define WEBAUTH_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/WebAuthentication"
 #define WEBAUTH_PORTAL_INTERFACE "io.github.sjtrotter.portal.WebAuthentication1"
 #define WEBAUTH_IMPL_INTERFACE "io.github.sjtrotter.impl.portal.WebAuthentication1"
 
@@ -89,9 +90,9 @@ static void webauth_usage(FILE* out)
 	        "  project-controlled names. They are not xdg-desktop-portal\n"
 	        "  interfaces and have not been proposed as any.\n"
 	        "\n"
-	        "  The bus name above is a singleton stand-in for\n"
-	        "  org.freedesktop.portal.Desktop. Only one incubating frontend can\n"
-	        "  hold it; see docs/decisions/0008-build-to-the-upstream-shape.md.\n");
+	        "  The bus name above is this project's own incubating stand-in\n"
+	        "  for org.freedesktop.portal.Desktop, not a shared one; see\n"
+	        "  docs/decisions/0008-build-to-the-upstream-shape.md.\n");
 }
 
 int main(int argc, char** argv)

@@ -50,7 +50,7 @@
 #define WEBAUTH_PORTAL_SESSION_INTERFACE "io.github.sjtrotter.portal.Session"
 
 /** The path a session handle WOULD take, given the caller's unique name and a
- *  session_handle_token: /io/github/sjtrotter/portal/desktop/session/<SENDER>/<TOKEN>.
+ *  session_handle_token: /io/github/sjtrotter/portal/WebAuthentication/session/<SENDER>/<TOKEN>.
  *  Present so that the convention is written down once, and so that the first
  *  interface here that needs a session cannot invent a different one. */
 char* webauth_session_path_for(const char* sender, const char* session_handle_token);

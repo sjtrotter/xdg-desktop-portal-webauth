@@ -44,12 +44,16 @@ xdg-desktop-portal-gtk file for file.**
 
 ```
 service/frontend/        webauth-portal-frontend   the FRONTEND
-                         owns io.github.sjtrotter.portal.Desktop
+                         owns io.github.sjtrotter.portal.WebAuthentication
                          exports io.github.sjtrotter.portal.WebAuthentication1
 service/backends/gtk/    webauth-portal-gtk        the reference BACKEND
-                         owns io.github.sjtrotter.impl.portal.desktop.gtk
+                         owns io.github.sjtrotter.impl.portal.WebAuthentication.gtk
                          implements io.github.sjtrotter.impl.portal.WebAuthentication1
 ```
+
+(The frontend's bus name below is this project's own, per "Per-project bus names during
+incubation" further down; it was originally drafted as a shared `…portal.Desktop` stand-in and has
+since been corrected here to match.)
 
 **The names stay incubating.** Nothing here ships an `org.freedesktop.*` name, and that part of the
 earlier advice is followed exactly: `io.github.sjtrotter.portal.*` and
@@ -153,74 +157,51 @@ Drawing the boundary settled two questions that the single-process design had le
   than it is worth before anyone upstream is interested, collapsing it is a decision to record
   here, not a rewrite.
 
-## The Desktop bus name
+## Per-project bus names during incubation
 
-**The problem.** `io.github.sjtrotter.portal.Desktop` is a singleton, and it is the incubating
-stand-in for `org.freedesktop.portal.Desktop`. The sibling `smartcard-portal` sketch has restructured
-in parallel into the same shape, and its frontend claims the same name. Two incubating frontends
-cannot both hold it: the second to start fails to acquire the name.
+**The old problem, and why it is gone.** `io.github.sjtrotter.portal.Desktop` used to be a shared
+singleton stand-in for `org.freedesktop.portal.Desktop`, claimed by this project's frontend and, in
+parallel, by the sibling `smartcard-portal` sketch's frontend. Two incubating frontends could not
+both hold it: the second to start would fail to acquire the name. The author has since decided that
+was the wrong shape for incubation — a shared name papers over the fact that these are two separate,
+unreviewed prototypes, not one project — and each incubating frontend now claims its **own** bus
+name and object path instead:
 
-That is not a packaging accident to be worked around. It is the architecture stating a fact: **the
-real xdg-desktop-portal hosts every portal interface in one process.** `desktop-portal/xdp-main.c`
-calls `init_account()`, `init_file_chooser()`, `init_screenshot()` and the rest against one
-`XdpContext`, all exported on one bus name at one object path. A per-project frontend is not a
-smaller version of that; it is a different, incompatible thing.
+| | Bus name | Object path | Backend impl bus |
+|---|---|---|---|
+| This project's frontend | `io.github.sjtrotter.portal.WebAuthentication` | `/io/github/sjtrotter/portal/WebAuthentication` | `io.github.sjtrotter.impl.portal.WebAuthentication.gtk` |
+| The sibling's frontend | `io.github.sjtrotter.portal.Certificate` | `/io/github/sjtrotter/portal/Certificate` | `io.github.sjtrotter.impl.portal.Certificate.gtk` |
 
-**The resolution, in three parts.**
+The sibling's interface itself was renamed alongside its bus name: `Smartcard1` is now
+`Certificate1`, for reasons that are that project's own to record (its own ADR 0009). Both
+incubating frontends install and run side by side now; there is nothing left to coordinate about
+bus names between the two projects.
 
-1. **At acceptance, the question disappears.** Both interfaces would be hosted by
-   xdg-desktop-portal itself, on `org.freedesktop.portal.Desktop`, and neither repository would
-   ship a frontend at all. This is the only end state, and it is why building a frontend now is
-   explicitly building something to be deleted.
+**At acceptance, the question disappears entirely.** Both interfaces would be hosted by
+xdg-desktop-portal itself, on the real `org.freedesktop.portal.Desktop` at
+`/org/freedesktop/portal/desktop`, and neither repository would ship a frontend at all. Acceptance
+is a rename, nothing else, for either project — the per-project incubating names above are deleted
+in the same commit that deletes the frontend directory; see [UPSTREAMING.md](../UPSTREAMING.md).
 
-2. **Before acceptance, the answer is one shared incubating frontend.** A separate
-   `incubating-portal-frontend` project — one process, one bus name, one object path,
-   `init_webauthentication()` and `init_smartcard()` side by side, each routing to its own impl
-   interface — is exactly xdg-desktop-portal's own structure and is the honest way for two
-   incubating portals to coexist on one machine. It is proposed here rather than built here, because
-   it needs agreement from both projects — but now that BOTH sketches are actually built to the
-   portal shape, rather than one of them only arguing for it, that agreement is the only thing
-   standing between "proposed" and "built": **a shared frontend is the concrete next step**, not a
-   hope contingent on a restructuring that has not happened yet.
+**What per-project names do NOT fix: the delegation gap.** This project's backend calls the
+certificate portal's **public** interface, `io.github.sjtrotter.portal.Certificate1`, as an ordinary
+client — a backend never calls another project's backend. The certificate portal derives the app id
+of *its* caller, which under that call is `webauth-portal-gtk`, not the application that started the
+original sign-in — so its consent dialog names the wrong thing, and the original app id can only be
+passed as untrusted text (the "reason" and "context" hints). This is a **process-boundary** problem,
+not a naming collision, and giving each frontend its own bus name does nothing to change it: it would
+be exactly as true if the two frontends had always had separate names.
 
-3. **For now, each repository ships its own frontend stub, and the documents say so.** This
-   repository's frontend claims the name; so would the sibling's. Only one can be installed. Both
-   `README.md` and the D-Bus service file say this in as many words, and the constraint is left
-   visible rather than papered over with a per-project bus name, because a per-project bus name
-   would quietly make the two prototypes *look* compatible while removing the one property the
-   shape exists to have.
-
-There is a second, sharper reason this matters here rather than being a packaging footnote. The
-GTK backend's preferred certificate adapter calls the smart card portal's **public** interface,
-`io.github.sjtrotter.portal.Smartcard1` — which, under the portal shape, is hosted on the same
-`…portal.Desktop` bus name this project's frontend claims. So on a machine with both, the
-certificate adapter and the web authentication portal are talking to the same process or to
-nothing. One shared frontend is not a tidiness argument; it is what makes the preferred certificate
-path reachable at all.
-
-And it would fix something else neither project can fix alone. The smart card portal derives the
-app id of *its* caller, which under the portal adapter is `webauth-portal-gtk`, not the application
-that started the sign-in — so its consent dialog names the wrong thing, and the original app id can
-only be passed as untrusted text. **A shared frontend solves the delegation gap**, but only there:
-inside one frontend, both interfaces would already hold the same derived app id — the one this
-project's own frontend derived for the web-authentication request — and it could be passed to the
-smart-card side's `AcquireCredential` **in-process**, with no attestation crossing a bus at all.
-
-That fix does not generalise past the process boundary it lives inside. **It holds only because the
-two portals then run in one trusted process**, sharing one address space and one derived identity;
-nothing untrusted touches the app id on its way from one `init_*()` call to the other. Across two
-separate frontend processes — this project's `webauth-portal-frontend` and a separately-running
-smart card frontend — passing an app id across that boundary would be an unattested assertion of
-someone else's identity, which is exactly the identity-laundering forbidden above and in
-[SECURITY.md](../SECURITY.md). Doing it that way, as a stopgap ahead of the shared frontend, is **not
-to be done**: it would not be a smaller version of the shared-frontend fix, it would be the thing the
-shared frontend exists to make unnecessary. See [SECURITY.md](../SECURITY.md) and
+It is solved only when both interfaces run inside **one trusted frontend process**, sharing one
+address space and one derived identity, so that a passed-along app id is exactly as trustworthy as
+the frontend's own derivation because nothing untrusted touched it in between. That happens
+automatically at acceptance. Before acceptance, **a shared incubating frontend hosting both
+interfaces is one option available to explore** — not a required next step, and not something either
+project is blocked on the other to build. See [SECURITY.md](../SECURITY.md) and
 `service/backends/gtk/src/tls/client_cert_portal.h`.
 
-**Status of the sibling's names.** The smart card sketch has completed the same restructuring this
-decision describes. It now ships `io.github.sjtrotter.portal.Smartcard1` on the shared
-`io.github.sjtrotter.portal.Desktop` bus name at `/io/github/sjtrotter/portal/desktop`, with its own
-frontend/backend split (`smartcard-portal-frontend` and `smartcard-portal-gtk`) mirroring this one.
-The names this repository uses for it are no longer a proposal awaiting that project's agreement —
-they are what it actually ships — and the certificate adapter no longer needs to probe a
-pre-restructuring legacy name.
+**What is not to be done.** Passing an unattested app id across the process boundary as a stopgap
+ahead of any shared-frontend work is an assertion of someone else's identity with nothing to back
+it, which is exactly the identity-laundering [SECURITY.md](../SECURITY.md) forbids. It is not a
+smaller version of a shared-frontend fix; it is the thing a shared frontend would exist to avoid
+needing, and it is not to be built.

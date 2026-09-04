@@ -8,7 +8,7 @@ frontends and other programs are expected to depend on. Layer 2, the web authent
 client calls when it needs a window, has its own contract in
 [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md); the two are independent and versioned separately.
 
-The client calls the portal's **frontend**, on `io.github.sjtrotter.portal.Desktop`, and nothing
+The client calls the portal's **frontend**, on `io.github.sjtrotter.portal.WebAuthentication`, and nothing
 else. That the portal is internally a frontend and a backend
 ([decisions/0008](decisions/0008-build-to-the-upstream-shape.md)) is invisible here: no verb, exit
 code or field below changed when the split was made, and none would change again if a machine

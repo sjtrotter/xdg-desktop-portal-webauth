@@ -16,11 +16,12 @@
  *  it.
  *
  *  Names, and their status. Both projects have now landed their frontend/backend
- *  restructuring and mirror xdg-desktop-portal, so the call goes to:
+ *  restructuring and mirror xdg-desktop-portal, and each incubating frontend now
+ *  owns its own bus name rather than a shared stand-in, so the call goes to:
  *
- *      bus name      io.github.sjtrotter.portal.Desktop
- *      object path   /io/github/sjtrotter/portal/desktop
- *      interface     io.github.sjtrotter.portal.Smartcard1
+ *      bus name      io.github.sjtrotter.portal.Certificate
+ *      object path   /io/github/sjtrotter/portal/Certificate
+ *      interface     io.github.sjtrotter.portal.Certificate1
  *      method        CreateSession(a{sv} options) -> o session_handle
  *                    AcquireCredential(o session_handle, s parent_window,
  *                                      a{sv} options) -> o request_handle
@@ -36,17 +37,16 @@
  *  login, per-operation consent - returns a `Request` the caller can `Close()`,
  *  not an ordinary method call.
  *
- *  NOTE THE BUS NAME IT IS ON. Under the portal shape the smart card interface
- *  is hosted by a FRONTEND on the shared Desktop bus name - the same singleton
- *  name this project's own frontend claims. Two incubating frontends cannot both
- *  hold it, so on a machine where both are installed the certificate adapter and
- *  the web authentication portal are talking to the same process or to nothing.
- *  That is not a bug in this file; now that BOTH projects are actually built to
- *  the portal shape rather than one of them only arguing for it, a shared
- *  incubating frontend process hosting both interfaces - exactly as
- *  xdg-desktop-portal hosts all portals - is the concrete next step, blocked
- *  only on agreement between the two projects. See
- *  docs/decisions/0008-build-to-the-upstream-shape.md, "The Desktop bus name".
+ *  NOTE THE BUS NAME IT IS ON. Under the portal shape the certificate interface
+ *  is hosted by its OWN frontend on its OWN incubating bus name,
+ *  io.github.sjtrotter.portal.Certificate - a separate name from this project's
+ *  own frontend's io.github.sjtrotter.portal.WebAuthentication. There is no
+ *  collision to work around: this adapter simply calls that bus name as an
+ *  ordinary D-Bus client, exactly as it would call any other installed portal.
+ *  At acceptance both interfaces move onto the real
+ *  org.freedesktop.portal.Desktop and this call's bus name changes with them.
+ *  See docs/decisions/0008-build-to-the-upstream-shape.md, "Per-project bus
+ *  names during incubation".
  *
  *  THE IDENTITY THIS CALL CARRIES, and the honest limitation. The smart card
  *  portal's frontend derives the app id of ITS caller, which here is
@@ -60,15 +60,18 @@
  *  Attested delegation - "this request is on behalf of an application whose id I
  *  established" - is a protocol neither project has, and it is one hop that
  *  crosses a trust boundary in the wrong direction for anything either side can
- *  fix alone. A single shared frontend hosting both interfaces SOLVES this, but
+ *  fix alone. A single frontend hosting both interfaces would SOLVE this, but
  *  only there: inside one frontend the derived app id is already in hand and can
- *  be passed to the smart-card side IN-PROCESS, with no attestation crossing a
- *  bus at all. That fix does not generalise. It works only because the two
- *  portals then run in one trusted process sharing one address space; across two
- *  separate frontend processes, passing an app id across the boundary would be
- *  an unattested assertion of someone else's identity, which is exactly what the
- *  paragraph above forbids. Doing it that way is NOT a smaller version of the
- *  shared-frontend fix - it is the thing the shared frontend exists to avoid
+ *  be passed to the certificate side IN-PROCESS, with no attestation crossing a
+ *  bus at all. A shared incubating frontend along those lines is one option
+ *  available to explore, not a required next step - the fix arrives for free at
+ *  acceptance regardless. That fix does not generalise past the process
+ *  boundary it lives inside. It works only because the two portals then run in
+ *  one trusted process sharing one address space; across two separate frontend
+ *  processes, passing an app id across the boundary would be an unattested
+ *  assertion of someone else's identity, which is exactly what the paragraph
+ *  above forbids. Doing it that way is NOT a smaller version of the
+ *  shared-frontend fix - it is the thing a shared frontend exists to avoid
  *  needing, and it is not to be built as a stopgap.
  *
  *  Two ways to use the grant, and they are not equally proven:
@@ -111,9 +114,9 @@
  *  Sketch only; nothing here is implemented.
  */
 
-#define WEBAUTH_SMARTCARD_BUS_NAME "io.github.sjtrotter.portal.Desktop"
-#define WEBAUTH_SMARTCARD_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
-#define WEBAUTH_SMARTCARD_INTERFACE "io.github.sjtrotter.portal.Smartcard1"
+#define WEBAUTH_CERTIFICATE_BUS_NAME "io.github.sjtrotter.portal.Certificate"
+#define WEBAUTH_CERTIFICATE_OBJECT_PATH "/io/github/sjtrotter/portal/Certificate"
+#define WEBAUTH_CERTIFICATE_INTERFACE "io.github.sjtrotter.portal.Certificate1"
 
 typedef enum
 {
@@ -125,7 +128,7 @@ typedef enum
 
 /** What `AcquireCredential` granted, plus whatever `OpenPkcs11Endpoint` has since added.
  *  Corresponds field-for-field to the D-Bus results documented in
- *  smartcard-portal's own interface document, not to a p11-kit forwarding handle: there
+ *  the certificate portal's own interface document, not to a p11-kit forwarding handle: there
  *  is no module path and no module socket here, because that project never hands this
  *  process either. */
 typedef struct
@@ -154,7 +157,7 @@ typedef struct
 	guint endpoint_version;     /**< wire/behaviour version of the open endpoint */
 } WebAuthPortalCredential;
 
-/** Whether the smart card portal answers on the shared Desktop bus name and advertises a
+/** Whether the certificate portal answers on its own bus name and advertises a
  *  capability we can use. Missing is not an error: the inproc adapter runs. */
 gboolean webauth_cert_portal_available(guint* capabilities, GError** error);
 

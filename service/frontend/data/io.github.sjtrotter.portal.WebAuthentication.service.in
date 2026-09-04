@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 the webauth-portal authors
+#
+# D-Bus activation for the INCUBATING portal frontend.
+#
+# The shape is xdg-desktop-portal's own service file, verbatim in structure:
+# https://github.com/flatpak/xdg-desktop-portal/blob/main/desktop-portal/org.freedesktop.portal.Desktop.service.in
+#
+#   [D-BUS Service]
+#   Name=org.freedesktop.portal.Desktop
+#   Exec=@libexecdir@/xdg-desktop-portal
+#   SystemdService=xdg-desktop-portal.service
+#
+# Name below is this project's OWN incubating bus name, not a shared stand-in:
+# each incubating frontend (this one, and the sibling smartcard-portal sketch's)
+# claims its own name so both can be installed side by side. At acceptance this
+# file is DELETED: the interface moves into xdg-desktop-portal under
+# org.freedesktop.portal.Desktop, which already ships its own copy of this file.
+# See docs/decisions/0008-build-to-the-upstream-shape.md, "Per-project bus names
+# during incubation".
+
+[D-BUS Service]
+Name=io.github.sjtrotter.portal.WebAuthentication
+Exec=@libexecdir@/webauth-portal-frontend
+SystemdService=webauth-portal-frontend.service

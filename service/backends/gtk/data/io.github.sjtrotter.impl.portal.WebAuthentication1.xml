@@ -7,7 +7,7 @@
  INCUBATING BACKEND (impl) INTERFACE, version 1.
 
  THIS INTERFACE IS NOT FOR APPLICATIONS. It is the contract between the portal
- frontend (io.github.sjtrotter.portal.Desktop) and a desktop's backend, and it
+ frontend (io.github.sjtrotter.portal.WebAuthentication) and a desktop's backend, and it
  is the incubating stand-in for org.freedesktop.impl.portal.<Name>. An
  application that calls it directly is bypassing every check the frontend
  exists to perform - app id derivation, argument validation, rate limiting, the
@@ -35,9 +35,9 @@
  https://flatpak.github.io/xdg-desktop-portal/docs/writing-a-new-backend.html
 
  A backend implementing this interface exports it at the object path
- /io/github/sjtrotter/portal/desktop on its own bus name (here
- io.github.sjtrotter.impl.portal.desktop.gtk), and declares it in a .portal file
- - see webauth-gtk.portal.in.
+ /io/github/sjtrotter/portal/WebAuthentication on its own bus name (here
+ io.github.sjtrotter.impl.portal.WebAuthentication.gtk), and declares it in a
+ .portal file - see webauth-gtk.portal.in.
 -->
 <node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
 

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 the webauth-portal authors
+#
+# D-Bus activation for the backend. Compare xdg-desktop-portal-gtk's
+# data/org.freedesktop.impl.portal.desktop.gtk.service.in, which is this file
+# with the accepted names in it.
+#
+# Every backend has its own name, and several may be installed at once - that
+# has always been true regardless of what the frontend's own bus name is doing.
+# The name below mirrors org.freedesktop.impl.portal.desktop.<backend>'s
+# per-backend convention under this project's own incubating prefix
+# (io.github.sjtrotter.impl.portal.WebAuthentication.<backend>) rather than the
+# real upstream one, which is why a second backend (a Qt one, a system-browser
+# one, a paste-only one) is a packaging decision here rather than a code change
+# anywhere.
+#
+# At acceptance this file survives almost unchanged: only the name does, becoming
+# org.freedesktop.impl.portal.desktop.<backend>. See docs/UPSTREAMING.md.
+
+[D-BUS Service]
+Name=io.github.sjtrotter.impl.portal.WebAuthentication.gtk
+Exec=@libexecdir@/webauth-portal-gtk
+SystemdService=webauth-portal-gtk.service

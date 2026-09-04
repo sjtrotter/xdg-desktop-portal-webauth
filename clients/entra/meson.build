@@ -67,7 +67,7 @@ summary(
 summary(
   {
     'portal (run time, D-Bus)': 'io.github.sjtrotter.portal.WebAuthentication1',
-    'on bus name': 'io.github.sjtrotter.portal.Desktop',
+    'on bus name': 'io.github.sjtrotter.portal.WebAuthentication',
     'backend interface used': 'none: applications never call impl interfaces',
     'implemented': false,
   },

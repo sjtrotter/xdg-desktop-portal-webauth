@@ -111,7 +111,7 @@ static void eth_usage(FILE* out)
 	        "  Design sketch. Nothing is implemented: every verb exits 70.\n"
 	        "  Interactive sign-in would go through the web authentication portal:\n"
 	        "    io.github.sjtrotter.portal.WebAuthentication1\n"
-	        "  on io.github.sjtrotter.portal.Desktop -- the frontend, never a backend.\n"
+	        "  on io.github.sjtrotter.portal.WebAuthentication -- the frontend, never a backend.\n"
 	        "  See docs/ENTRA-CLIENT-CLI.md and docs/ARCHITECTURE.md.\n");
 }
 

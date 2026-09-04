@@ -26,10 +26,10 @@ moment the user authorises a hardware token to authenticate on their behalf: a u
 by a different window in every application has no way to learn which window to trust. There should
 be one, and it should not belong to whichever component happened to need a certificate first.
 
-So: a separate project, the **smart card portal** (repository `smartcard-portal`; public interface
-`io.github.sjtrotter.portal.Smartcard1`, on the same `io.github.sjtrotter.portal.Desktop` bus name
-this project's own frontend claims, now that its restructuring has landed), owns the chooser and the
-PIN.
+So: a separate project, the **certificate portal** (repository `smartcard-portal`; public interface
+`io.github.sjtrotter.portal.Certificate1`, on its own incubating bus name
+`io.github.sjtrotter.portal.Certificate`, now that its restructuring has landed), owns the chooser
+and the PIN.
 
 **But it cannot be a hard dependency for v0, because the mechanism that would connect it to this
 service is unproven at exactly the point that matters.**
@@ -127,8 +127,8 @@ requested by callers that need it, discoverable by capability, and not returned 
 `org.freedesktop.portal.Camera` already uses. But note the limits: this is not yet a credible
 freedesktop API — object and operation scoping are unresolved, application identity versus a
 delegated network subprocess is unresolved, and the proposal mixes credential selection, PIN agent
-behaviour, cryptographic operations and module transport. `io.github.sjtrotter.portal.Smartcard1` is the
-right namespace for incubation, and the conversation to have is with the
+behaviour, cryptographic operations and module transport. `io.github.sjtrotter.portal.Certificate1` is
+the right namespace for incubation, and the conversation to have is with the
 [linux-credentials](https://github.com/linux-credentials) maintainers about whether
 certificate-backed signing belongs as a credential type under their proposal — a "ClientCertificate"
 or "CryptographicCredential" boundary is better than one named after a physical device, since the

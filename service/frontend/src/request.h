@@ -18,7 +18,7 @@
  *
  *  Path convention, copied exactly:
  *
- *    /io/github/sjtrotter/portal/desktop/request/<SENDER>/<TOKEN>
+ *    /io/github/sjtrotter/portal/WebAuthentication/request/<SENDER>/<TOKEN>
  *
  *  where <SENDER> is the caller's unique bus name with the leading ':' removed
  *  and every '.' replaced by '_', and <TOKEN> is the caller's own handle_token
@@ -48,8 +48,8 @@
  *  Sketch only; nothing here is implemented.
  */
 
-#define WEBAUTH_PORTAL_BUS_NAME "io.github.sjtrotter.portal.Desktop"
-#define WEBAUTH_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
+#define WEBAUTH_PORTAL_BUS_NAME "io.github.sjtrotter.portal.WebAuthentication"
+#define WEBAUTH_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/WebAuthentication"
 #define WEBAUTH_PORTAL_REQUEST_INTERFACE "io.github.sjtrotter.portal.Request"
 
 typedef enum

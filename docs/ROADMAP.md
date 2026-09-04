@@ -125,14 +125,15 @@ adapter is still built here — that is the whole point of retaining it. What th
 buys is not a smaller phase 0; it is that the card code is eventually written *once*, for every
 application, rather than faster for this one.
 
-**And note the coordination cost**, which has grown. The `AcquireCredential` contract, its grant
-semantics and the lifetime of anything it returns must be agreed between two sketches being written
-in parallel — and neither should be frozen until S2 has said whether the module transport works at
-all. On top of that, both projects now want the same singleton `…portal.Desktop` bus name, which
-needs an agreement of its own: see
-[decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "The Desktop bus name". A shared
-`incubating-portal-frontend` is proposed there and is not budgeted above, because it is a third
-project and neither interface is settled.
+**And note the coordination cost**, which is real even though the bus-name question is now settled.
+The `AcquireCredential` contract, its grant semantics and the lifetime of anything it returns must
+still be agreed between two sketches being written in parallel — and neither should be frozen until
+S2 has said whether the module transport works at all. Each project now claims its own incubating
+bus name, so there is nothing to negotiate there; see
+[decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names during
+incubation". A shared `incubating-portal-frontend` is discussed there as one option to explore, not
+a required next step, and is not budgeted above, because it is a third project and neither
+interface is settled.
 
 ---
 

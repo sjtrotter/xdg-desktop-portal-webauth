@@ -13,10 +13,17 @@
 
  The SHAPE, however, is xdg-desktop-portal's, deliberately and exactly:
 
-   io.github.sjtrotter.portal.WebAuthentication1   <-> org.freedesktop.portal.<Name>
-   io.github.sjtrotter.portal.Desktop (bus name)   <-> org.freedesktop.portal.Desktop
-   /io/github/sjtrotter/portal/desktop             <-> /org/freedesktop/portal/desktop
-   io.github.sjtrotter.portal.Request              <-> org.freedesktop.portal.Request
+   io.github.sjtrotter.portal.WebAuthentication1        <-> org.freedesktop.portal.<Name>
+   io.github.sjtrotter.portal.WebAuthentication (bus)    <-> org.freedesktop.portal.Desktop
+   /io/github/sjtrotter/portal/WebAuthentication         <-> /org/freedesktop/portal/desktop
+   io.github.sjtrotter.portal.Request                    <-> org.freedesktop.portal.Request
+
+ During incubation this bus name is this project's OWN, not a shared stand-in for
+ org.freedesktop.portal.Desktop: every incubating frontend, including the sibling
+ smartcard-portal sketch's, claims its own name so both install side by side. At
+ acceptance both collapse onto the real org.freedesktop.portal.Desktop. See
+ docs/decisions/0008-build-to-the-upstream-shape.md, "Per-project bus names
+ during incubation".
 
  Modelled on org.freedesktop.portal.Account and org.freedesktop.portal.FileChooser:
  https://github.com/flatpak/xdg-desktop-portal/blob/main/data/org.freedesktop.portal.Account.xml
@@ -57,8 +64,8 @@
       their protocol on top.
 
       A TLS client certificate challenge is satisfied by the backend, through an
-      adapter with two implementations: the smart card portal
-      (io.github.sjtrotter.portal.Smartcard1) where it is available and proven,
+      adapter with two implementations: the certificate portal
+      (io.github.sjtrotter.portal.Certificate1) where it is available and proven,
       and an in-process chooser and PIN prompt otherwise. Which one ran is not
       visible through this interface. When neither can run, the challenge is
       declined and the transaction ends with response 2 and reason
@@ -72,10 +79,10 @@
       into a synthetic URI is not an acceptable substitute.
 
       This interface is exported on the bus name
-      io.github.sjtrotter.portal.Desktop, at the object path
-      /io/github/sjtrotter/portal/desktop, alongside every other interface that
-      incubating frontend hosts - exactly as xdg-desktop-portal hosts every
-      portal interface on org.freedesktop.portal.Desktop.
+      io.github.sjtrotter.portal.WebAuthentication, at the object path
+      /io/github/sjtrotter/portal/WebAuthentication - this project's own
+      incubating bus name, standing in for the interface's eventual home
+      alongside every other portal interface on org.freedesktop.portal.Desktop.
 
       This documentation describes version 1 of this interface.
   -->
@@ -225,7 +232,7 @@
       pattern.
 
       Object path:
-      /io/github/sjtrotter/portal/desktop/request/&lt;SENDER&gt;/&lt;TOKEN&gt;
+      /io/github/sjtrotter/portal/WebAuthentication/request/&lt;SENDER&gt;/&lt;TOKEN&gt;
       where &lt;SENDER&gt; is the caller's unique name with the initial ":"
       removed and every "." replaced by "_", and &lt;TOKEN&gt; is the caller's
       handle_token - the convention documented at

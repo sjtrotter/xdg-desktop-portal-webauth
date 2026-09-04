@@ -51,8 +51,8 @@
  *  Sketch only; nothing here is implemented.
  */
 
-#define WEBAUTH_BACKEND_BUS_NAME "io.github.sjtrotter.impl.portal.desktop.gtk"
-#define WEBAUTH_BACKEND_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
+#define WEBAUTH_BACKEND_BUS_NAME "io.github.sjtrotter.impl.portal.WebAuthentication.gtk"
+#define WEBAUTH_BACKEND_OBJECT_PATH "/io/github/sjtrotter/portal/WebAuthentication"
 #define WEBAUTH_IMPL_INTERFACE "io.github.sjtrotter.impl.portal.WebAuthentication1"
 #define WEBAUTH_IMPL_INTERFACE_VERSION 1u
 

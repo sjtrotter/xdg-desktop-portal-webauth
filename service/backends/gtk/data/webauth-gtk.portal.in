@@ -29,6 +29,6 @@
 # at all. A desktop that disagrees says so in portals.conf, which wins.
 
 [portal]
-DBusName=io.github.sjtrotter.impl.portal.desktop.gtk
+DBusName=io.github.sjtrotter.impl.portal.WebAuthentication.gtk
 Interfaces=io.github.sjtrotter.impl.portal.WebAuthentication1;
 UseIn=gnome;KDE;X-Cinnamon;MATE;XFCE;

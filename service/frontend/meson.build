@@ -70,8 +70,8 @@ service_conf = configuration_data()
 service_conf.set('libexecdir', get_option('prefix') / get_option('libexecdir'))
 
 configure_file(
-  input: 'data/io.github.sjtrotter.portal.Desktop.service.in',
-  output: 'io.github.sjtrotter.portal.Desktop.service',
+  input: 'data/io.github.sjtrotter.portal.WebAuthentication.service.in',
+  output: 'io.github.sjtrotter.portal.WebAuthentication.service',
   configuration: service_conf,
   install: true,
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
@@ -88,8 +88,8 @@ summary(
 
 summary(
   {
-    'bus name': 'io.github.sjtrotter.portal.Desktop',
-    'object path': '/io/github/sjtrotter/portal/desktop',
+    'bus name': 'io.github.sjtrotter.portal.WebAuthentication',
+    'object path': '/io/github/sjtrotter/portal/WebAuthentication',
     'public interface': 'io.github.sjtrotter.portal.WebAuthentication1',
     'backend interface': 'io.github.sjtrotter.impl.portal.WebAuthentication1',
     'backend discovery': '$XDG_DATA_DIRS/webauth-portal/portals/*.portal',
@@ -103,7 +103,7 @@ summary(
 summary(
   {
     'implemented': false,
-    'bus name is a singleton stand-in for org.freedesktop.portal.Desktop': true,
+    'bus name is this project\'s own incubating stand-in for org.freedesktop.portal.Desktop': true,
   },
   section: 'frontend status',
   bool_yn: true,

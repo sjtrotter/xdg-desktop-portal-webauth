@@ -3,8 +3,9 @@
 Status: design sketch. Nothing described here is implemented.
 
 The web authentication service is **a portal frontend and a portal backend**, plumbed exactly as
-xdg-desktop-portal plumbs every portal it has: applications call a frontend on a shared `Desktop`
-bus name; the frontend derives who is asking, validates what it was given, finds a backend through
+xdg-desktop-portal plumbs every portal it has: applications call a frontend on this project's own
+incubating bus name (standing in for the shared `Desktop` bus name every portal uses once accepted);
+the frontend derives who is asking, validates what it was given, finds a backend through
 a `.portal` file, and forwards the call over an `impl` interface applications must never reach; the
 backend owns the window. That shape is deliberate and early, and its costs are recorded in
 [decisions/0008-build-to-the-upstream-shape.md](decisions/0008-build-to-the-upstream-shape.md).
@@ -13,7 +14,7 @@ backend owns the window. That shape is deliberate and early, and its costs are r
   FreeRDP ──GetCommonAccessToken──▶ entra-token-helper           clients/entra/
                                       │  OAuth, PKCE, cache, sovereign clouds
                                       │
-                                      │  D-Bus: io.github.sjtrotter.portal.Desktop
+                                      │  D-Bus: io.github.sjtrotter.portal.WebAuthentication
                                       ▼
                     ┌─────────────────────────────────────────┐
                     │  webauth-portal-frontend                │  service/frontend/
@@ -35,7 +36,7 @@ backend owns the window. That shape is deliberate and early, and its costs are r
                     │  certificate adapter ───┐               │
                     └─────────────────────────┼───────────────┘
                                               │
-                       portal (preferred) ────┴──▶ io.github.sjtrotter.portal.Smartcard1
+                       portal (preferred) ────┴──▶ io.github.sjtrotter.portal.Certificate1
                        inproc (fallback) ──▶ p11-kit + own chooser and PIN    SEPARATE REPO
 ```
 
@@ -62,14 +63,14 @@ against `xdg-desktop-portal/desktop-portal/account.c` and
 
 | Concern | Frontend (`service/frontend/`) | Backend (`service/backends/gtk/`) | Upstream this mirrors |
 |---|---|---|---|
-| **Owns the bus name applications call** | Yes: `io.github.sjtrotter.portal.Desktop` | No; owns `io.github.sjtrotter.impl.portal.desktop.gtk`, which applications must not call | `org.freedesktop.portal.Desktop` vs `org.freedesktop.impl.portal.desktop.gtk` |
+| **Owns the bus name applications call** | Yes: `io.github.sjtrotter.portal.WebAuthentication` | No; owns `io.github.sjtrotter.impl.portal.WebAuthentication.gtk`, which applications must not call | `org.freedesktop.portal.Desktop` vs `org.freedesktop.impl.portal.desktop.gtk` |
 | **App id derivation** | **Only here.** Flatpak/Snap mediation, cgroup label, or host (unidentified) | Never. Its D-Bus peer is the frontend, not the application; it is *told* `app_id` | `shared/xdp-app-info*.c`; `app_id` is an impl argument |
 | **Same-UID peer check** | Yes, before the request is parsed | Refuses any sender that is not its frontend | frontend-side in every portal |
 | **Argument validation** | Yes: both URIs, before anything is forwarded. A malformed request is a D-Bus error, no backend is woken | Again, independently. Its safety must not depend on a frontend having been correct | `validate_reason()` + `xdp_filter_options()` in `account.c` |
 | **Option filtering** | Yes: known keys only, unknown keys dropped, unknown values rejected, `timeout` clamped, `title` length-limited | Receives an already-filtered vardict | `XdpOptionKey` tables |
 | **Session-mode / storage policy** | Decides it, and forwards it as a decision | Obeys it. Never derives a partition from an app id | `xdp-permissions.c`, portal-side policy |
 | **Rate limiting** | Yes, per connection | No | frontend-side |
-| **Request object the app holds** | Yes: `/io/github/sjtrotter/portal/desktop/request/<sender>/<token>`, exported before the backend is called | Exports its own impl Request at the same path on its own bus name, for `Close()` only | `xdp-request.c` vs gtk's `src/request.c` |
+| **Request object the app holds** | Yes: `/io/github/sjtrotter/portal/WebAuthentication/request/<sender>/<token>`, exported before the backend is called | Exports its own impl Request at the same path on its own bus name, for `Close()` only | `xdp-request.c` vs gtk's `src/request.c` |
 | **Exactly one `Response`** | Yes; also owes one when the backend dies | Answers once, by returning from the method | frontend emits, backend returns |
 | **`parent_window` parsing** | No; forwards the string opaquely | Yes: `x11:`/`wayland:` and `xdg_foreign`, because only it has a display | gtk's `src/externalwindow.c` |
 | **The window, the web engine, the chrome** | Never. No toolkit dependency, ever | Yes, all of it | gtk's dialogs |
@@ -383,15 +384,15 @@ not, and the second should be a click rather than a card.
 
 ```
 application (entra-token-helper, or anything else)
-    │ io.github.sjtrotter.portal.Desktop
+    │ io.github.sjtrotter.portal.WebAuthentication
     ▼
 webauth-portal-frontend      D-Bus activated, no display, no toolkit
-    │ io.github.sjtrotter.impl.portal.desktop.gtk
+    │ io.github.sjtrotter.impl.portal.WebAuthentication.gtk
     ▼
 webauth-portal-gtk           D-Bus activated, GTK4 + WebKitGTK
-    │ io.github.sjtrotter.portal.Smartcard1   (as a client, preferred adapter)
+    │ io.github.sjtrotter.portal.Certificate1   (as a client, preferred adapter)
     ▼
-smart card portal            separate repository, optional
+certificate portal           separate repository (smartcard-portal), optional
 ```
 
 The frontend is deliberately the boring process: it can be restarted, it holds no window, and it

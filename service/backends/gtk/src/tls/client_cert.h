@@ -18,8 +18,8 @@
  *  tiny: a challenge goes in, a GTlsCertificate comes out, and the rest of the
  *  web view does not know or care which implementation produced it.
  *
- *    portal  - ask the smart card portal (public interface
- *              io.github.sjtrotter.portal.Smartcard1) to select a credential and
+ *    portal  - ask the certificate portal (public interface
+ *              io.github.sjtrotter.portal.Certificate1) to select a credential and
  *              either broker the signing operation or hand back a PKCS#11
  *              endpoint. PREFERRED when available, because the chooser and the
  *              PIN then belong to one trusted service shared by every

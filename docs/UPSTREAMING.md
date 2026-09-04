@@ -39,13 +39,13 @@ no longer exist. Verified against the tree on 2026-09-03.
 |---|---|---|
 | `io.github.sjtrotter.portal.WebAuthentication1` | `org.freedesktop.portal.WebAuthentication` | Public interface. Upstream drops the trailing major version from the interface name and carries it in the `version` property instead, as `org.freedesktop.portal.Account` does. |
 | `io.github.sjtrotter.impl.portal.WebAuthentication1` | `org.freedesktop.impl.portal.WebAuthentication` | Backend interface. Same. |
-| `io.github.sjtrotter.portal.Desktop` (bus name) | `org.freedesktop.portal.Desktop` | Not ours to claim, and not ours to keep: at acceptance the frontend *is* xdg-desktop-portal, which already owns this name. |
-| `/io/github/sjtrotter/portal/desktop` | `/org/freedesktop/portal/desktop` | Both the frontend's and every backend's object path. |
+| `io.github.sjtrotter.portal.WebAuthentication` (bus name) | `org.freedesktop.portal.Desktop` | This project's own incubating bus name, not a shared stand-in — see [decisions/0008](decisions/0008-build-to-the-upstream-shape.md), "Per-project bus names during incubation". At acceptance the frontend *is* xdg-desktop-portal, which already owns the real name. |
+| `/io/github/sjtrotter/portal/WebAuthentication` | `/org/freedesktop/portal/desktop` | Both the frontend's and every backend's object path. |
 | `io.github.sjtrotter.portal.Request` | `org.freedesktop.portal.Request` | Shared. Our XML node is **deleted**; upstream's existing interface is used unchanged. |
 | `io.github.sjtrotter.impl.portal.Request` | `org.freedesktop.impl.portal.Request` | Same. |
 | `io.github.sjtrotter.portal.Session` | `org.freedesktop.portal.Session` | Documented but unused: version 1 creates no Session. |
-| `io.github.sjtrotter.impl.portal.desktop.gtk` | `org.freedesktop.impl.portal.desktop.<backend>` | The backend bus name. Uncontested either way — every backend has its own. |
-| `io.github.sjtrotter.portal.Smartcard1` | `org.freedesktop.portal.<TBD>` | **The other project's** name, and not this project's to map. Its own documents argue the eventual home may be a credential type under `credentialsd`'s proposed interface rather than a device-named portal. |
+| `io.github.sjtrotter.impl.portal.WebAuthentication.gtk` | `org.freedesktop.impl.portal.desktop.<backend>` | The backend bus name. Uncontested either way — every backend has its own. |
+| `io.github.sjtrotter.portal.Certificate1` | `org.freedesktop.portal.<TBD>` | **The sibling project's** name, and not this project's to map. Its own documents argue the eventual home may be a credential type under `credentialsd`'s proposed interface rather than a device-named portal. |
 
 ## File mapping
 
@@ -58,7 +58,7 @@ no longer exist. Verified against the tree on 2026-09-03.
 | `service/frontend/src/session.h` | — | **Deleted.** Upstream has `desktop-portal/xdp-session.c`. |
 | `service/frontend/src/app-info.h` | — | **Deleted.** Upstream has `shared/xdp-app-info*.c`. |
 | `service/frontend/src/portal-impl.h` | — | **Deleted.** Upstream has `desktop-portal/xdp-portal-config.c`. |
-| `service/frontend/data/…portal.Desktop.service.in` | — | **Deleted.** Upstream ships it. |
+| `service/frontend/data/…portal.WebAuthentication.service.in` | — | **Deleted.** Upstream ships it. |
 | `service/frontend/src/main.c`, `service/frontend/meson.build` | — | **Deleted.** Upstream has `xdp-main.c`; the new portal is one entry in `desktop-portal/meson.build` and one `init_webauthentication()` call. |
 | `service/backends/gtk/**` | `xdg-desktop-portal-gtk/src/webauthentication.c` — or stays as its own backend project | **Stays.** Either it is contributed to xdg-desktop-portal-gtk as one more file in `src/`, or it remains a standalone backend like `xdg-desktop-portal-gnome`. That is a conversation with a desktop, not a precondition. |
 | `service/backends/gtk/data/webauth-gtk.portal.in` | `data/<backend>.portal.in`, installed to `$datadir/xdg-desktop-portal/portals` | Directory and interface name change; the file's three keys do not. |

@@ -8,13 +8,13 @@
  *  Calling the web authentication portal: the client's only interactive
  *  dependency.
  *
- *      bus name      io.github.sjtrotter.portal.Desktop
- *      object path   /io/github/sjtrotter/portal/desktop
+ *      bus name      io.github.sjtrotter.portal.WebAuthentication
+ *      object path   /io/github/sjtrotter/portal/WebAuthentication
  *      interface     io.github.sjtrotter.portal.WebAuthentication1
  *      method        Start(s parent_window, s start_uri, s completion_uri,
  *                          a{sv} options) -> o request_handle
  *      result        io.github.sjtrotter.portal.Request::Response(u, a{sv})
- *      request path  /io/github/sjtrotter/portal/desktop/request/<sender>/<token>
+ *      request path  /io/github/sjtrotter/portal/WebAuthentication/request/<sender>/<token>
  *
  *  Everything interactive this client does is one Start call and one Response.
  *  It hands over a URI to open and the exact URI whose navigation ends the flow,
@@ -46,8 +46,8 @@
  *  Sketch only; nothing here is implemented.
  */
 
-#define ENTRA_PORTAL_BUS_NAME "io.github.sjtrotter.portal.Desktop"
-#define ENTRA_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/desktop"
+#define ENTRA_PORTAL_BUS_NAME "io.github.sjtrotter.portal.WebAuthentication"
+#define ENTRA_PORTAL_OBJECT_PATH "/io/github/sjtrotter/portal/WebAuthentication"
 #define ENTRA_PORTAL_INTERFACE "io.github.sjtrotter.portal.WebAuthentication1"
 #define ENTRA_PORTAL_REQUEST_INTERFACE "io.github.sjtrotter.portal.Request"
 

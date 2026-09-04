@@ -14,8 +14,8 @@ stop there.
 > prevented, and how far the prevention goes, is in [SECURITY.md](SECURITY.md).
 
 ```
-bus name       io.github.sjtrotter.impl.portal.desktop.gtk   (this backend)
-object path    /io/github/sjtrotter/portal/desktop           (same path as the frontend's)
+bus name       io.github.sjtrotter.impl.portal.WebAuthentication.gtk   (this backend)
+object path    /io/github/sjtrotter/portal/WebAuthentication           (same path as the frontend's)
 interface      io.github.sjtrotter.impl.portal.WebAuthentication1
 request objects the frontend's handle path, exported on the BACKEND's bus name
 declared in    $datadir/webauth-portal/portals/webauth-gtk.portal
@@ -160,13 +160,13 @@ wrong call, the fix is a `GetCapabilities`-style addition argued upstream rather
 The interface exists so this is possible; the steps are upstream's, unchanged:
 
 1. Implement `io.github.sjtrotter.impl.portal.WebAuthentication1` in a D-Bus-activatable executable
-   that owns `io.github.sjtrotter.impl.portal.desktop.<name>` and exports the interface at
-   `/io/github/sjtrotter/portal/desktop`.
+   that owns `io.github.sjtrotter.impl.portal.WebAuthentication.<name>` and exports the interface at
+   `/io/github/sjtrotter/portal/WebAuthentication`.
 2. Install `<name>.portal` into `$datadir/webauth-portal/portals/`:
 
    ```
    [portal]
-   DBusName=io.github.sjtrotter.impl.portal.desktop.<name>
+   DBusName=io.github.sjtrotter.impl.portal.WebAuthentication.<name>
    Interfaces=io.github.sjtrotter.impl.portal.WebAuthentication1;
    UseIn=<desktop>
    ```
