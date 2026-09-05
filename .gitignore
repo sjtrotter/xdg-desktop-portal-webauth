@@ -30,3 +30,4 @@ compile_commands.json
 *.p12
 *.pfx
 *.log
+.xdp-env
