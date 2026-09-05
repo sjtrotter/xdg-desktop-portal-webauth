@@ -1,7 +1,9 @@
 # Security model
 
-Status: design sketch. This document states the rules the implementation must satisfy. None of them
-are enforced yet, because there is no implementation.
+Status: the backend is implemented; the Entra client is still a sketch. This document states the
+rules the implementation must satisfy, and — in the table under "What is enforced today" — which of
+them the code in `backend/` actually enforces, which are the frontend's, and which are still only
+written down. A rule with no implementation is marked as such rather than left to be assumed.
 
 There are four boundaries. **Two are in this repository.**
 
@@ -51,6 +53,40 @@ because the RDP client never held anything that durable.
 Two processes, one contract. Where a rule belongs to one of them specifically, it says so; the
 enforcement table is in [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
 
+## What is enforced today
+
+Line by line, for `backend/` as it stands. "Frontend" means xdg-desktop-portal on the branch, not
+this repository. What the end-to-end runs actually demonstrated is [TESTING.md](TESTING.md).
+
+| Control | Where | State |
+|---|---|---|
+| Only the owner of `org.freedesktop.portal.Desktop` may call the impl interface, re-resolved from the bus on every accept | `src/webauthentication-impl.c` | **Implemented** |
+| The same check on `Request.Close()` | `src/request-impl.c` | **Implemented** |
+| `start_uri` re-validated: absolute, https, host, no userinfo, no control characters, no backslash, bounded length | `src/completion.c` | **Implemented** |
+| `completion_uri` re-validated: absolute, host, no userinfo | `src/completion.c` | **Implemented** |
+| Exact completion matching on parsed URIs, ports normalised, query and fragment ignored | `src/completion.c`, unit-tested against the frontend's fixtures | **Implemented** |
+| The matched navigation is **ignored, never loaded** | `src/webkit-session.c` | **Implemented**, and checked end to end from the server's access log |
+| Subframe navigations do not end the flow | — | **Not enforceable on WebKitGTK 6.0**: no frame identity on a navigation policy decision. A match in any frame is blocked from loading and does end the flow. See [IMPL-INTERFACE.md](IMPL-INTERFACE.md) |
+| `session_mode` obeyed as a decision; an unknown value is an error | `src/storage.c` | **Implemented** |
+| `ephemeral` uses an ephemeral network session from creation | `src/webkit-session.c` | **Implemented** |
+| An unidentified caller is narrowed to `ephemeral` | `src/storage.c` | **Implemented** |
+| The persistent store is per application, 0700, and is not named by the caller | `src/storage.c` | **Implemented** |
+| The deadline, starting when the window opens | `src/transaction.c` | **Implemented** |
+| Exactly one terminal result; late events discarded | `src/transaction.c` | **Implemented** |
+| The window is destroyed on every exit path, and the adapter released | `src/transaction.c`, `src/webkit-session.c` | **Implemented** |
+| The frontend vanishing cancels every transaction | `src/webauthentication-impl.c` | **Implemented** |
+| TLS errors fail closed, with no bypass reachable from the bus | `src/webkit-session.c` | **Implemented** |
+| Downloads, popups, JavaScript-opened windows and every permission request refused | `src/webkit-session.c` | **Implemented** |
+| Certificate challenges from a host unrelated to the page are declined | `src/webkit-session.c` | **Implemented** |
+| The PIN is never in argv and a `pin-value` URI is refused | `src/tls/client_cert.c` | **Implemented** |
+| Structural redaction: no entry point can log a URI, a query, a certificate URI or a PIN | `src/redact.c`, unit-tested | **Implemented** |
+| `PR_SET_DUMPABLE(0)` and `RLIMIT_CORE 0` | `src/main.c` | **Implemented** for this process. `execve` resets dumpable, so WebKit's network and web processes are **not** covered |
+| Chrome states the frontend-established caller, its honesty level, and the engine's origin | `src/chrome.c` | **Implemented**. Never reviewed by a designer, and never seen by a user who had to make a decision from it |
+| App id derivation, option filtering, the returned-URI re-check, exactly one `Response` | Frontend | **Implemented there** |
+| Rate limiting | Frontend | **Not implemented anywhere** |
+| The `portal` certificate provider | `src/tls/client_cert_portal.c` | **Written, and reports itself unavailable**: the module it needs does not exist |
+| Accessibility: AT-SPI labels, keyboard operation, focus return | `src/chrome.c` | **Partly**: labels and Escape are there; nothing has been tested with a screen reader |
+
 ## What is being protected
 
 Naming the assets first, because "it just shows a web page" understates every one of them:
@@ -58,9 +94,11 @@ Naming the assets first, because "it just shows a web page" understates every on
 - **Persistent authenticated web sessions.** The shared store holds live sign-in sessions for
   whatever has been signed into through this portal.
 - **The ability to induce smart-card operations.** A flow here can end with a hardware token
-  authenticating. It cannot happen silently — a chooser and a PIN prompt stand in the way, whichever
-  adapter shows them — but the ability to *provoke* that prompt, naming an origin of the caller's
-  choosing, is a capability and not a rendering feature.
+  authenticating. Under the `portal` provider a chooser and a PIN prompt stand in the way, in the
+  Certificate portal's own windows; under `pkcs11` the operator named a token on this backend's
+  command line and the only interaction is the card's own. Either way the ability to *provoke* that
+  operation, naming an origin of the caller's choosing, is a capability and not a rendering
+  feature.
 - **The engine's remembered client-certificate selections**, which live in the storage partition.
 - **The user's trust in portal-controlled UI.** If the chrome can be made to lie, everything above
   it is worthless.
@@ -190,8 +228,12 @@ Each rule with the reason. The full definition is in [PUBLIC-INTERFACE.md](PUBLI
 - **Custom schemes are matched structurally and never dispatched externally.** Naming a scheme does
   not prove owning it; the navigation is intercepted before any attempt at external protocol
   handling, and scheme ownership stays a matter for client registration and caller-side validation.
-- **Top-level navigations only.** A subframe navigating to the completion URI is not the end of the
-  flow, and treating it as one would let embedded content end the transaction.
+- **Top-level navigations only** — *and this backend cannot currently tell.* A subframe navigating
+  to the completion URI should not be the end of the flow, because treating it as one would let
+  embedded content end the transaction with a URI it chose. WebKitGTK 6.0 exposes no frame identity
+  on a navigation policy decision, so the backend blocks the navigation in **any** frame (the URI is
+  never fetched) and completes on it. The compensating controls are the frontend's re-check and the
+  application's own `state`. Recorded as a known gap in [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
 - **Complete before load.** The matched navigation completes the transaction and destroys the window
   *before it is loaded*. The completion URI routinely carries the credential the flow was for;
   letting the engine fetch it sends that credential to a remote server with no part in the exchange.
@@ -230,24 +272,37 @@ entire phishing attack in one string.
   session the user already established. OAuth `state` protects transaction correlation; it does
   nothing for the user's understanding of *which native application* asked. The mitigation is the
   chrome, not the protocol.
-- Stores live under `$XDG_CACHE_HOME`, mode `0700`, and are treated as sensitive: a session cookie
-  is a credential.
+- Stores live under `$XDG_DATA_HOME/xdg-desktop-portal-webauth/<app id>/`, mode `0700`, with the
+  cookie jar at `data/cookies.sqlite` and the HTTP cache under `cache/`. They are treated as
+  sensitive: a session cookie is a credential. The `<app id>` component is sanitised to
+  `[A-Za-z0-9._-]` with leading dots stripped, so no caller-derived string can escape the directory
+  or hide inside it.
 
 ## Client certificates
 
-The backend satisfies a client-certificate challenge through an adapter with two implementations,
-and the security position differs between them. Both are documented because both will exist for a
-while; see [decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md).
+The backend satisfies a client-certificate challenge through an adapter with two providers,
+`portal` and `pkcs11`, and the security position differs between them. See
+[decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md), which the S2 result
+substantially amended.
 
-### Under the `portal` adapter — preferred, and currently unusable
+**There is no in-process chooser and no in-process PIN prompt, and there is not going to be one.**
+This process never enumerates tokens, never draws a certificate chooser, and never asks a user for a
+PIN. A chooser and a PIN prompt inside a web browser process is the design the Certificate portal
+exists to replace; building one here would make this backend a second place where card handling
+lives, and the two would drift. What this process does is name a certificate by URI and let GnuTLS
+resolve it.
 
-**Read this first: what it can no longer do.** The Certificate interface on the frontend branch has
-**no `OpenPkcs11Endpoint`** — an fd-returning method needs its own review, so it was deferred as a
-follow-up. Brokered `Sign` is the only way to use a grant, and using brokered `Sign` from a WebKit
-handshake needs a GnuTLS external-signer path in WebKitGTK/glib-networking that is not known to
-exist. Until one does, this adapter cannot complete a handshake and the `inproc` adapter is not a
-fallback but the only implementation. Everything below describes the security position this adapter
-*would* have, and is why it is still worth finishing.
+### Under the `portal` provider — preferred, and not usable yet
+
+**What changed.** Spike [S2](SPIKES.md) established that WebKit carries a certificate to its network
+process **as a PKCS#11 URI** and asks for the token PIN itself; there is no external-signer seam a
+brokered `Sign` could be plugged into, and no `GTlsInteraction` on a `WebKitNetworkSession`. So this
+provider is not "call `Sign` for every operation": it names a token that the Certificate portal's own
+client-side PKCS#11 module presents, and the module is what calls that portal.
+[`backend/src/tls/portal-token.h`](../backend/src/tls/portal-token.h) is the agreement — the token's
+label, manufacturer and model, and the requirement that it declare
+`CKF_PROTECTED_AUTHENTICATION_PATH`. **That module does not exist yet**, so the provider reports
+itself unavailable and `auto` falls through to `pkcs11`.
 
 **Read this second: the delegation gap, and what has changed about it.** Over D-Bus the backend
 calls the Certificate portal as an ordinary client of *its public interface*, so the portal derives
@@ -275,15 +330,14 @@ of the in-process fix — it is the thing the in-process fix exists to avoid nee
   expiry. Brokered signing gives precise accounting, revocation and per-operation consent — though
   note honestly that no generic `Sign()` can prove its input came from a TLS handshake, so what it
   buys is accounting rather than attestation.
-- **The module-endpoint variant does not exist.** `OpenPkcs11Endpoint` is on neither the public nor
-  the impl Certificate interface. The reasons it was deferred are the reasons it was always risky:
-  stock `p11-kit server` forwards a whole *token*, not a scoped object, and carries no login state
-  across the boundary, so it would have had to be a broker-controlled synthetic facade; and even
-  then, a PKCS#11 URI cannot name a socket and `g_tls_certificate_new_from_pkcs11_uris()` has no
-  module parameter, so whether this process could make a returned fd and URI pair resolvable to
-  GLib at all — as opposed to merely receiving them — is unproven ([S2](SPIKES.md)). The likely
-  resolution, if it is ever built, is one permanently registered broker module exposing synthetic
-  grant-bound slots, not a module handed over per grant.
+- **A forwarded module is still not the mechanism.** `OpenPkcs11Endpoint` is on neither Certificate
+  interface, and the reasons it was deferred are the reasons it was always risky: stock `p11-kit
+  server` forwards a whole *token* rather than a scoped object, carries no login state across the
+  boundary, and a PKCS#11 URI cannot name a socket. What S2 found instead is that a **permanently
+  registered** module — installed by the certificate portal, configured in p11-kit like any other,
+  present before WebKit starts — needs none of that. It is the "one permanently registered broker
+  module exposing synthetic grant-bound slots" that was the fallback plan, arrived at as the primary
+  one.
 - **Whatever the adapter held is released on every exit path** — completion, failure, timeout,
   cancellation. A finished transaction must not leave a live grant or endpoint behind. This is the
   one card-related discipline that is entirely the backend's responsibility either way, and the
@@ -297,43 +351,49 @@ of the in-process fix — it is the thing the in-process fix exists to avoid nee
   "honestly" currently includes "and this is a claim we cannot attest". Note that the only field
   available for it is `reason`: there is no `context` option on the interface.
 
-### Under the `inproc` adapter — currently the only one that can work
+### Under the `pkcs11` provider — the one that works today
 
-Everything the portal adapter would move out of this process is inside it, and the rules are the
-ones the proven implementation already follows. These are not fallback rules any more; until the
-external-signer path exists, they are the rules:
+A token named by `--client-cert-uri` on this backend's command line: the operator's decision, made
+once, outside any request. It is what the end-to-end tests use against SoftHSM, and what an operator
+with a card and no certificate portal uses.
 
-- **The chooser names the requesting application, the target origin, the certificate identity and
-  the purpose — before any PIN is asked for.** A chooser that does not say who wants the certificate
-  is teaching the user to click through.
-- **The PIN is never stored.** Never in the DOM, never in the engine's credential storage, never
-  across the bus, buffer cleared on completion, failure, timeout and cancellation alike. Never
-  logged, not even redacted: a redacted PIN still says one was entered and how long it was.
-- **A challenge is answered once, plus at most one retry the TLS stack itself initiated.**
-  Automatically re-answering is how a card gets locked, and burning a user's last PIN attempt is not
-  a bug this portal is allowed to have. Retry exhaustion is reported in plain language.
-- **The PKCS#11 login is ended where practical**, with no pretence that a card, middleware daemon or
-  token firmware can be made to forget authentication on demand — several cache it internally.
+- **No chooser.** The certificate is the one the URI names. A backend that offered a choice would be
+  drawing the window the Certificate portal exists to own.
+- **No PIN prompt, and the PIN is never on a command line.** Where a token needs one, it is read
+  from the file named by `--client-cert-pin-file`, held only until the transaction ends, and then
+  overwritten. `/proc/*/cmdline` is world-readable, which is why a `pin-value` inside
+  `--client-cert-uri` is **refused** rather than accepted with a warning.
+- **The PIN is answered to WebKit, not to the DOM.** It goes to
+  `webkit_credential_new_for_certificate_pin()` in reply to the engine's own
+  `CLIENT_CERTIFICATE_PIN_REQUESTED`; it never enters a page, a form or the engine's credential
+  storage, and it is never logged, not even redacted.
+- **Retries are not this process's to make.** It answers the challenges the engine raises; it does
+  not retry a rejected PIN, because automatically re-answering is how a card gets locked.
+- **This provider does not attempt a PKCS#11 logout**, because it never logged in: the module and
+  GnuTLS own the session. What that means for a real card — several cache authentication internally —
+  is unchanged and is the card's behaviour, not this backend's.
 
 ### Under either
 
 - **Challenges are refused when they come from an unrelated host.** Only the verified host the engine
   has loaded, and its `certauth.` subdomain where the flow requires it, may cause a certificate
   request. A page able to provoke a request naming an arbitrary origin would be phishing through a
-  trusted window — and through *someone else's* trusted window under the portal adapter, which is
+  trusted window — and through *someone else's* trusted window under the `portal` provider, which is
   worse. `unrelated_certificate_challenge` is one of the `reason` symbols the impl XML names for
   exactly this.
-- **Cancelling anywhere cancels the transaction**, producing response `1`. Neither adapter falls back
-  to "continue without a certificate".
+- **A declined challenge is never a silent downgrade.** Neither provider falls back to "continue
+  without a certificate" and then reports success: the handshake fails, and the reason recorded is
+  the one that describes why the certificate was not supplied.
 - **Nothing about a certificate is logged**: not the PKCS#11 URI, not the label, not the serial, not
   the subject. Only counts.
-- **When neither adapter can run**, the challenge is declined and the transaction ends `2` with
-  reason `no_certificate_adapter` — also one of the XML's symbols.
+- **When no provider can run**, the challenge is declined; if the server required one, the load then
+  fails and the transaction ends `2` with reason `no_certificate_adapter` — one of the XML's symbols.
+  A flow that did not actually need a certificate is not failed by a challenge it ignored.
 - **The residual risk delegation does not remove:** the backend can still provoke a certificate
   prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting in the
   frontend and honest caller display in the backend stand between that and a nuisance — and the
-  rate limiting is not implemented, so at present only the honest display does. Under the portal
-  adapter, that project's own consent policy is the backstop.
+  rate limiting is not implemented, so at present only the honest display does. Under the `portal`
+  provider, that project's own consent policy is the backstop.
 
 ## Transactions
 
@@ -350,9 +410,11 @@ obligations are new:
   have, and it would be a window with security chrome and no request behind it. Note that "the
   frontend" is now xdg-desktop-portal, whose restart is a more ordinary event than a bespoke
   service's death — which is a reason to get this right rather than to assume it away.
-- **The deadline exists twice.** The backend's is authoritative and slightly shorter, so a live
-  backend answers first with a clean `timeout`; the frontend's is the backstop for one that has
-  stopped answering. Neither may be the only one.
+- **The deadline exists once, and it is the backend's.** This was written as "the deadline exists
+  twice"; reading the branch shows it does not. The frontend forwards a clamped `timeout` and then
+  awaits the impl call with a D-Bus timeout of `G_MAXINT`, so a backend that never answers is a
+  request that never ends. `src/transaction.c` is the only clock, and it starts when the window
+  opens. A backstop in the frontend would be a real improvement and belongs upstream.
 
 - Exactly one terminal result and exactly one `Response` per transaction. A second matching
   navigation, a window closed after a match, a timeout expiring after a close — all ignored.
@@ -369,29 +431,34 @@ obligations are new:
 
 **Never logged, at any level:** `start_uri`, `completion_uri`, any query string, any page content,
 any cookie, any `Authorization` header, any PKCS#11 URI, certificate label, serial or subject, and
-any PIN.
+any PIN. A URI may be logged in exactly one shape — scheme, host, port and the **length** of the
+path (`WEBAUTH_FIELD_URI_SHAPE`) — and no field kind renders a query at all.
 
 **Structural, not textual, redaction.** The logging interface takes typed fields and the kind
 decides what may be printed. There is deliberately no `log_uri()` a later edit can point at a
 completion, and no caller-supplied format string. A field whose kind is not loggable renders as its
 kind and its length — `<uri:212>` — never its value.
 
-**What a DEBUG log may contain:** outcome symbols (`MATCHED`, `UNRELATED`, `CANCELLED`, `TIMEOUT`);
+**What a DEBUG log may contain:** outcome symbols (`matched`, `unrelated`, `cancelled`, `timeout`);
 the host, scheme and port of a certificate challenge and whether it was accepted; which certificate
-adapter ran; the resolved caller identity and its honesty level; counts (tokens found, certificates
-found, chosen index); stable reason codes for every rejection and cancellation, so a user can report *why* without
+provider ran; the resolved caller identity and its honesty level; counts; stable reason codes for every rejection and cancellation, so a user can report *why* without
 reporting *what*; phase timings; and loader or TLS error text **cut before any embedded URI**.
 
 ## Accessibility as a security property
 
 Listed here as well as in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) because it belongs in both:
 the chrome carries a security decision, and a user who cannot perceive it cannot make that decision.
-AT-SPI exposure for every backend-owned control including the in-process chooser and PIN prompt,
-keyboard-only certificate selection and PIN entry, meaningful focus order including across any
+AT-SPI exposure for every backend-owned control, meaningful focus order including across any
 hand-off to another portal's windows, screen-reader announcement of the verified caller and the
 current origin, no meaning conveyed by colour alone, accessible error and cancellation states, and
-focus restored to the calling application on close. Under the portal adapter the chooser and PIN
-prompt carry the same obligation on that project's side.
+focus restored to the calling application on close. There is no chooser and no PIN prompt here any
+more; under the `portal` provider those windows are the Certificate portal's and carry the same
+obligation on that project's side.
+
+**What is actually done:** the window and its controls carry accessible labels and descriptions, the
+lock indicator is a label as well as an icon, and Escape cancels. **Nothing has been tested with a
+screen reader**, and the headless smoke test runs with `GTK_A11Y=none`, so this row of the table
+above says "partly" rather than "implemented".
 
 ---
 
@@ -465,7 +532,7 @@ chooses the `completion_uri` it hands to the portal.
 | **PoP token** | As above, additionally keyed by the `req_cnf` binding. | A PoP token bound to one `kid` is useless for another; a cache key ignoring the binding would return a token the caller cannot use. |
 | **Authorization code** | In memory for the seconds between the completion and the token request. Scrubbed. | Exchangeable for a refresh token by anyone holding it plus the public client id. PKCE is what stops that, and PKCE is not a reason to be careless with the code. |
 | **PKCE verifier, `state`** | In memory for the transaction. Scrubbed. | The verifier binds the code to this process; `state` binds the response to this request. |
-| **PIN** | Never seen by the Entra client. Under the portal backend's `portal` adapter, never seen there either; under `inproc` — currently the only adapter that can work — held in that backend only long enough to answer the challenge and then scrubbed. | A component having no path to a secret is better than a component being careful with one — which is the strongest argument for finishing the portal path, and the clearest cost of `OpenPkcs11Endpoint` having been deferred. |
+| **PIN** | Never seen by the Entra client. Under the portal backend's `portal` provider, never seen there either — the token declares a protected authentication path and the Certificate portal prompts. Under `pkcs11`, read from a file the operator named, held only until the transaction ends, then overwritten; never in argv, never in a URI, never logged. | A component having no path to a secret is better than a component being careful with one, which is the argument for finishing the `portal` provider. |
 | **Private key on the card** | Never leaves the card. | That is the point of the card. |
 | **PoP key** | Never seen by the client. FreeRDP generates and retains it; the client receives only `req_cnf`. | The client cannot leak what it never has. |
 | **Account records** (account id, authority, tenant, client id) | Keyring, beside the refresh token. | Not secret in the same sense, but they name a person and a tenant. |

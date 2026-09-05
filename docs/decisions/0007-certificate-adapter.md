@@ -1,9 +1,49 @@
 # 7. Certificate handling behind an adapter: portal preferred, in-process retained until proven
 
 Date: 2026-09-03
-Status: accepted (for the sketch); the adapter lives in the BACKEND, per
-[0008](0008-build-to-the-upstream-shape.md), and calls a different interface since
+Status: accepted, and **substantially amended on 2026-09-04 by the S2 result**: the adapter has two
+providers, `portal` and `pkcs11`, and there is no `inproc` provider at all. The adapter lives in the
+BACKEND per [0008](0008-build-to-the-upstream-shape.md) and calls a different interface since
 [0010](0010-backend-only-frontend-lives-upstream.md)
+
+> **Amendment (S2 result, 2026-09-04). The mechanism is settled, and it is not the one this
+> decision assumed.**
+>
+> Spike [S2](../SPIKES.md) ran. A `GTlsCertificate` whose private key is a **PKCS#11 URI**
+> satisfies a WebKitGTK 2.52 client-certificate challenge and completes a mutual-TLS handshake
+> against a server that requires one; the key stayed on the token (`CKA_SENSITIVE`), so the
+> signature was made through the module inside WebKit's **network process**, addressed by URI.
+> WebKit ships the URI, not key material — `libwebkitgtk-6.0.so` carries the
+> `private-key-pkcs11-uri` property name — and asks for the token PIN itself through a second
+> `authenticate` signal with `CLIENT_CERTIFICATE_PIN_REQUESTED`. There is no
+> `webkit_network_session_set_tls_interaction()`: the `GTlsInteraction` route this decision assumed
+> does not exist.
+>
+> **So brokered `Sign` is not the seam, and a PKCS#11 module is.** Three consequences:
+>
+> 1. **The `portal` provider becomes module-based.** It resolves a URI naming a token the
+>    certificate portal's own client-side PKCS#11 module presents. The card, the chooser, the
+>    consent and the PIN all stay in that service; what crosses into this process is a URI. The
+>    agreement is [`backend/src/tls/portal-token.h`](../../backend/src/tls/portal-token.h), and it is
+>    a contract with another repository: the token's label, manufacturer and model, its
+>    `CKF_PROTECTED_AUTHENTICATION_PATH`, and the name of its p11-kit module file. That module does
+>    not exist yet, so the provider reports itself unavailable and `auto` falls through.
+> 2. **There is no `inproc` provider.** The second implementation is `pkcs11`: any p11-kit token,
+>    named by `--client-cert-uri`, with the PIN read from a file the operator named. It has **no
+>    chooser and no PIN prompt**, because a chooser and a PIN prompt inside a web browser process is
+>    the design the certificate portal exists to replace, and building one here would make this
+>    backend a second place where card handling lives. The sketch headers for one
+>    (`tls/chooser.h`, `tls/pin.h`, `tls/pkcs11.h`, `tls/client_cert_inproc.h`) are deleted rather
+>    than left as an intention. Everything in "What it costs" below about two certificate UIs is
+>    therefore obsolete: there is one, and it is not in this repository.
+> 3. **The delegation gap is unchanged and now has a mechanism to be solved through.** What this
+>    backend can prove to the certificate portal is still nothing about the requesting application;
+>    the module sees this process, and the portal sees the module's client. Never cross-process
+>    attestation.
+>
+> What S2 did **not** answer stays open: dynamic module registration after the network process
+> starts, concurrency, card removal mid-handshake, and the version matrix. See
+> [SPIKES.md](../SPIKES.md).
 
 > **Amendment (0010).** The adapter's *shape* is unchanged and the decision below still holds. What
 > changed is what it calls, and what that call can do.
@@ -93,7 +133,9 @@ Model the certificate path as an **internal adapter interface**
 select_and_present(challenge) → GTlsCertificate*
 ```
 
-with two implementations, chosen at run time:
+with two implementations, chosen at run time. **Read the S2 amendment above first: the second one
+is `pkcs11`, not `inproc`, and the first is a module rather than a brokered `Sign`.** What follows
+is the decision as it stood before the spike, kept because the reasoning that survived it is here:
 
 - **`portal`** — call the Certificate portal: `CreateSession` (a Request, whose Response carries
   the session handle) and then `AcquireCredential` (not "RequestCertificate": it grants private-key

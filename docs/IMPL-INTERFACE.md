@@ -1,7 +1,9 @@
 # The backend (impl) interface
 
-Status: **experimental, version 1, nothing implemented.** This document explains what the interface
-means, and — more importantly — **which side of the boundary each rule is enforced on and why**.
+Status: **experimental, version 1, implemented.** The backend in `backend/` answers `Start`, opens
+the window, intercepts the completion navigation and answers a client-certificate challenge; what it
+has been run against is [TESTING.md](TESTING.md). This document explains what the interface means,
+and — more importantly — **which side of the boundary each rule is enforced on and why**.
 
 The public half is [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), which is itself a pointer to the
 branch. Applications should read that one and stop there.
@@ -113,7 +115,7 @@ This is the table that matters, and it is the thing an upstream discussion would
 | **Completion matching against live navigations** | No | **Enforces** | Only the backend has navigations. This is the interception, and it must stop the load. |
 | **Completion re-check of the returned URI** | **Enforces** | No | The application trusts the frontend's bus name, not whichever backend a distribution installed. |
 | Intercept *before load* | No | **Enforces** | The completion URI carries the credential; fetching it would send that credential to a server with no part in the exchange. |
-| Top-level navigations only | No | **Enforces** | Frame knowledge is engine knowledge. |
+| Top-level navigations only | No | **Partly** — see the deviations below | Frame knowledge is engine knowledge, and WebKitGTK 6.0 does not expose it on a navigation policy decision. |
 | TLS client certificates, PIN, card | Never sees them | **Enforces** every rule in [SECURITY.md](SECURITY.md) | The handshake is the backend's. |
 | `parent_window` parsing | No, forwards opaquely | **Enforces** | Only the backend has a display connection and a window. |
 | Exactly one `Response` | **Enforces** | Returns once | See above. |
@@ -139,16 +141,71 @@ backend delivering an attacker-chosen URI — carrying, in the AVD case, an auth
 application that asked for a different one. The frontend is where "you get what you asked for" can
 be promised, so that is where it is promised.
 
-**The cost, stated plainly:** one rule has two implementations, and they can drift. The mitigation
-is the shared fixture table in [../tests/README.md](../tests/README.md), which both must pass. One
-of the two is now written and tested — `web-authentication.c:completion_uri_matches()`, covered by
-`test_completion_mismatch_rejected` and its negative control — and the other, this repository's
-[`../backend/src/completion.h`](../backend/src/completion.h), is not written at all. Read the
-implemented one before writing this one.
+**The cost, stated plainly:** one rule has two implementations, and they can drift. Both are now
+written and both are tested: `web-authentication.c:completion_uri_matches()` by
+`test_completion_mismatch_rejected` and its negative control, and this repository's
+[`../backend/src/completion.c`](../backend/src/completion.c) by
+[`../backend/tests/test-completion.c`](../backend/tests/test-completion.c), whose table carries the
+frontend's own cases marked `FRONTEND`. The mitigation for drift is that table, not good intentions.
+
+One shared behaviour worth writing down because neither implementation asked for it: **GLib
+normalises an unreserved percent escape even under `G_URI_FLAGS_ENCODED`**, so
+`https://example.com/call%62ack` and `https://example.com/callback` are the same path to both
+sides. They agree because they are the same library, not because either decodes on purpose.
 
 **And a third check that is not this one at all:** the application's own validation of the URI as a
 *protocol* response — OAuth `state`, exactly one `code` — using a secret nothing in the portal ever
 sees. None of the three substitutes for another.
+
+## Where this backend deviates from the XML, and what it adds
+
+The XML is the contract and this backend does not get to change it. Three places where the
+implementation is nevertheless not a literal reading of it, each recorded here rather than in a
+comment nobody reads:
+
+**1. The reason vocabulary is extended.** The XML names `timeout`, `no_display`, `no_engine`,
+`session_terminated`, `no_certificate_adapter` and `unrelated_certificate_challenge`, introduced
+with "for instance" — an open list. This backend emits all six and six more, defined in
+[`../backend/src/transaction.h`](../backend/src/transaction.h):
+
+| Symbol | When |
+|---|---|
+| `user_cancelled` | The Cancel button, Escape, or the window manager's close. Response `1`. |
+| `request_closed` | `Close()` arrived from the frontend. Response `1`. |
+| `tls_error` | The server's certificate did not verify. There is no bypass. Response `2`. |
+| `load_failed` | The engine could not load the page and no better reason applies. Response `2`. |
+| `invalid_request` | The backend's own re-validation of the arguments failed. Response `2`. |
+| `no_storage` | The website data store the mode requires could not be created. Response `2`. |
+
+A frontend must tolerate a reason it does not know, which the branch's frontend does: it forwards
+the string unchanged. If any of these earn their place, they belong in the XML.
+
+**2. A malformed call is answered, not refused.** The XML does not say what a backend does when the
+frontend forwards something the backend's own validation rejects — which should never happen, since
+the frontend validates first. This backend answers `(2, {"reason": "invalid_request"})` rather than
+returning a D-Bus error, because a D-Bus error out of `Start` reaches the application as
+`backend_disappeared`, which is a false statement about what happened.
+
+**3. Subframe navigations cannot be told apart, and are therefore blocked rather than honoured.**
+The public XML says "Subframe navigations do not end the flow". WebKitGTK 6.0's
+`WebKitNavigationPolicyDecision` exposes **no frame identity** — there is no `frame_info`, no
+`is_main_frame`, and `WebKitFrame` lives in the web-process extension API, not here. So the backend
+cannot distinguish a top-level navigation from a subframe one at the moment it must decide.
+
+What it does instead: a navigation matching the completion URI is **always ignored**, in any frame,
+so the URI is never fetched by anything; and the transaction completes on it. The residual risk is
+that a page which can create a frame pointing at the completion URI could end the flow with a URI it
+chose — an authorization-code injection. The compensating controls are the frontend's re-check,
+which forces the URI to be the one the application asked for, and the application's own `state`
+check, which is the one that actually detects an injected code. This is a **known gap against the
+XML's wording**, and closing it needs either a WebKit API addition or a web-process extension; it is
+in [ROADMAP.md](ROADMAP.md).
+
+**And one thing the interface documentation implies that is not true of the branch:** the frontend
+has **no deadline of its own**. It forwards a clamped `timeout` and then awaits the impl call with a
+D-Bus timeout of `G_MAXINT` (`web-authentication.c`), so a backend that never answers is a request
+that never ends. The deadline in [`../backend/src/transaction.c`](../backend/src/transaction.c) is
+the only one there is, and it starts when the window opens rather than when `Start` arrives.
 
 ## Failure modes the split introduced
 
