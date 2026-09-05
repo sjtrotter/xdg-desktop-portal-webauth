@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright (C) 2026 the xdg-desktop-portal-webauth authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 #
 # D-Bus activation for this backend. Compare xdg-desktop-portal-gtk's
 # data/org.freedesktop.impl.portal.desktop.gtk.service.in and

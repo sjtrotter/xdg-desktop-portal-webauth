@@ -1,9 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
  *
  * xdg-desktop-portal-webauth - an out-of-tree xdg-desktop-portal BACKEND:
  * a window, a web engine, a card.
- *
- * SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
  *
  * The D-Bus activated per-user process that owns
  * org.freedesktop.impl.portal.desktop.webauth and implements

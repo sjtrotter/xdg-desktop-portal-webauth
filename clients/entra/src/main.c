@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
  *
  * entra-token-helper - Entra ID / AVD token client; a portal CONSUMER.
- *
- * Copyright (C) 2026 the entra-token-helper authors
  *
  * This file is the command line front end described in docs/ENTRA-CLIENT-CLI.md. It
  * parses the four verbs and their options, validates them, and would hand a request

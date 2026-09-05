@@ -39,7 +39,8 @@ useful contribution is still an argument rather than a patch; for the backend, s
   question — object paths, option filtering, `.portal` files, who gets told the `app_id` — copy the
   answer and cite it. Where this project must differ, say why in the file that differs. The measure
   of success is that [docs/UPSTREAMING.md](docs/UPSTREAMING.md) stays short.
-- **Every source file carries `SPDX-License-Identifier: GPL-2.0-or-later`.** See
+- **Every source, test, tool and meson file carries `SPDX-License-Identifier: LGPL-2.1-or-later`
+  and `SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>`.** See
   [docs/decisions/0004-license.md](docs/decisions/0004-license.md).
 - **Documents state reasons, not just decisions.** Every rule in
   [docs/SECURITY.md](docs/SECURITY.md) has the attack it prevents written next to it, and that is

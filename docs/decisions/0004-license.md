@@ -1,7 +1,64 @@
-# 4. GPL-2.0-or-later
+# 4. LGPL-2.1-or-later
+
+Date: 2026-09-04
+Status: accepted, supersedes the GPL-2.0-or-later decision below
+
+## Decision
+
+License this repository **LGPL-2.1-or-later**. Ship the LGPL-2.1 text as `LICENSE`, add a
+REUSE-style `LICENSES/LGPL-2.1-or-later.txt`, and carry `SPDX-License-Identifier:
+LGPL-2.1-or-later` plus `SPDX-FileCopyrightText: 2026 Stephen J. Trotter
+<stephen.j.trotter@gmail.com>` in every source, test, tool and meson file.
+
+## Why
+
+**No Remmina code was ever copied.** The decision below chose GPL-2.0-or-later in anticipation of
+lifting roughly 900 lines of certificate chooser and PIN-prompt code out of Remmina's RDP plugin
+into `backend/src/tls/`. That lift never happened, and it now never will: there is no chooser and
+no PIN prompt in this repository at all. [0007](0007-certificate-adapter.md) put both in the
+certificate portal, and `backend/src/tls/` is two providers that build a `GTlsCertificate` from a
+PKCS#11 URI and nothing else — a hundred lines with no card handling in them. The reason the
+original decision gave no longer has a component to apply to.
+
+**It matches the code's actual destination.** `xdg-desktop-portal`,
+`xdg-desktop-portal-gtk` and `xdg-desktop-portal-gnome` are all LGPL-2.1-or-later, and so is the
+frontend branch this backend is written against. This repository already carries files derived
+from those projects under that licence — `backend/src/request-impl.c`,
+`backend/src/external-window.c`, `backend/src/completion.c`'s rule, the two verbatim XML copies —
+and [UPSTREAMING.md](../UPSTREAMING.md) describes this backend's own eventual path alongside them.
+Matching their licence removes the relicensing step the superseded decision below called out as a
+cost.
+
+**No constraint on D-Bus consumers.** This was already true under GPL-2.0-or-later — consumers
+talk to this service over D-Bus, never by linking — and LGPL-2.1-or-later keeps it true while
+removing any ambiguity about whether the *implementation* could later be linked into another
+project's process.
+
+**The sibling made the same choice, for the same reasons.**
+`xdg-desktop-portal-certificate` relicensed from GPL-2.0-or-later to LGPL-2.1-or-later on
+2026-09-04 (its `docs/decisions/0004-license.md`). The two repositories share a header —
+`backend/src/tls/portal-token.h` and that project's `src/module/portal-token.h` — which had to
+carry two different licence lines while the licences differed, and which is now byte-identical.
+[0006](0006-two-repositories.md) said the two halves need not stay on the same licence forever;
+they did not have to, and they chose to.
+
+**Apache-2.0 was not revisited.** The superseded decision's alternative was Apache-2.0 *with a
+clean-room rewrite of the chooser*, and it was rejected because of what the rewrite would cost.
+There is no chooser here to rewrite any more, so that trade no longer exists in the form it was
+argued in; what LGPL-2.1-or-later buys over Apache-2.0 is matching the projects this code is
+written to join, which is the property that is actually wanted.
+
+## Superseded
+
+The decision below, dated 2026-09-03, is retained as the record of the original reasoning. It no
+longer reflects this repository's licence.
+
+---
+
+# 4. GPL-2.0-or-later (superseded)
 
 Date: 2026-09-03
-Status: accepted (for the sketch)
+Status: superseded by the decision above, 2026-09-04
 
 ## Context
 

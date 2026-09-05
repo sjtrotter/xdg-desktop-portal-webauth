@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
+ */
 #ifndef ENTRA_CACHE_KEYRING_H
 #define ENTRA_CACHE_KEYRING_H
 

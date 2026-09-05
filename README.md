@@ -1,5 +1,7 @@
 # xdg-desktop-portal-webauth, and the Entra token client
 
+Author: Stephen J. Trotter (sjtrotter)
+
 **Status: the portal backend works against a fixture; the Entra client is still a sketch.** The
 backend opens a real WebKitGTK window, intercepts the completion navigation before it loads, and
 answers a TLS client-certificate challenge with a certificate whose private key stays on a PKCS#11
@@ -601,12 +603,20 @@ repository, and layer 2 runs without it.
 
 ## License
 
-GPL-2.0-or-later. The in-process certificate chooser and PIN prompt are derived from Remmina
-(GPL-2.0-or-later), and reusing proven card-handling code is worth more than license convenience.
-Both binaries are separate processes from FreeRDP (Apache-2.0), spoken to over CLI and D-Bus
-boundaries, so no linking question arises in either direction. Note that xdg-desktop-portal itself
-is LGPL-2.1-or-later, and the frontend branch's files carry that; nothing here links against it. See
-[docs/decisions/0004-license.md](docs/decisions/0004-license.md) for the alternative considered.
+LGPL-2.1-or-later. This matches `xdg-desktop-portal`, `xdg-desktop-portal-gtk` and
+`xdg-desktop-portal-gnome`, and the frontend branch this backend is written against, so code can
+move into any of them without a relicensing step; it also matches the sibling
+`xdg-desktop-portal-certificate`, with which this repository shares a header byte for byte
+(`backend/src/tls/portal-token.h`). No code was ever copied from Remmina's RDP plugin — the
+chooser and PIN prompt that would have been lifted live in the certificate portal instead, and
+`backend/src/tls/` holds no card handling at all. Files derived from xdg-desktop-portal and
+xdg-desktop-portal-gtk (`backend/src/request-impl.c`, `backend/src/external-window.c`,
+`backend/src/completion.c`'s rule, the two verbatim XML copies) keep their attribution under the
+same licence. Both binaries are separate processes from FreeRDP (Apache-2.0), spoken to over CLI
+and D-Bus boundaries, so no linking question arises in either direction, and consumers only speak
+D-Bus, so the licence places no constraint on them. The reasoning, and the earlier
+GPL-2.0-or-later decision this supersedes, are in
+[docs/decisions/0004-license.md](docs/decisions/0004-license.md).
 
 ## AI assistance
 
