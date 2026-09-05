@@ -152,8 +152,26 @@ static const char* portal_pin(void)
 	return NULL;
 }
 
+/* WHAT THIS CANNOT DO, stated once here and at length in docs/SECURITY.md.
+ *
+ * A grant belongs to the D-Bus peer that acquired it, and the peers that hold
+ * one are the two PKCS#11 module instances -- this process's and WebKit's
+ * network process's -- not this adapter. It has no session handle to release,
+ * no way to reach the network process's module, and no per-module C_Finalize
+ * that would not also finalize every other module GnuTLS loaded through
+ * p11-kit's proxy. Both grants therefore outlive the transaction, until their
+ * own expiry (the portal's default, because the module requests no lifetime),
+ * until the portal invalidates them, or until this process exits.
+ *
+ * Revoking one would not end the authenticated connection either: TLS
+ * authenticates a connection once, and WebKit's connection pool outlives a
+ * WebKitNetworkSession. Per-transaction isolation is a transport question, not
+ * a grant question. */
 static void portal_release(void)
 {
+	webauth_log_event(G_LOG_LEVEL_DEBUG, WEBAUTH_EVENT_CERT_RELEASED, "provider",
+	                  WEBAUTH_FIELD_OUTCOME, "portal", "grant", WEBAUTH_FIELD_OUTCOME,
+	                  "retained_until_expiry", NULL);
 }
 
 static const WebAuthCertAdapter portal_adapter = {

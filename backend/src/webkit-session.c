@@ -519,6 +519,14 @@ static WebKitNetworkSession* build_network_session(WebAuthTransaction* transacti
 	apply_debug_trust(session);
 	webkit_network_session_set_itp_enabled(session, TRUE);
 
+	/* A client-certificate choice and an HTTP credential are decisions for one
+	 * transaction. WEBKIT_CREDENTIAL_PERSISTENCE_NONE says so per credential;
+	 * this says it for the session, so that nothing WebKit decides on its own
+	 * is written to a store that outlives the window. There is no
+	 * WEBKIT_WEBSITE_DATA_* type for client-certificate decisions, so this is
+	 * the whole of what the engine offers here. */
+	webkit_network_session_set_persistent_credential_storage_enabled(session, FALSE);
+
 	return session;
 }
 

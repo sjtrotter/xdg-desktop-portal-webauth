@@ -73,7 +73,10 @@ this repository. What the end-to-end runs actually demonstrated is [TESTING.md](
 | The persistent store is per application, 0700, and is not named by the caller | `src/storage.c` | **Implemented** |
 | The deadline, starting when the window opens | `src/transaction.c` | **Implemented** |
 | Exactly one terminal result; late events discarded | `src/transaction.c` | **Implemented** |
-| The window is destroyed on every exit path, and the adapter released | `src/transaction.c`, `src/webkit-session.c` | **Implemented** |
+| The window is destroyed on every exit path, and the adapter released | `src/transaction.c`, `src/webkit-session.c` | **Implemented**. Under the `portal` provider "released" is a log line and nothing else: see "What closing a transaction does NOT do" |
+| Credentials, client-certificate decisions included, are never written to a persistent store | `src/webkit-session.c`, `webkit_network_session_set_persistent_credential_storage_enabled(FALSE)` | **Implemented** |
+| A finished transaction revokes the certificate grants it caused | — | **Not implemented, and not reachable from here.** The grants belong to two PKCS#11 module instances, one of them in another process. See "What closing a transaction does NOT do" |
+| A finished transaction closes the connections it authenticated | — | **Not implemented.** WebKitGTK offers no way to; an ephemeral session is a fresh data store, not a fresh connection pool |
 | The frontend vanishing cancels every transaction | `src/webauthentication-impl.c` | **Implemented** |
 | TLS errors fail closed, with no bypass reachable from the bus | `src/webkit-session.c` | **Implemented** |
 | Downloads, popups, JavaScript-opened windows and every permission request refused | `src/webkit-session.c` | **Implemented** |
@@ -341,10 +344,11 @@ of the in-process fix — it is the thing the in-process fix exists to avoid nee
   present before WebKit starts — needs none of that. It is the "one permanently registered broker
   module exposing synthetic grant-bound slots" that was the fallback plan, arrived at as the primary
   one.
-- **Whatever the adapter held is released on every exit path** — completion, failure, timeout,
-  cancellation. A finished transaction must not leave a live grant or endpoint behind. This is the
-  one card-related discipline that is entirely the backend's responsibility either way, and the
-  split adds one exit path to it: the frontend's connection dropping.
+- **The adapter's `release()` runs on every exit path** — completion, failure, timeout,
+  cancellation, and the frontend's connection dropping. Under the `pkcs11` provider it wipes and
+  frees the PIN, which is the whole of what that provider holds. **Under the `portal` provider it
+  releases nothing, because there is nothing here to release** — see the next subsection, which
+  says exactly what survives a finished transaction and why.
 - **Consent UI belongs to the other portal**, which names the requesting application, origin,
   certificate identity and purpose. The backend's contribution is that the caller and origin it has
   been displaying all along are the same ones that window restates: if the backend's chrome can be
@@ -353,6 +357,50 @@ of the in-process fix — it is the thing the in-process fix exists to avoid nee
   than presenting every request as its own — subject to the delegation gap above, which means
   "honestly" currently includes "and this is a claim we cannot attest". Note that the only field
   available for it is `reason`: there is no `context` option on the interface.
+
+### What closing a transaction does NOT do
+
+Stated plainly, because the empty `portal_release()` used to say it by omission.
+
+**1. The grants are not released, and this backend cannot release them.** A grant belongs to the
+D-Bus peer that acquired it, and the peers are the two PKCS#11 module instances — this process's,
+which imported the certificate, and WebKit's network process's, which owns the handshake — not this
+adapter. It has no session handle to pass to `ReleaseGrant`; it does not speak to the module, it
+speaks to GnuTLS; and there is no per-module `C_Finalize` it could call that would not also finalize
+every other module GnuTLS loaded through p11-kit's proxy. The network process's module is not even
+in this address space.
+
+What actually ends those grants: **their own expiry**, which is the portal's default because the
+module requests no lifetime of its own; the portal **invalidating** them (the card leaving the
+reader, the certificate portal restarting, the frontend going away); or the holding process exiting,
+at which point `C_Finalize` calls `ReleaseGrant`. Measured in
+[TESTING.md](TESTING.md): a second `Start` against the same backend process produced **no chooser,
+no PIN prompt and no signature**, because both grants were still alive.
+
+**2. Revoking a grant would not unauthenticate anything anyway.** TLS authenticates a *connection*,
+once, at the handshake. A connection that has already presented the card's certificate stays
+authenticated for as long as it is open, whatever happens to the grant afterwards. This is not a
+defect in the portal design; it is what TLS is. **Per-transaction isolation is therefore a transport
+question and not a grant question**, and it has to be answered by whatever owns the connection pool.
+
+**3. An ephemeral session is not a fresh connection pool — measured.** `ephemeral` already creates a
+new `WebKitNetworkSession` for **every** `Start`: `build_network_session()` runs once per
+transaction and calls `webkit_network_session_new_ephemeral()`, so there is no per-application
+session to make per-transaction. It is not enough. A `WebKitNetworkSession` is a fresh **website
+data store**, not a fresh network process, and the second `Start` in `--second-start` reached the
+identity provider on a connection the first one had already authenticated: the server saw the second
+`GET /start` and `GET /login` with no new handshake. The engine offers no way to close idle
+connections and no `WEBKIT_WEBSITE_DATA_*` type for client-certificate decisions; what it does offer
+is `webkit_network_session_set_persistent_credential_storage_enabled()`, which this backend sets to
+`FALSE` on every session so that nothing the engine decides is written to a store outliving the
+window.
+
+**What would actually close it**, none of it built here: a way for the portal to bound a grant to
+the transaction that caused it (a `requested_lifetime` the module passes through would be the
+cheapest approximation); a WebKit API that takes a PKCS#11 URI, so the UI process never imports
+anything and there is one grant instead of two; and a transport-level "end this session's
+connections" the engine does not have. **A run that must not reuse an authenticated connection has
+to restart this backend**, and that is the honest state of it.
 
 ### Under the `pkcs11` provider — the one that works today
 

@@ -57,6 +57,7 @@ typedef enum
 #define WEBAUTH_EVENT_CERT_ANSWERED "certificate-answered"
 #define WEBAUTH_EVENT_CERT_DECLINED "certificate-declined"
 #define WEBAUTH_EVENT_PIN_REQUESTED "certificate-pin-requested"
+#define WEBAUTH_EVENT_CERT_RELEASED "certificate-released"
 #define WEBAUTH_EVENT_FRONTEND "frontend"
 #define WEBAUTH_EVENT_STORAGE "storage"
 #define WEBAUTH_EVENT_HARDENING "process-hardening"

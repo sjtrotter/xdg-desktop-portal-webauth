@@ -217,6 +217,24 @@ are unchanged and are named where they live: the frontend's re-check, which forc
 to be the one the application asked for, and the application's own `state`, which is the check that
 actually detects an injected code and uses a secret no part of this design ever sees.
 
+**4. A transaction ends; the certificate authority it caused does not.** The interface has no way
+to say "and revoke what this transaction acquired", and this backend could not act on one if it had.
+The grants belong to two PKCS#11 module instances — this process's and WebKit's network process's —
+and the adapter has no session handle, no route to the other process, and no per-module
+`C_Finalize` that would not finalize every module GnuTLS loaded through p11-kit's proxy.
+`portal_release()` therefore logs `certificate-released grant=retained_until_expiry` and returns.
+What ends a grant is its own expiry, the portal invalidating it, or the holding process exiting.
+
+Two consequences follow that an interface change alone would not fix. First, **revoking a grant
+would not unauthenticate an established connection**: TLS authenticates a connection once, and a
+connection that has presented the card's certificate stays authenticated while it is open. Second,
+**an ephemeral session is not a fresh connection pool**: `ephemeral` already makes a new
+`WebKitNetworkSession` per `Start`, and the measured second `Start` still reached the provider on
+the first one's authenticated connection. Per-transaction isolation is a transport property, and
+this engine exposes no lever for it beyond
+`webkit_network_session_set_persistent_credential_storage_enabled()`, which this backend sets to
+`FALSE`. [SECURITY.md](SECURITY.md), "What closing a transaction does NOT do", has the whole of it.
+
 **And one thing the interface documentation implies that is not true of the branch:** the frontend
 has **no deadline of its own**. It forwards a clamped `timeout` and then awaits the impl call with a
 D-Bus timeout of `G_MAXINT` (`web-authentication.c`), so a backend that never answers is a request
