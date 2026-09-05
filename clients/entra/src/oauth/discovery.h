@@ -4,10 +4,14 @@
 #ifndef ENTRA_OAUTH_DISCOVERY_H
 #define ENTRA_OAUTH_DISCOVERY_H
 
+#include <gio/gio.h>
 #include <glib.h>
 
+#include "clouds.h"
+#include "http.h"
+
 /** @file
- *  OpenID configuration for an authority, and the token requests built from it.
+ *  OpenID configuration for an authority, and the authorization URL built from it.
  *
  *  Discovery is optional by design. The endpoints are derivable from the authority
  *  and the tenant, and the client always has both; a discovery document only refines
@@ -18,9 +22,10 @@
  *
  *  Endpoints are always derived from the authority the caller named, never taken
  *  from the caller. A request that carried its own token endpoint would let a
- *  same-UID caller point a credential bearing exchange at a server it controls.
- *
- *  Sketch only; nothing here is implemented.
+ *  same-UID caller point a credential bearing exchange at a server it controls. A
+ *  discovered endpoint is subject to the same rule from the other side: it is used
+ *  only if it is https and on the SAME HOST as the authority, so a compromised or
+ *  redirected discovery document cannot move the token request elsewhere.
  */
 
 typedef struct
@@ -29,20 +34,32 @@ typedef struct
 	char* token_endpoint;
 } EntraEndpoints;
 
-/** Derive the endpoints for @authority and @tenant from the cloud table. Never
- *  performs I/O and never fails for a reason the network can cause. */
-gboolean entra_endpoints_derive(const char* authority, const char* tenant, EntraEndpoints* out,
+/** Derive the endpoints for @authority from the cloud table. Never performs I/O
+ *  and never fails for a reason the network can cause. */
+gboolean entra_endpoints_derive(const EntraAuthority* authority, EntraEndpoints* out,
                                 GError** error);
 
-/** Refine @out with the authority's OpenID configuration. A failure here is not
- *  fatal: the derived endpoints stand. */
-gboolean entra_endpoints_discover(const char* authority, const char* tenant, EntraEndpoints* out,
-                                  GCancellable* cancellable, GError** error);
+/** The OpenID configuration URL for @authority: <base>/v2.0/.well-known/openid-configuration */
+char* entra_discovery_url(const EntraAuthority* authority);
 
-/** Build the authorization URL for an authorization code request with PKCE. */
+/** Parse a discovery document, keeping only endpoints on @expected_host. Separated
+ *  from the fetch so that a test can exhaust it without a server. */
+gboolean entra_endpoints_parse_document(const char* document, gsize length,
+                                        const char* expected_host, EntraEndpoints* out,
+                                        GError** error);
+
+/** Refine @out with the authority's OpenID configuration. A failure here is not
+ *  fatal: the derived endpoints stand, and this returns FALSE with @error set for
+ *  the caller to log at DEBUG. */
+gboolean entra_endpoints_discover(EntraHttp* http, const EntraAuthority* authority,
+                                  EntraEndpoints* out, GCancellable* cancellable, GError** error);
+
+/** Build the authorization URL for an authorization code request with PKCE.
+ *  @prompt may be NULL, "select_account", "login" or "consent". */
 char* entra_build_authorize_url(const EntraEndpoints* endpoints, const char* client_id,
-                                const char* const* scopes, const char* state,
-                                const char* challenge, const char* redirect_uri);
+                                const char* scope, const char* state, const char* challenge,
+                                const char* redirect_uri, const char* prompt,
+                                const char* login_hint);
 
 void entra_endpoints_clear(EntraEndpoints* endpoints);
 

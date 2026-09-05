@@ -6,6 +6,8 @@
 
 #include <glib.h>
 
+#include "../entra-error.h"
+
 /** @file
  *  The versioned request and response objects of docs/ENTRA-CLIENT-CLI.md.
  *
@@ -19,8 +21,6 @@
  *  Fields a caller may never set, in any transport: a token endpoint, an
  *  authorization endpoint, or a redirect URI. The client derives every URL from the
  *  authority and its own cloud table.
- *
- *  Sketch only; nothing here is implemented.
  */
 
 #define ENTRA_SCHEMA_VERSION 1
@@ -37,42 +37,25 @@ typedef enum
 	ENTRA_STATUS_INTERNAL
 } EntraStatus;
 
-typedef struct
-{
-	guint schema; /**< ENTRA_SCHEMA_VERSION */
-	char* verb;
-	char* authority;
-	char* tenant;
-	char* client_id;
-	char** scopes;  /**< decoded, NULL terminated */
-	char* req_cnf;  /**< base64url confirmation object; its presence means PoP */
-	char* account;
-	char* prompt;        /**< auto, always, never */
-	char* parent_window; /**< advisory, passed to the portal frontend, never trusted */
-} EntraRequest;
-
-typedef struct
-{
-	guint schema;
-	EntraStatus status;
-	char* token; /**< scrubbed on free; only ever written to stdout */
-	char* token_type;
-	gint64 expires_in;
-	char* account;
-	char* error;   /**< stable symbol */
-	char* message; /**< already redacted; never parsed by consumers */
-} EntraResponse;
-
-/** Parse a request from JSON, rejecting unknown schema versions and forbidden fields. */
-EntraRequest* entra_request_from_json(const char* json, GError** error);
-
-/** Serialize a response as the JSON object of docs/ENTRA-CLIENT-CLI.md. */
-char* entra_response_to_json(const EntraResponse* response);
-
 /** The documented exit code for @status. */
 int entra_status_exit_code(EntraStatus status);
 
-void entra_request_free(EntraRequest* request);
-void entra_response_free(EntraResponse* response); /**< scrubs the token */
+/** The stable symbol for @status: the JSON "status" field. */
+const char* entra_status_symbol(EntraStatus status);
+
+/** Classify a GError from this client's own domain. Anything else is internal. */
+EntraStatus entra_status_from_error(const GError* error);
+
+/** The success response of docs/ENTRA-CLIENT-CLI.md, as one JSON object.
+ *  @token is written; nothing else in this program ever puts one in a string. */
+char* entra_response_token_json(const char* token, const char* token_type, gint64 expires_in,
+                                const char* scope, const char* account);
+
+/** The failure response. It never carries a token, a code, a state value or an
+ *  authorization server error_description. */
+char* entra_response_error_json(EntraStatus status, const char* error_symbol, const char* message);
+
+/** The accounts response. @records is a GPtrArray of EntraAccountRecord. */
+char* entra_response_accounts_json(GPtrArray* records);
 
 #endif /* ENTRA_IPC_REQUEST_H */

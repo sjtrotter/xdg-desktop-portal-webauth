@@ -4,6 +4,7 @@
 #ifndef ENTRA_WEBAUTH_CLIENT_H
 #define ENTRA_WEBAUTH_CLIENT_H
 
+#include <gio/gio.h>
 #include <glib.h>
 
 /** @file
@@ -26,10 +27,6 @@
  *
  *  IT TALKS TO xdg-desktop-portal AND TO NOTHING ELSE. The portal routes to a
  *  backend, and none of that is visible here: this client never names a backend,
- *  A WORKING REFERENCE FOR THIS CALL EXISTS: tools/webauth-e2e.py makes exactly
- *  it, in python, and is what the backend's end-to-end tests drive the portal
- *  with. Read it before writing this in C; docs/TESTING.md says what it proved.
- *
  *  never reads a .portal file, never calls org.freedesktop.impl.portal.* - which
  *  it could not be permitted to do anyway - and cannot tell which backend served
  *  it. A machine that installs a different backend changes nothing in this file.
@@ -55,7 +52,8 @@
  *  table. It is never taken from the client's caller. See
  *  docs/PUBLIC-INTERFACE.md.
  *
- *  Sketch only; nothing here is implemented.
+ *  tools/webauth-e2e.py makes exactly this call in python and is what the
+ *  backend's end-to-end tests drive the portal with; this is the same call in C.
  */
 
 #define ENTRA_PORTAL_BUS_NAME "org.freedesktop.portal.Desktop"
@@ -88,10 +86,13 @@ gboolean entra_webauth_available(GError** error);
  *  so a fast completion cannot race the subscription. Blocks until the portal
  *  responds, the timeout expires, or @cancellable fires - in which case it calls
  *  Close() and waits for the response it is still owed. */
-EntraWebAuthResult entra_webauth_start(const char* parent_window, const char* activation_token,
-                                       const char* start_uri, const char* completion_uri,
-                                       const char* session_mode, guint timeout_seconds,
+EntraWebAuthResult entra_webauth_start(const char* parent_window, const char* start_uri,
+                                       const char* completion_uri, const char* session_mode,
+                                       const char* title, guint timeout_seconds,
                                        GCancellable* cancellable, char** completion_uri_out,
-                                       GError** error);
+                                       char** reason_out, GError** error);
+
+/** The stable symbol for @result, for logs. */
+const char* entra_webauth_result_str(EntraWebAuthResult result);
 
 #endif /* ENTRA_WEBAUTH_CLIENT_H */
