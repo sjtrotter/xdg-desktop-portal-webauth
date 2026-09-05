@@ -1,7 +1,5 @@
 # xdg-desktop-portal-webauth, and the Entra token client
 
-Author: Stephen J. Trotter (sjtrotter)
-
 **Status: the portal backend works against a fixture, through the certificate portal; the Entra
 client is still a sketch.** The backend opens a real WebKitGTK window, intercepts the completion
 navigation before it loads, and answers a TLS client-certificate challenge with a certificate whose
