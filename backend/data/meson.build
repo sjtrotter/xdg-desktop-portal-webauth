@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
+
+# The impl interface descriptions, installed where D-Bus interface XML lives so
+# they can be introspected and reviewed. Both are VERBATIM COPIES of the
+# xdg-desktop-portal branch's files and must track them; the header in each file
+# says so. Upstream keeps these in xdg-desktop-portal and backends read them from
+# that project's pkg-config interfaces directory -- which is where they come from
+# the day the branch lands. See docs/IMPL-INTERFACE.md.
+install_data(
+  [
+    'org.freedesktop.impl.portal.experimental.WebAuthentication.xml',
+    'org.freedesktop.impl.portal.Request.xml',
+  ],
+  install_dir: dbus_interfaces_dir,
+)
+
+# Backend discovery. Upstream's gtk.portal.in has @-substitutions because its
+# interface list is build-configurable; ours lists one interface
+# unconditionally, so this is a copy.
+configure_file(
+  input: 'webauth.portal.in',
+  output: 'webauth.portal',
+  copy: true,
+  install: true,
+  install_dir: portal_dir,
+)
+
+# D-Bus activation. xdg-desktop-portal starts this name when a .portal file
+# selects this backend; applications have no reason to hold it.
+configure_file(
+  input: 'org.freedesktop.impl.portal.desktop.webauth.service.in',
+  output: 'org.freedesktop.impl.portal.desktop.webauth.service',
+  configuration: {'libexecdir': libexecdir},
+  install: true,
+  install_dir: dbus_service_dir,
+)

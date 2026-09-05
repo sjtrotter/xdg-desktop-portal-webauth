@@ -12,28 +12,31 @@
 # experimental/certificate-webauthentication) and the two speak D-Bus; the Entra
 # client in clients/ is an ordinary application that calls the portal.
 #
-# The layout mirrors every out-of-tree backend: data/ holds the .portal file,
-# the D-Bus service file and the interface XML, src/ holds one file per portal
+# The layout mirrors every out-of-tree backend: data/ holds the .portal file, the
+# D-Bus service file and the interface XML, src/ holds one file per portal
 # interface implemented.
 #
-# There is no frontend here any more; see
-# docs/decisions/0010-backend-only-frontend-lives-upstream.md.
+# LIBDEX IS DELIBERATELY NOT A DEPENDENCY. The frontend branch uses it for its
+# fibers; backends do not, and no released distribution ships it as a backend
+# dependency. Everything here is plain GLib/GIO async on one thread, which is
+# what xdg-desktop-portal-gtk does.
 
 project(
   'xdg-desktop-portal-webauth',
   'c',
-  version: '0.0.0',
+  version: '0.1.0',
   license: 'GPL-2.0-or-later',
   meson_version: '>= 0.60.0',
   default_options: [
     'c_std=c11',
-    'warning_level=3',
+    'warning_level=2',
     'werror=false',
     'b_ndebug=if-release',
   ],
 )
 
 cc = meson.get_compiler('c')
+gnome = import('gnome')
 
 add_project_arguments(
   cc.get_supported_arguments([
@@ -43,13 +46,19 @@ add_project_arguments(
     '-Wmissing-prototypes',
     '-Wwrite-strings',
     '-Wformat=2',
+    '-Wno-unused-parameter',
+    '-Wno-declaration-after-statement',
   ]),
   language: 'c',
 )
 
 prefix = get_option('prefix')
 datadir = prefix / get_option('datadir')
+# The backend is D-Bus activated and is not meant to be run from a shell, so it
+# belongs in libexecdir -- as xdg-desktop-portal-gtk's backend does.
 libexecdir = prefix / get_option('libexecdir')
+dbus_service_dir = datadir / 'dbus-1' / 'services'
+dbus_interfaces_dir = datadir / 'dbus-1' / 'interfaces'
 
 # THE REAL DIRECTORY. Out-of-tree backends install their .portal file into
 # ${datadir}/xdg-desktop-portal/portals -- that is where the frontend looks
@@ -58,69 +67,52 @@ libexecdir = prefix / get_option('libexecdir')
 # is experimental and gated.
 portal_dir = datadir / 'xdg-desktop-portal' / 'portals'
 
-# The stub needs only GLib and GIO. The rest is declared so the dependency
-# picture is visible in the summary, and is unused: none of the components those
-# libraries would serve exist yet.
 glib_dep = dependency('glib-2.0', version: '>= 2.66')
+gobject_dep = dependency('gobject-2.0', version: '>= 2.66')
 gio_dep = dependency('gio-2.0', version: '>= 2.66')
 
-webkit_dep = dependency('webkitgtk-6.0', required: false)  # src/webkit_session.h
-gtk_dep = dependency('gtk4', required: false)              # src/chrome.h, src/externalwindow.h
-# Needed by the in-process certificate adapter (enumeration, and resolving PKCS#11
-# URIs against the system configuration). See src/tls/client_cert.h and
-# docs/decisions/0007-certificate-adapter.md.
-p11kit_dep = dependency('p11-kit-1', required: false)      # src/tls/
+# The engine, the window and the chrome. All three are REQUIRED: every method
+# this backend implements opens a web view, and a backend that cannot must not
+# claim the interface.
+webkit_dep = dependency('webkitgtk-6.0', version: '>= 2.40')
+gtk_dep = dependency('gtk4', version: '>= 4.10')
+adw_dep = dependency('libadwaita-1', version: '>= 1.4')
 
-have_webkit_session = webkit_dep.found() and gtk_dep.found()
+# Parenting the window to the requesting application's. Both optional: a backend
+# on a display server it was not built for draws an unparented window, which it
+# has to be able to do anyway for an invalid handle.
+gtk_wayland_dep = dependency('gtk4-wayland', required: false)
+gtk_x11_dep = dependency('gtk4-x11', required: false)
+x11_dep = dependency('x11', required: false)
 
-executable(
-  'xdg-desktop-portal-webauth',
-  sources: ['src/main.c'],
-  dependencies: [glib_dep, gio_dep],
-  install: true,
-  install_dir: libexecdir,
-)
+# PKCS#11 is reached through GLib -- g_tls_certificate_new_from_pkcs11_uris()
+# and the p11-kit configuration the process can see -- and this backend links
+# against no PKCS#11 library of its own. It enumerates nothing, loads no module
+# and never calls C_Login: that is the certificate portal's work, and on the
+# pkcs11 provider it is GnuTLS's. See docs/decisions/0007-certificate-adapter.md.
 
-# The impl interface description. It is a VERBATIM COPY of the xdg-desktop-portal
-# branch's file and must track it; the header in the file says so. Upstream keeps
-# these in xdg-desktop-portal and backends read them from its pkg-config
-# interfaces directory -- which is where this one comes from the day the branch
-# lands. See docs/IMPL-INTERFACE.md.
-install_data(
-  'data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml',
-  install_dir: datadir / 'dbus-1' / 'interfaces',
-)
+config = configuration_data()
+config.set_quoted('PACKAGE_VERSION', meson.project_version())
+config.set('HAVE_GTK_WAYLAND', gtk_wayland_dep.found() ? 1 : 0)
+config.set('HAVE_GTK_X11', (gtk_x11_dep.found() and x11_dep.found()) ? 1 : 0)
+configure_file(output: 'config.h', configuration: config)
 
-# Upstream's gtk.portal.in substitutes optional interfaces into the Interfaces=
-# list at configure time; this backend implements exactly one interface
-# unconditionally, so the file is copied rather than templated. It keeps the .in
-# suffix because the moment a second interface here becomes optional it becomes
-# a template, and renaming the file then would be noise in that diff.
-configure_file(
-  input: 'data/webauth.portal.in',
-  output: 'webauth.portal',
-  copy: true,
-  install: true,
-  install_dir: portal_dir,
-)
+config_inc = include_directories('.')
 
-configure_file(
-  input: 'data/org.freedesktop.impl.portal.desktop.webauth.service.in',
-  output: 'org.freedesktop.impl.portal.desktop.webauth.service',
-  configuration: {'libexecdir': libexecdir},
-  install: true,
-  install_dir: datadir / 'dbus-1' / 'services',
-)
+subdir('data')
+subdir('src')
 
 summary(
   {
-    'glib-2.0 (required)': glib_dep.version(),
-    'gio-2.0 (required)': gio_dep.version(),
-    'webkitgtk-6.0 (web view)': webkit_dep.found() ? webkit_dep.version() : 'not found',
-    'gtk4 (window, chrome, parenting)': gtk_dep.found() ? gtk_dep.version() : 'not found',
-    'p11-kit-1 (certificate adapters)': p11kit_dep.found() ? p11kit_dep.version() : 'not found',
+    'glib-2.0': glib_dep.version(),
+    'gio-2.0': gio_dep.version(),
+    'webkitgtk-6.0 (the web view)': webkit_dep.version(),
+    'gtk4 (window and chrome)': gtk_dep.version(),
+    'libadwaita-1': adw_dep.version(),
+    'gtk4-wayland (xdg_foreign parenting)': gtk_wayland_dep.found() ? gtk_wayland_dep.version() : 'not found',
+    'gtk4-x11 (XID parenting)': (gtk_x11_dep.found() and x11_dep.found()) ? gtk_x11_dep.version() : 'not found',
   },
-  section: 'backend dependencies',
+  section: 'dependencies',
 )
 
 summary(
@@ -133,17 +125,20 @@ summary(
     'public interface (frontend)': 'org.freedesktop.portal.experimental.WebAuthentication',
     'frontend gate': 'XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication',
     'called by': 'xdg-desktop-portal only, never by applications',
-    'client certificates': 'adapter: portal (org.freedesktop.portal.experimental.Certificate) or in-process',
+    'client certificates': 'providers: portal (not yet usable) and pkcs11',
   },
-  section: 'backend interface',
+  section: 'interfaces',
 )
 
 summary(
   {
-    'WebKitGTK browser session possible': have_webkit_session,
-    'implemented': false,
+    'web view, chrome and interception': true,
+    'client certificate from a PKCS#11 token': true,
+    'certificate portal provider usable': false,
+    'in-process certificate chooser or PIN prompt': false,
     'frontend branch merged upstream': false,
+    'safe to depend on': false,
   },
-  section: 'backend status',
+  section: 'status',
   bool_yn: true,
 )

@@ -4,6 +4,8 @@
 
 #include <gio/gio.h>
 
+#include "xdp-impl-dbus.h"
+
 /** @file
  *  The backend side of a pending request: an object whose only job is Close().
  *
@@ -21,23 +23,24 @@
  *  request BEFORE completing the method call, so that a Close() arriving in the
  *  same instant finds nothing to close rather than reaching a transaction that
  *  has already answered.
- *
- *  Sketch only; nothing here is implemented.
  */
 
-#define WEBAUTH_IMPL_REQUEST_INTERFACE "org.freedesktop.impl.portal.Request"
-
-typedef struct WebAuthImplRequest WebAuthImplRequest;
+#define WEBAUTH_TYPE_IMPL_REQUEST (webauth_impl_request_get_type())
+G_DECLARE_FINAL_TYPE(WebAuthImplRequest, webauth_impl_request, WEBAUTH, IMPL_REQUEST,
+                     XdpImplRequestSkeleton)
 
 /** @sender is xdg-desktop-portal's unique name; @app_id is the application
- *  identity the frontend derived, carried here only so the chrome and any
- *  certificate dialog can name it; @id is the object path the frontend chose. */
+ *  identity the frontend derived, carried here only so the chrome can name it;
+ *  @handle is the object path the frontend chose. */
 WebAuthImplRequest* webauth_impl_request_new(const char* sender, const char* app_id,
-                                             const char* id);
+                                             const char* handle);
 
-void webauth_impl_request_export(WebAuthImplRequest* self, GDBusConnection* connection);
-void webauth_impl_request_unexport(WebAuthImplRequest* self);
+gboolean webauth_impl_request_export(WebAuthImplRequest* request, GDBusConnection* connection,
+                                     GError** error);
+void webauth_impl_request_unexport(WebAuthImplRequest* request);
+gboolean webauth_impl_request_is_exported(WebAuthImplRequest* request);
 
-void webauth_impl_request_free(WebAuthImplRequest* self);
+GCancellable* webauth_impl_request_get_cancellable(WebAuthImplRequest* request);
+const char* webauth_impl_request_get_app_id(WebAuthImplRequest* request);
 
 #endif /* WEBAUTH_REQUEST_IMPL_H */
