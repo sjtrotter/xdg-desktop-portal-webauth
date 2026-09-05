@@ -13,7 +13,7 @@ Status: accepted (for the sketch); the adapter lives in the BACKEND, per
 > `/org/freedesktop/portal/desktop`. Both this project's portal and the certificate portal are now
 > hosted by one frontend — the xdg-desktop-portal branch
 > `experimental/certificate-webauthentication` — and the separate repository still called
-> `smartcard-portal` ships only the certificate **backend**,
+> `xdg-desktop-portal-certificate` ships only the certificate **backend**,
 > `xdg-desktop-portal-certificate`.
 >
 > **`OpenPkcs11Endpoint` is gone.** It is on neither the public nor the impl Certificate interface:
@@ -59,7 +59,7 @@ moment the user authorises a hardware token to authenticate on their behalf: a u
 by a different window in every application has no way to learn which window to trust. There should
 be one, and it should not belong to whichever component happened to need a certificate first.
 
-So: a separate project (repository `smartcard-portal`, shipping the backend
+So: a separate project (repository `xdg-desktop-portal-certificate`, shipping the backend
 `xdg-desktop-portal-certificate`) owns the chooser and the PIN, behind the public
 `org.freedesktop.portal.experimental.Certificate` interface.
 

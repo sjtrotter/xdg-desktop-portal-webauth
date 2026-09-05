@@ -407,7 +407,7 @@ xdg-desktop-portal           already running; the branch adds two portals to it
 xdg-desktop-portal-webauth   D-Bus activated, GTK4 + WebKitGTK      backend/
     │ org.freedesktop.portal.experimental.Certificate   (as a client, preferred adapter)
     ▼                         ...which is the SAME xdg-desktop-portal, which routes to
-xdg-desktop-portal-certificate   separate repository (smartcard-portal), optional
+xdg-desktop-portal-certificate   separate repository (xdg-desktop-portal-certificate), optional
 ```
 
 Note the shape of the certificate call: it goes back out to the portal and in again to a different

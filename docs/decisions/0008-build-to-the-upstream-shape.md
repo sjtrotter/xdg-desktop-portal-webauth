@@ -175,7 +175,7 @@ Drawing the boundary settled two questions that the single-process design had le
 
 **The old problem, and why it is gone.** `io.github.sjtrotter.portal.Desktop` used to be a shared
 singleton stand-in for `org.freedesktop.portal.Desktop`, claimed by this project's frontend and, in
-parallel, by the sibling `smartcard-portal` sketch's frontend. Two incubating frontends could not
+parallel, by the sibling certificate-portal sketch's frontend. Two incubating frontends could not
 both hold it: the second to start would fail to acquire the name. The author has since decided that
 was the wrong shape for incubation — a shared name papers over the fact that these are two separate,
 unreviewed prototypes, not one project — and each incubating frontend now claims its **own** bus

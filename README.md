@@ -80,7 +80,7 @@ it. The bottom layer — the smart card portal — is a separate project in its 
 ```
   org.freedesktop.portal.experimental.Certificate   layer 1
     certificate chooser, PIN prompt, brokered signing   frontend: the same xdg-desktop-portal
-        ▲                                               backend: smartcard-portal — SEPARATE REPO
+        ▲                                               backend: xdg-desktop-portal-certificate — SEPARATE REPO
         │ D-Bus: AcquireCredential → grant   (the BACKEND calls it, as an ordinary client)
         │        …but only if a GnuTLS external-signer path exists; otherwise the
         │        in-process fallback runs instead and this arrow is absent
@@ -104,7 +104,7 @@ layers now share one frontend process, which is what makes the delegation proble
 
 ## Layer 1 — the Certificate portal (*a separate backend, and not a hard dependency*)
 
-**Its backend is not in this repository.** `smartcard-portal` ships
+**Its backend is not in this repository.** `xdg-desktop-portal-certificate` ships
 `xdg-desktop-portal-certificate`; its frontend is the same xdg-desktop-portal branch as ours, and
 the public interface is `org.freedesktop.portal.experimental.Certificate` on
 `org.freedesktop.portal.Desktop`. It owns the trusted certificate chooser and the PIN prompt **for
@@ -555,9 +555,9 @@ docs/                       ARCHITECTURE, PUBLIC-INTERFACE, IMPL-INTERFACE, UPST
 tests/                      the offline test strategy (no tests yet)
 ```
 
-`backend/` mirrors the sibling `smartcard-portal` repository's own top-level `src/` + `data/`, as
+`backend/` mirrors the sibling `xdg-desktop-portal-certificate` repository's own top-level `src/` + `data/`, as
 closely as having a second component allows. The frontend is not here: it is a branch of
-xdg-desktop-portal. Layer 1's backend is not here either: it is `smartcard-portal`, a separate
+xdg-desktop-portal. Layer 1's backend is not here either: it is `xdg-desktop-portal-certificate`, a separate
 repository, and layer 2 runs without it.
 
 ## License
