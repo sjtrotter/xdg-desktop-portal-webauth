@@ -26,8 +26,23 @@
 #         --completion-uri https://example.invalid/cb
 #     tools/webauth-e2e.py ... --session-mode ephemeral --expect-cookie no
 #     tools/webauth-e2e.py ... --cancel-after 2000 --expect-response 1
+#
+# --entra-authorize builds the start URI for a REAL Entra ID authorization code
+# flow instead of taking one, so that a live run against the identity provider
+# is one command rather than a URL assembled by hand. See docs/TESTING.md,
+# "Live run against Entra". It writes the PKCE code verifier to a file with mode
+# 0600 and NEVER prints it: a verifier on a terminal is a verifier in a scrollback
+# buffer, and with the authorization code it is the whole credential.
+#
+#     tools/webauth-e2e.py --entra-authorize \
+#         --entra-authority https://login.microsoftonline.us/<tenant> \
+#         --entra-verifier-file ~/.cache/webauth-verifier \
+#         --completion-uri https://login.microsoftonline.com/common/oauth2/nativeclient
 
 import argparse
+import base64
+import hashlib
+import os
 import secrets
 import sys
 import urllib.parse
@@ -41,6 +56,62 @@ PORTAL_BUS_NAME = "org.freedesktop.portal.Desktop"
 PORTAL_OBJECT_PATH = "/org/freedesktop/portal/desktop"
 INTERFACE = "org.freedesktop.portal.experimental.WebAuthentication"
 REQUEST_INTERFACE = "org.freedesktop.portal.Request"
+
+
+# ------------------------------------------------------------------ Entra ID
+#
+# The AVD public client, and the redirect its registration forces. THE REDIRECT
+# IS THE COMMERCIAL nativeclient URL FOR BOTH CLOUDS -- there is no .us variant
+# and asking for one is rejected with AADSTS50011 -- which is exactly why this
+# portal exists: nothing may ever be allowed to FETCH that URL, because its query
+# carries the authorization code.
+ENTRA_AVD_CLIENT_ID = "a85cf173-4192-42f8-81fa-777a763e6e2c"
+ENTRA_NATIVECLIENT_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient"
+ENTRA_USGOV_AVD_SCOPE = "https://www.wvd.azure.us/.default openid profile offline_access"
+
+
+def pkce_pair():
+    """A code verifier and its S256 challenge, RFC 7636 §4."""
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode("ascii")
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
+
+
+def write_verifier(path, verifier, state):
+    """0600 BEFORE ANYTHING IS WRITTEN, not after.
+
+    os.open with O_CREAT|O_EXCL and mode 0600 is the only way to create a file
+    that was never, for any instant, readable by another user; opening it and
+    chmod-ing afterwards leaves exactly that window. O_EXCL because refusing to
+    overwrite is the right answer for a file holding half a credential.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(f"code_verifier={verifier}\nstate={state}\n")
+
+
+def entra_authorize_uri(args, state):
+    """The authorization endpoint URL for an authorization code flow with PKCE."""
+    verifier, challenge = pkce_pair()
+    write_verifier(args.entra_verifier_file, verifier, state)
+
+    query = {
+        "client_id": args.entra_client_id,
+        "response_type": "code",
+        "redirect_uri": args.completion_uri,
+        "scope": args.entra_scope,
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        # A fresh sign-in rather than whatever the shared store remembers: a live
+        # run is testing the CARD, and a silently reused session tests nothing.
+        "prompt": "login",
+    }
+
+    return args.entra_authority.rstrip("/") + "/oauth2/v2.0/authorize?" + urllib.parse.urlencode(
+        query
+    )
 
 
 class Run:
@@ -90,7 +161,7 @@ class Run:
             options["timeout"] = GLib.Variant("u", self.args.timeout)
 
         start_uri = self.args.start_uri
-        if self.args.state:
+        if self.args.state and getattr(self.args, "state_in_start_uri", True):
             joiner = "&" if "?" in start_uri else "?"
             start_uri += joiner + urllib.parse.urlencode({"state": self.args.state})
 
@@ -206,8 +277,26 @@ def check(run, args):
 
 def main():
     parser = argparse.ArgumentParser(description="Drive the public WebAuthentication portal")
-    parser.add_argument("--start-uri", required=True)
+    parser.add_argument("--start-uri")
     parser.add_argument("--completion-uri", required=True)
+    parser.add_argument(
+        "--entra-authorize",
+        action="store_true",
+        help="build the start URI for a real Entra ID authorization code flow "
+        "instead of taking --start-uri",
+    )
+    parser.add_argument("--entra-client-id", default=ENTRA_AVD_CLIENT_ID)
+    parser.add_argument(
+        "--entra-authority",
+        help="https://login.microsoftonline.us/<tenant> for US Gov, "
+        "https://login.microsoftonline.com/<tenant> for commercial",
+    )
+    parser.add_argument("--entra-scope", default=ENTRA_USGOV_AVD_SCOPE)
+    parser.add_argument(
+        "--entra-verifier-file",
+        help="where to write the PKCE code verifier, created 0600 and never overwritten. "
+        "It is NEVER printed.",
+    )
     parser.add_argument("--session-mode", choices=["shared", "ephemeral"])
     parser.add_argument("--title")
     parser.add_argument("--timeout", type=int, help="the portal's timeout option, in seconds")
@@ -226,6 +315,25 @@ def main():
     parser.add_argument("--no-require-code", dest="require_code", action="store_false")
     parser.add_argument("--state", default=secrets.token_urlsafe(9))
     args = parser.parse_args()
+
+    if args.entra_authorize:
+        if not args.entra_authority:
+            parser.error("--entra-authorize needs --entra-authority")
+        if not args.entra_verifier_file:
+            parser.error("--entra-authorize needs --entra-verifier-file")
+        if args.start_uri:
+            parser.error("--entra-authorize builds the start URI; do not pass --start-uri")
+        # The state goes into the authorize URL itself, so it must not also be
+        # appended to the start URI the way the fixture flow's is.
+        args.start_uri = entra_authorize_uri(args, args.state)
+        args.state_in_start_uri = False
+        parsed = urllib.parse.urlsplit(args.start_uri)
+        print(f"start scheme={parsed.scheme} host={parsed.netloc} path={parsed.path}")
+        print(f"code verifier written to {args.entra_verifier_file} (mode 0600)")
+    elif not args.start_uri:
+        parser.error("one of --start-uri or --entra-authorize is required")
+    else:
+        args.state_in_start_uri = True
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
