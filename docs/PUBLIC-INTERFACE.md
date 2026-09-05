@@ -8,7 +8,7 @@ is a branch of xdg-desktop-portal, and **the XML on that branch is the specifica
 ## Where it is
 
 ```
-repository   /home/betty/Projects/xdg-desktop-portal   (remote: flatpak/xdg-desktop-portal)
+repository   a local checkout of xdg-desktop-portal   (remote: flatpak/xdg-desktop-portal)
 branch       experimental/certificate-webauthentication
 commit       3a32e9b  web-authentication: Add an experimental WebAuthentication portal
 public XML   data/org.freedesktop.portal.experimental.WebAuthentication.xml

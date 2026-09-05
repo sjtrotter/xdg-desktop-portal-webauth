@@ -71,3 +71,14 @@ Only GLib and GIO are needed for the stubs. Nothing is implemented: every verb e
 C11, tabs, 100 columns, `SPDX` header — see [`.editorconfig`](.editorconfig). Headers carry the doc
 comments; there are no implementations yet, and a header that explains *why* an interface is shaped
 the way it is is worth more here than one that restates its own signatures.
+
+## Running the tests
+
+`meson test -C build-backend` is the whole no-display suite; the end-to-end runs, which open a
+window, are `tools/ui-smoke.sh` and `tools/portal-stack.sh`. What each tier can and cannot tell you
+is [docs/TESTING.md](docs/TESTING.md).
+
+## Sign-off and licence
+
+A `Signed-off-by` trailer (`git commit -s`) is welcome but not required. By sending a change you
+agree it is licensed under this project's licence, LGPL-2.1-or-later.

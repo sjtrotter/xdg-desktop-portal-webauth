@@ -20,7 +20,7 @@ has stopped paying for itself.
 ## Where the frontend is
 
 ```
-repository   /home/betty/Projects/xdg-desktop-portal
+repository   a local checkout of xdg-desktop-portal
 remote       upstream → https://github.com/flatpak/xdg-desktop-portal.git
 branch       experimental/certificate-webauthentication
 base         upstream/main = c95490a  settings: include xdp-dex.h for the
