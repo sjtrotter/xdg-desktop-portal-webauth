@@ -2,13 +2,17 @@
 
 Author: Stephen J. Trotter (sjtrotter)
 
-**Status: the portal backend works against a fixture; the Entra client is still a sketch.** The
-backend opens a real WebKitGTK window, intercepts the completion navigation before it loads, and
-answers a TLS client-certificate challenge with a certificate whose private key stays on a PKCS#11
-token — verified end to end on a private bus under Xvfb, including mutual TLS, cancellation,
-`Close()`, and shared versus ephemeral storage ([docs/TESTING.md](docs/TESTING.md)). **No token has
-ever been acquired by this code, and it has never talked to a real identity provider or a real
-card.** `clients/entra/` is still a stub that exits `70`.
+**Status: the portal backend works against a fixture, through the certificate portal; the Entra
+client is still a sketch.** The backend opens a real WebKitGTK window, intercepts the completion
+navigation before it loads, and answers a TLS client-certificate challenge with a certificate whose
+private key stays on a PKCS#11 token — verified end to end on a private bus under Xvfb, including
+mutual TLS, cancellation, `Close()`, and shared versus ephemeral storage
+([docs/TESTING.md](docs/TESTING.md)). Since 2026-09-04 that certificate can come from
+**`xdg-desktop-portal-certificate`**, through its client-side PKCS#11 module, with the card, the
+chooser and the PIN in that service and never in this process: both portals run against each other
+headless in [`tools/portal-stack.sh`](tools/portal-stack.sh), and every hop is proved from the log
+of the process that made it. **No token has ever been acquired by this code, and it has never talked
+to a real identity provider or a real card.** `clients/entra/` is still a stub that exits `70`.
 
 ## It is a portal backend, plus a client
 
@@ -133,11 +137,28 @@ the two projects is a **p11-kit module the Certificate portal publishes**, and t
 token it presents: [`backend/src/tls/portal-token.h`](backend/src/tls/portal-token.h) is that
 agreement.
 
-The certificate path is therefore an **adapter with two providers** — `portal` (preferred; the
-module does not exist yet, so it reports itself unavailable) and `pkcs11` (any p11-kit token, named
-on the backend's command line, which is what works today). **There is no in-process chooser and no
-in-process PIN prompt**, and there will not be one: that is the window the Certificate portal exists
-to own. See
+The certificate path is therefore an **adapter with two providers** — `portal` and `pkcs11`.
+
+**`portal` is the primary path and it now works.** `xdg-desktop-portal-certificate` ships
+`libpkcs11-portal-certificate.so`, registers it with p11-kit, and presents the certificate the user
+granted as a token named by the URIs in
+[`backend/src/tls/portal-token.h`](backend/src/tls/portal-token.h). The whole path — WebKit's
+`authenticate`, this provider, p11-kit, the module in this process **and** in WebKit's network
+process, the certificate portal's chooser and PIN prompt, `C_Sign`, a completed mutual-TLS
+handshake — has been run headless end to end by
+[`tools/portal-stack.sh`](tools/portal-stack.sh), with every hop proved from the log of the process
+that made it. [docs/TESTING.md](docs/TESTING.md) tier 2b is the command, the transcript, and two UX
+findings that came out of it: **one handshake puts up two choosers**, because the certificate is
+built in this process and used in the network process, and a **second sign-in in the same backend
+process puts up none at all**.
+
+`pkcs11` is the fallback: any p11-kit token named on the backend's command line, for an operator
+with a card and no certificate portal, and for exercising mutual TLS with no second service in the
+picture. `auto` prefers `portal` and falls through when the portal is not running or its module is
+not in p11-kit's configuration.
+
+**There is no in-process chooser and no in-process PIN prompt**, and there will not be one: that is
+the window the Certificate portal exists to own. See
 [docs/decisions/0007-certificate-adapter.md](docs/decisions/0007-certificate-adapter.md).
 
 ## Layer 2 — the web authentication portal (`backend/`, plus a frontend elsewhere)
@@ -392,6 +413,20 @@ $ meson test -C build-backend        # the rules: completion, options, storage, 
 
 Then the real thing, and none of it touches your session bus or your display:
 
+**The joint run first**, because it is the path this project is for: the certificate comes from the
+certificate portal and this process never sees a PIN.
+
+```console
+$ (cd ../xdg-desktop-portal-certificate && meson setup build && ninja -C build)
+$ ../xdg-desktop-portal-certificate/tools/softhsm-fixture.sh
+$ tools/portal-stack.sh              # both portals, one private bus, one Xvfb
+$ tools/portal-stack.sh --second-start
+$ tools/portal-stack.sh --cancel-chooser -- --expect-response 2 \
+      --expect-reason no_certificate_adapter --no-require-code
+```
+
+Then the fallback provider, which needs no second service:
+
 ```console
 $ tools/softhsm-fixture.sh           # a CA, a server certificate, a token, a PIN file
 $ tools/ui-smoke.sh                  # Xvfb + private bus + the whole stack, plain https
@@ -583,12 +618,15 @@ backend/                    the portal BACKEND — its own meson project.
                                          client_cert_portal.c      the Certificate portal's token
                                          client_cert_pkcs11.c      any p11-kit token, by URI
                                          portal-token.h            the names the other repo must use
+                                         harden.c/.h               PR_SET_DUMPABLE, and the one
+                                                                   window in which it yields
   tests/                                 the rules, with no display and no bus
 clients/entra/              layer 3 — entra-token-client (its own meson project)
   src/                                   CLI stub plus header sketches: OAuth, clouds,
                                          cache, IPC schema
 spikes/                     webkit-client-cert.c — S2, kept because its answer is load-bearing
 tools/                      softhsm-fixture.sh, mtls-server.py, dev-stack.sh, ui-smoke.sh,
+                            portal-stack.sh (BOTH portals, one bus, one Xvfb),
                             webauth-e2e.py, trigger-webauthentication.sh, lib.sh
 docs/                       ARCHITECTURE, PUBLIC-INTERFACE, IMPL-INTERFACE, TESTING,
                             UPSTREAMING, ENTRA-CLIENT-CLI, SECURITY, SPIKES, ROADMAP,

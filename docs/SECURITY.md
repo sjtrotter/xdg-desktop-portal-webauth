@@ -389,6 +389,21 @@ with a card and no certificate portal uses.
 - **When no provider can run**, the challenge is declined; if the server required one, the load then
   fails and the transaction ends `2` with reason `no_certificate_adapter` — one of the XML's symbols.
   A flow that did not actually need a certificate is not failed by a challenge it ignored.
+- **The hardening yields, for one interval, on the `portal` provider only.** `PR_SET_DUMPABLE(0)`
+  makes this process's `/proc` entries root-owned, and xdg-desktop-portal identifies a caller by
+  opening `/proc/<pid>/root` — so while it is set, every call this process *makes* to the portal is
+  refused with `AccessDenied`. That is harmless while this backend only answers the portal, and
+  fatal on the `portal` provider, where the certificate portal's PKCS#11 module runs inside this
+  process and calls `CreateSession` and `AcquireCredential` as an ordinary application.
+  [`../backend/src/harden.h`](../backend/src/harden.h) opens a counted window around that one
+  constructor and closes it the moment it returns. In that interval this process holds **no PIN**
+  — the `portal` provider never has one — and **no authorization code**, because the challenge is
+  answered before the flow has redirected anywhere; giving the flag up for the life of the process
+  would expose the same `/proc` entries while the completion URI is in memory, which is the moment
+  that matters. Both edges are logged at message level as
+  `process-hardening outcome=identifiable-begin` / `-end`, so an operator can see every interval in
+  which the process was readable without having asked for breadcrumbs. **The `pkcs11` provider opens
+  no window at all**: it calls no portal, and the PIN it holds is exactly what the flag protects.
 - **The residual risk delegation does not remove:** the backend can still provoke a certificate
   prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting in the
   frontend and honest caller display in the backend stand between that and a nuisance — and the

@@ -1,6 +1,7 @@
 # Go / no-go spikes
 
-Status: **S2 has been run and is answered** (see its Result section); S1 and S3 have not.
+Status: **S2 has been run and is answered** (see its Result section), and has since been
+confirmed against the certificate portal's real client-side module; S1 and S3 have not.
 
 Two questions decide whether this project is worth building as described — one per component. Both are
 answerable in days, with code that already exists, and both must be answered **before** any
@@ -183,8 +184,19 @@ URI rather than as key material. `libwebkitgtk-6.0.so` carries the GTlsCertifica
 **What this does NOT answer**, and the steps stay open: dynamic module registration *after* the
 network process exists (step 2), two concurrent endpoints (6), card removal mid-handshake (7),
 grant lifetime against a closed D-Bus connection (8), which process opens a p11-kit socket (9), and
-the whole version matrix (10). Nothing here involves the smart card portal, because the module it
-would publish does not exist yet.
+the whole version matrix (10). The spike itself involved no certificate portal, because the module
+it publishes did not exist when the spike was run.
+
+**It exists now, and the spike's conclusion holds against it.**
+`xdg-desktop-portal-certificate` ships `libpkcs11-portal-certificate.so`, and
+[`tools/portal-stack.sh`](../tools/portal-stack.sh) runs the two services against each other
+headless: the challenge, the URI, p11-kit, the module in this process and in WebKit's network
+process, the portal's chooser and PIN prompt, `C_Sign`, and a completed mutual-TLS handshake with
+the card's common name in the server's log. The URI seam is what S2 said it was. Two things the
+spike could not have predicted came out of that run and are in [TESTING.md](TESTING.md) tier 2b:
+**one handshake resolves the URI in two processes and therefore puts up two choosers**, and the
+contract's URI needed an `object=` attribute before GnuTLS's single-object import would accept it
+at all.
 
 **What it decides.** The `portal` adapter stops being "broker a `Sign`" and becomes "resolve a URI
 through the certificate portal's own PKCS#11 module": there is no external-signer seam in WebKit or

@@ -177,6 +177,15 @@ with "for instance" — an open list. This backend emits all six and six more, d
 | `invalid_request` | The backend's own re-validation of the arguments failed. Response `2`. |
 | `no_storage` | The website data store the mode requires could not be created. Response `2`. |
 
+**`no_certificate_adapter` also means "the user refused", and cannot say so.** When the `portal`
+provider's chooser is cancelled, what reaches this backend is GnuTLS reporting that the PKCS#11
+object was not available — the same thing it reports when the module is not installed, when the
+portal is not running, and when the certificate portal declined for a policy reason. This backend
+cannot tell those apart and does not guess: it emits `no_certificate_adapter` and response `2` for
+all of them. A caller that needs to know why must ask the certificate portal, which does know.
+(Measured in [TESTING.md](TESTING.md) tier 2b: Escape at the chooser, response `2`, reason
+`no_certificate_adapter`, 1.9 seconds.)
+
 A frontend must tolerate a reason it does not know, which the branch's frontend does: it forwards
 the string unchanged. If any of these earn their place, they belong in the XML.
 
