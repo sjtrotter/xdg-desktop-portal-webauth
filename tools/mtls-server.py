@@ -15,6 +15,11 @@
 #   GET /wait    a page that does not redirect, for the runs that have to
 #                interrupt a flow rather than let it finish.
 #
+# It prints "client-cn=<common name>" beside each request when the connection
+# carried a client certificate. tools/portal-stack.sh reads that line: it is the
+# only account in the whole stack of WHICH certificate satisfied the handshake,
+# and without it a run cannot tell the certificate portal's token from any other.
+#
 # With --require-client-cert the socket is wrapped with ssl.CERT_REQUIRED and a
 # CA file, so a client that cannot produce a certificate signed by that CA does
 # not complete the handshake and gets no response at all. That is the whole
@@ -50,9 +55,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def _client_cn(self):
+        # THE CLIENT CERTIFICATE THE TLS LAYER ACTUALLY ACCEPTED, asked of the
+        # socket rather than of anything the request said. It is the only place
+        # in the whole stack that can say which certificate was presented, so a
+        # run that means to prove a card was used has to read it here. The
+        # common name is a fixture identity and is printed; nothing else from
+        # the certificate is.
+        try:
+            peer = self.connection.getpeercert()
+        except (AttributeError, ValueError):
+            return None
+        if not peer:
+            return None
+        for rdn in peer.get("subject", ()):
+            for key, value in rdn:
+                if key == "commonName":
+                    return value
+        return None
+
     def _note(self, path):
         line = f"{self.command} {path}\n"
+        cn = self._client_cn()
         sys.stderr.write(f"request {line}")
+        if cn is not None:
+            sys.stderr.write(f"client-cn={cn}\n")
         sys.stderr.flush()
         if self.server.access_log:
             with open(self.server.access_log, "a", encoding="utf-8") as handle:
