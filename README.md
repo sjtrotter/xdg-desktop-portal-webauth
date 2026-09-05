@@ -408,7 +408,8 @@ against no PKCS#11 library of its own — a certificate is named by URI and GnuT
 **client** is still a stub and needs only GLib and GIO; libsecret is declared optional and unused.
 
 ```console
-$ meson test -C build-backend        # the rules: completion, options, storage, redaction
+$ meson test -C build-backend        # the rules: completion, options, storage, redaction,
+                                     #            and the hardening window's counting
 ```
 
 Then the real thing, and none of it touches your session bus or your display:

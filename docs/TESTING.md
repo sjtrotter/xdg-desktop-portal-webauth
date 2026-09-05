@@ -25,14 +25,20 @@ $ meson test -C build-backend
 ```
 
 ```
-1/4 unit - xdg-desktop-portal-webauth:completion OK   8 subtests passed
-2/4 unit - xdg-desktop-portal-webauth:options    OK   2 subtests passed
-3/4 unit - xdg-desktop-portal-webauth:storage    OK   5 subtests passed
-4/4 unit - xdg-desktop-portal-webauth:redact     OK   7 subtests passed
+1/5 unit - xdg-desktop-portal-webauth:completion OK   8 subtests passed
+2/5 unit - xdg-desktop-portal-webauth:options    OK   2 subtests passed
+3/5 unit - xdg-desktop-portal-webauth:storage    OK   5 subtests passed
+4/5 unit - xdg-desktop-portal-webauth:redact     OK   7 subtests passed
+5/5 unit - xdg-desktop-portal-webauth:harden     OK   2 subtests passed
 
-Ok:                4
+Ok:                5
 Fail:              0
 ```
+
+`test-harden.c` covers the counting of the window in which `PR_SET_DUMPABLE(0)` yields so that
+xdg-desktop-portal can identify this process — an unbalanced pair would leave it open for the life
+of the process, which is exactly the exposure the window exists to bound. It deliberately does not
+harden the test binary.
 
 `backend/tests/test-completion.c` carries the frontend's own fixtures, marked `FRONTEND`, so that
 the two implementations of the completion rule can be seen to agree
@@ -45,7 +51,7 @@ $ meson setup build-asan backend -Db_sanitize=address,undefined -Db_lundef=false
 $ ninja -C build-asan && meson test -C build-asan
 ```
 
-All four pass with LeakSanitizer on. If `libasan` is not installed system wide, unpack it into a
+All five pass with LeakSanitizer on. If `libasan` is not installed system wide, unpack it into a
 scratch directory and set `LIBRARY_PATH` (to link) and `LD_LIBRARY_PATH` (to run).
 
 ---

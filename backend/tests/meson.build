@@ -11,6 +11,7 @@ webauth_unit_tests = {
   'options': 'test-options.c',
   'storage': 'test-storage.c',
   'redact': 'test-redact.c',
+  'harden': 'test-harden.c',
 }
 
 foreach name, source : webauth_unit_tests
