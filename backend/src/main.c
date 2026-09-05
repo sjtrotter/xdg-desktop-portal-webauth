@@ -297,8 +297,18 @@ int main(int argc, char** argv)
 	/* --verbose promises breadcrumbs, so it has to turn the debug level on as
 	 * well: GLib's default writer drops g_debug() unless a domain is enabled.
 	 * This backend's domain only -- turning on "all" buries the six lines that
-	 * matter under GIO's, dconf's and GDK's. */
-	if (opt_verbose)
+	 * matter under GIO's, dconf's and GDK's.
+	 *
+	 * BUT NOT IF THE OPERATOR ALREADY SAID WHICH DOMAINS THEY WANTED.
+	 * g_log_writer_default_set_debug_domains() REPLACES $G_MESSAGES_DEBUG
+	 * rather than adding to it, and the domain that matters most when this
+	 * backend goes wrong is not its own: it is "pkcs11-portal-certificate",
+	 * the certificate portal's client-side PKCS#11 module, which runs INSIDE
+	 * THIS PROCESS to build a certificate and inside the web engine's network
+	 * process to use the key. Silencing it turned a module that was being
+	 * refused by the portal into a bare "the requested data were not
+	 * available", and cost an afternoon. */
+	if (opt_verbose && g_getenv("G_MESSAGES_DEBUG") == NULL)
 	{
 		const char* domains[] = { G_LOG_DOMAIN, NULL };
 
