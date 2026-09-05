@@ -17,7 +17,7 @@ struct WebAuthTransaction
 	WebAuthImplRequest* request;
 
 	char* app_id;
-	char* app_id_kind;
+	char* app_identity_level;
 	char* start_uri;
 	char* completion_uri;
 	WebAuthSessionMode mode;
@@ -59,7 +59,7 @@ static gboolean on_request_close(XdpImplRequest* object, GDBusMethodInvocation* 
 
 WebAuthTransaction* webauth_transaction_new(GDBusMethodInvocation* invocation,
                                             WebAuthImplRequest* request, const char* app_id,
-                                            const char* app_id_kind, const char* start_uri,
+                                            const char* app_identity_level, const char* start_uri,
                                             const char* completion_uri, WebAuthSessionMode mode,
                                             guint timeout_seconds)
 {
@@ -69,7 +69,7 @@ WebAuthTransaction* webauth_transaction_new(GDBusMethodInvocation* invocation,
 	self->invocation = invocation;
 	self->request = g_object_ref(request);
 	self->app_id = g_strdup(app_id);
-	self->app_id_kind = g_strdup(app_id_kind);
+	self->app_identity_level = g_strdup(app_identity_level);
 	self->start_uri = g_strdup(start_uri);
 	self->completion_uri = g_strdup(completion_uri);
 	self->mode = mode;
@@ -97,7 +97,7 @@ void webauth_transaction_unref(WebAuthTransaction* self)
 	g_clear_signal_handler(&self->close_id, self->request);
 	g_clear_object(&self->request);
 	g_clear_pointer(&self->app_id, g_free);
-	g_clear_pointer(&self->app_id_kind, g_free);
+	g_clear_pointer(&self->app_identity_level, g_free);
 	g_clear_pointer(&self->start_uri, g_free);
 	g_clear_pointer(&self->completion_uri, g_free);
 	g_free(self);
@@ -214,9 +214,9 @@ const char* webauth_transaction_app_id(WebAuthTransaction* self)
 	return self->app_id;
 }
 
-const char* webauth_transaction_app_id_kind(WebAuthTransaction* self)
+const char* webauth_transaction_app_identity_level(WebAuthTransaction* self)
 {
-	return self->app_id_kind;
+	return self->app_identity_level;
 }
 
 WebAuthSessionMode webauth_transaction_session_mode(WebAuthTransaction* self)

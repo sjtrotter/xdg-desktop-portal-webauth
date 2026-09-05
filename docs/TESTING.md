@@ -376,8 +376,6 @@ xdg-desktop-portal at `experimental/certificate-webauthentication`:
   ok    3 the module ran in the network process (process:378930): ... grant acquired
   ok    4 the frontend identified the caller chooser-shown app_id=(none) identity=unidentified
   ok    5 the backend created a grant      grant-created
-  ok    5 the network process reused the grant grant-delegated
-  ok    5 the module was told so           grant acquired: RSA 2048 bits, sign=1 decrypt=0, delegated_from=parent
   ok    6 the PIN was accepted             login-ok
   ok    6 the signature was produced       operation-completed
   ok    2 the hardening window closed      process-hardening outcome=identifiable-end
@@ -387,8 +385,7 @@ xdg-desktop-portal at `experimental/certificate-webauthentication`:
   ok    completion never fetched           /cb absent from the access log
 
 module instances: 2
-choosers granted: 1
-grants delegated: 1
+choosers granted: 2
 PIN prompts:      1
 signatures:       1
 
@@ -416,29 +413,28 @@ the certificate in **two processes**:
    result, and the whole reason the design is a module rather than a brokered `Sign`. That is a
    second p11-kit module instance, in a second process, with a grant of its own.
 
-Two module instances mean two `CreateSession`/`AcquireCredential` pairs, and that used to mean
-**two choosers, about three seconds apart, asking the same question**: the user answered the same
-prompt twice for one sign-in. Only one PIN prompt ever appeared, because only the network process
-signs.
+Two module instances mean two `CreateSession`/`AcquireCredential` pairs, and that means **two
+choosers, about three seconds apart, asking the same question**: the user answers the same prompt
+twice for one sign-in. Only one PIN prompt appears, because only the network process signs.
 
 Neither half can be removed. The UI process cannot hand WebKit a URI, and the network process
 cannot be handed the UI process's grant: a grant belongs to the D-Bus peer that acquired it, which
-is the point of the design. **The second question is answered instead of asked.** `main()` sets
-`PKCS11_PORTAL_CERTIFICATE_DELEGATE_TO_CHILDREN=1` before anything can load p11-kit and before the
-network process is forked, so the module here asks the portal for `delegate_to_children`; the
-network process is a **child** of this one, so the frontend answers its `AcquireCredential` from
-the grant this process already holds, as a derived grant, and tells the certificate backend to bind
-that certificate with no window. Two grants, one chooser, one PIN.
+is the point of the design.
 
-`choosers granted: 1` counts `grant-created`; `grants delegated: 1` counts `grant-delegated`, which
-is the certificate backend's line for a grant it made without a window. **A second chooser is a
-regression** — in the portal frontend's ancestry check, in the certificate backend's handling of
-`delegated`, or in this backend's environment.
+The process-tree delegation that did answer the second question instead of asking it is **out of
+the portal interface**: it could never fire for a Flatpak caller, whose app-info pidfd is the
+sandbox instance's rather than the calling process's, and ancestry alone crosses application
+boundaries. It is archived on the frontend's
+`experimental/certificate-webauthentication+delegation` branch.
 
-What that delegation trusts, and what it does not, is in [SECURITY.md](SECURITY.md) here and in the
-certificate portal's own `docs/SECURITY.md`. The alternative that would remove the second module
-instance altogether — a WebKit API taking a PKCS#11 URI, so this process never imports anything —
-does not exist; if it appears, it is better than delegation and this backend should use it.
+`choosers granted: 2` counts `grant-created`. **The number to watch is two, and a third is a
+regression** — it means a chain verification acquired a credential, which tier 2b's phase 0 is
+the check for.
+
+The alternative that would remove the second module instance altogether — a WebKit API taking a
+PKCS#11 URI, so this process never imports anything — does not exist. The one that would remove
+the second chooser is a grant belonging to the app-info identity rather than to the D-Bus peer;
+see the certificate portal's ADR 0011.
 
 ### The finding: a second `Start` shows nothing at all
 
@@ -449,17 +445,13 @@ $ tools/portal-stack.sh --second-start
 Two complete sign-ins against the same backend process:
 
 ```
-second Start: grants before=2 after=2 (created or delegated)
+second Start: grants before=2 after=2
 
 module instances: 2
-choosers granted: 1
-grants delegated: 1
+choosers granted: 2
 PIN prompts:      1
 signatures:       1
 ```
-
-The count is of grants of **both** kinds, created and delegated, so that a delegation is not
-mistaken for a reuse.
 
 The second `Start` produced **no chooser, no PIN prompt, no signature and no certificate challenge
 at all** — the backend's log has one `certificate-challenge` for two sign-ins. Two things caused
@@ -479,13 +471,13 @@ instance and its grant survive it. A run that wants a second chooser has to rest
 ### The finding: cancelling the chooser used to hang, and now does not
 
 ```console
-$ tools/portal-stack.sh --cancel-chooser --     --expect-response 2 --expect-reason no_certificate_adapter --no-require-code
+$ tools/portal-stack.sh --cancel-chooser --     --expect-response 2 --expect-reason credential_unavailable --no-require-code
 ```
 
 ```
 Response response=2
 Response results=reason
-Response reason=no_certificate_adapter
+Response reason=credential_unavailable
 PASS
 ```
 
@@ -499,7 +491,7 @@ own interception of the completion URI, so nothing finished the transaction. The
 for 120 seconds until the application's own timeout, and what the application was finally told was
 `request_closed` rather than why.
 
-`no_certificate_adapter` is the honest answer and not an ideal one: what reaches this backend is
+`credential_unavailable` is the honest answer and not an ideal one: what reaches this backend is
 GnuTLS reporting that the object was not available, and it cannot tell "the user refused" from "no
 provider could run". [IMPL-INTERFACE.md](IMPL-INTERFACE.md) says so.
 
@@ -719,11 +711,11 @@ desktop's own prompter rather than in a window this project drew.
 | the card signed | the certificate backend's `login-ok` and `operation-completed` |
 | the flow ended without fetching the redirect | `navigation outcome=matched`, and `completed` |
 
-Expect **one chooser**. It used to be two, for the reason tier 2b measures — the certificate is
-built in this backend's process and used in WebKit's network process — and it is still two grants,
-but the network process is a child of this one and its grant is derived from this one's with no
-window. **A second chooser is a regression**; the certificate backend's log says which grant was
-which (`grant-created` for the one the user answered, `grant-delegated` for the derived one).
+Expect **two choosers**, for the reason tier 2b measures: the certificate is built in this
+backend's process and used in WebKit's network process, and each is a separate D-Bus peer with a
+grant of its own. **A third is a regression** — it means a chain verification acquired a
+credential. Each one the user answered is a `grant-created` line in the certificate backend's
+log.
 
 There are still two grants on the card, so the open question about a **second PIN prompt** stands:
 the second grant is a second login on the token, and whether the backend's session is still logged

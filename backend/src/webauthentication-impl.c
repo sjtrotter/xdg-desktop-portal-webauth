@@ -206,7 +206,7 @@ static gboolean handle_start(XdpImplExperimentalWebAuthentication* object,
 	TransactionSlot* slot = NULL;
 	WebAuthSessionMode mode = WEBAUTH_SESSION_SHARED;
 	const char* session_mode = NULL;
-	const char* app_id_kind = NULL;
+	const char* app_identity_level = NULL;
 	const char* title = NULL;
 	const char* activation_token = NULL;
 	guint timeout = WEBAUTH_DEFAULT_TIMEOUT;
@@ -236,7 +236,7 @@ static gboolean handle_start(XdpImplExperimentalWebAuthentication* object,
 
 	timeout = webauth_options_timeout(arg_options, WEBAUTH_DEFAULT_TIMEOUT, WEBAUTH_MAX_TIMEOUT);
 
-	app_id_kind = webauth_options_string(arg_options, "app_id_kind");
+	app_identity_level = webauth_options_string(arg_options, "app_identity_level");
 	title = webauth_options_string(arg_options, "title");
 	activation_token = webauth_options_string(arg_options, "activation_token");
 
@@ -250,7 +250,7 @@ static gboolean handle_start(XdpImplExperimentalWebAuthentication* object,
 		return G_DBUS_METHOD_INVOCATION_HANDLED;
 	}
 
-	transaction = webauth_transaction_new(invocation, request, arg_app_id, app_id_kind,
+	transaction = webauth_transaction_new(invocation, request, arg_app_id, app_identity_level,
 	                                      arg_start_uri, arg_completion_uri, mode, timeout);
 
 	slot = g_new0(TransactionSlot, 1);

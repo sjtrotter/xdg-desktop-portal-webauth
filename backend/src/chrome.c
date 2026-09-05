@@ -41,9 +41,9 @@ static char* application_hint_markup(const char* title_hint)
 }
 
 /* WHAT THE FRONTEND ESTABLISHED, said in words rather than in a code. The three
- * kinds are the impl XML's; an empty app id is the fourth case and is the one
+ * levels are the impl XML's; an empty app id is the fourth case and is the one
  * that has to be loudest. */
-static char* caller_markup(const char* app_id, const char* app_id_kind)
+static char* caller_markup(const char* app_id, const char* app_identity_level)
 {
 	g_autofree char* escaped = NULL;
 
@@ -52,10 +52,10 @@ static char* caller_markup(const char* app_id, const char* app_id_kind)
 
 	escaped = g_markup_escape_text(app_id, -1);
 
-	if (g_strcmp0(app_id_kind, "sandboxed") == 0)
+	if (g_strcmp0(app_identity_level, "sandboxed") == 0)
 		return g_strdup_printf("<b>%s</b> asked for this sign-in (verified)", escaped);
 
-	if (g_strcmp0(app_id_kind, "cgroup") == 0)
+	if (g_strcmp0(app_identity_level, "host") == 0)
 		return g_strdup_printf("<b>%s</b> asked for this sign-in (from the running process)",
 		                       escaped);
 
@@ -96,7 +96,7 @@ static gboolean on_key_pressed(GtkEventControllerKey* controller, guint keyval, 
 	return TRUE;
 }
 
-WebAuthChrome* webauth_chrome_new(const char* app_id, const char* app_id_kind,
+WebAuthChrome* webauth_chrome_new(const char* app_id, const char* app_identity_level,
                                   const char* title_hint, WebAuthChromeCancel on_cancel,
                                   gpointer user_data)
 {
@@ -106,7 +106,7 @@ WebAuthChrome* webauth_chrome_new(const char* app_id, const char* app_id_kind,
 	GtkWidget* banner = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
 	GtkWidget* origin_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 	GtkEventController* keys = gtk_event_controller_key_new();
-	g_autofree char* caller = caller_markup(app_id, app_id_kind);
+	g_autofree char* caller = caller_markup(app_id, app_identity_level);
 	g_autofree char* hint = application_hint_markup(title_hint);
 
 	self->on_cancel = on_cancel;

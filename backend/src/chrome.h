@@ -40,10 +40,10 @@ typedef struct WebAuthChrome WebAuthChrome;
  *  manager's close. */
 typedef void (*WebAuthChromeCancel)(gpointer user_data);
 
-/** Build the trusted chrome. @app_id and @app_id_kind come from the frontend;
+/** Build the trusted chrome. @app_id and @app_identity_level come from the frontend;
  *  @title_hint is application text and is rendered as such, never as the
  *  window's identity. */
-WebAuthChrome* webauth_chrome_new(const char* app_id, const char* app_id_kind,
+WebAuthChrome* webauth_chrome_new(const char* app_id, const char* app_identity_level,
                                   const char* title_hint, WebAuthChromeCancel on_cancel,
                                   gpointer user_data);
 

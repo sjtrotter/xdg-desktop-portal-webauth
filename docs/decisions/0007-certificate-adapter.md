@@ -169,7 +169,7 @@ is the decision as it stood before the spike, kept because the reasoning that su
   has completed a real WebKitGTK mutual-TLS handshake** ([S2](../SPIKES.md)).
 
 When neither adapter can run, the challenge is declined and the transaction ends with response `2`
-and reason `no_certificate_adapter`.
+and reason `credential_unavailable`.
 
 ## Consequences
 

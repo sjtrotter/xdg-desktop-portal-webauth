@@ -46,7 +46,7 @@ typedef struct
 {
 	const char* origin;      /**< the verified host that raised the challenge */
 	const char* app_id;      /**< the app id xdg-desktop-portal derived; "" if unidentified */
-	const char* app_id_kind; /**< "sandboxed", "cgroup" or "host" */
+	const char* app_identity_level; /**< "sandboxed", "host" or "unidentified" */
 	gpointer parent;         /**< the transaction's window, to parent any dialog to */
 } WebAuthCertChallenge;
 
@@ -86,7 +86,7 @@ gboolean webauth_cert_adapter_configure(const char* name, const char* cert_uri,
 
 /** The provider a transaction will use, or NULL when none can run - in which
  *  case a challenge is declined and the transaction ends with
- *  WEBAUTH_RESPONSE_OTHER and reason "no_certificate_adapter". */
+ *  WEBAUTH_RESPONSE_OTHER and reason "credential_unavailable". */
 const WebAuthCertAdapter* webauth_cert_adapter_select(GError** error);
 
 /** The configured name, for the start-up summary: "auto", "portal", "pkcs11" or

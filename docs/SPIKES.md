@@ -194,10 +194,10 @@ headless: the challenge, the URI, p11-kit, the module in this process and in Web
 process, the portal's chooser and PIN prompt, `C_Sign`, and a completed mutual-TLS handshake with
 the card's common name in the server's log. The URI seam is what S2 said it was. Two things the
 spike could not have predicted came out of that run and are in [TESTING.md](TESTING.md) tier 2b:
-**one handshake resolves the URI in two processes and therefore put up two choosers** — since
-answered by the portal's `delegate_to_children`, which this backend asks for, so the network
-process's grant is derived from this process's and only one window appears — and the contract's URI
-needed an `object=` attribute before GnuTLS's single-object import would accept it at all.
+**one handshake resolves the URI in two processes and therefore puts up two choosers** — the
+process-tree delegation that answered the second from the first is out of the portal interface, so
+this stands — and the contract's URI needed an `object=` attribute before GnuTLS's single-object
+import would accept it at all.
 
 **What it decides.** The `portal` adapter stops being "broker a `Sign`" and becomes "resolve a URI
 through the certificate portal's own PKCS#11 module": there is no external-signer seam in WebKit or

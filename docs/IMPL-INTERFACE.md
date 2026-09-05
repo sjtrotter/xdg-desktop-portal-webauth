@@ -91,10 +91,10 @@ returned has nothing left to get wrong.
 | Key | Type | Status when it arrives |
 |---|---|---|
 | `activation_token` | `s` | Passed through unchanged; the backend decides whether to use it. |
-| `session_mode` | `s` | A **decision**, already validated and already narrowed by policy. Not a request. A backend that cannot honour `ephemeral` must **fail** rather than quietly use the shared store. |
-| `timeout` | `u` | Already clamped to the 900 s ceiling, and always forwarded (default 300). The backend enforces its own deadline as well. |
+| `session_mode` | `s` | A **decision**, already validated. Not a request. A backend that cannot honour `ephemeral` must **fail** rather than quietly use the shared store. |
+| `timeout` | `u` | Already clamped to the 900 s ceiling, and always forwarded (default 300). **The frontend runs no timer of its own**: the backend owns the window, so the deadline is the backend's to keep, and a backend that never answers is a request that never ends. |
 | `title` | `s` | Untrusted application text, already length-limited. |
-| `app_id_kind` | `s` | `sandboxed`, `cgroup` or `host`. The honesty level of `app_id`, so the chrome can say "an unidentified application" rather than showing an empty name. |
+| `app_identity_level` | `s` | `sandboxed`, `host` or `unidentified`. The honesty level of `app_id`, so the chrome can say "an unidentified application" rather than showing an empty name. |
 
 `handle_token` is **not** forwarded: it has already done its job, which was to let the application
 predict the Request path. Unknown keys are **not** forwarded either — the frontend drops them, so a
@@ -165,27 +165,29 @@ implementation is nevertheless not a literal reading of it, each recorded here r
 comment nobody reads:
 
 **1. The reason vocabulary is extended.** The XML names `timeout`, `no_display`, `no_engine`,
-`session_terminated`, `no_certificate_adapter` and `unrelated_certificate_challenge`, introduced
-with "for instance" — an open list. This backend emits all six and six more, defined in
-[`../backend/src/transaction.h`](../backend/src/transaction.h):
+`user_cancelled`, `session_terminated` and `credential_unavailable`, introduced with "for
+instance" — an open list. This backend emits those and six more, defined in
+[`../backend/src/transaction.h`](../backend/src/transaction.h). `unrelated_certificate_challenge`
+is one of them: it names a certificate concept, which is this backend's business and not a generic
+web sign-in portal's, so it is an addition here rather than a word in the interface.
 
 | Symbol | When |
 |---|---|
-| `user_cancelled` | The Cancel button, Escape, or the window manager's close. Response `1`. |
 | `request_closed` | `Close()` arrived from the frontend. Response `1`. |
+| `unrelated_certificate_challenge` | A client-certificate challenge arrived from a host unrelated to this flow. Response `2`. |
 | `tls_error` | The server's certificate did not verify. There is no bypass. Response `2`. |
 | `load_failed` | The engine could not load the page and no better reason applies. Response `2`. |
 | `invalid_request` | The backend's own re-validation of the arguments failed. Response `2`. |
 | `no_storage` | The website data store the mode requires could not be created. Response `2`. |
 
-**`no_certificate_adapter` also means "the user refused", and cannot say so.** When the `portal`
+**`credential_unavailable` also means "the user refused", and cannot say so.** When the `portal`
 provider's chooser is cancelled, what reaches this backend is GnuTLS reporting that the PKCS#11
 object was not available — the same thing it reports when the module is not installed, when the
 portal is not running, and when the certificate portal declined for a policy reason. This backend
-cannot tell those apart and does not guess: it emits `no_certificate_adapter` and response `2` for
+cannot tell those apart and does not guess: it emits `credential_unavailable` and response `2` for
 all of them. A caller that needs to know why must ask the certificate portal, which does know.
 (Measured in [TESTING.md](TESTING.md) tier 2b: Escape at the chooser, response `2`, reason
-`no_certificate_adapter`, 1.9 seconds.)
+`credential_unavailable`, 1.9 seconds.)
 
 A frontend must tolerate a reason it does not know, which the branch's frontend does: it forwards
 the string unchanged. If any of these earn their place, they belong in the XML.

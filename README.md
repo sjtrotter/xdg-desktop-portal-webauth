@@ -150,9 +150,8 @@ process, the certificate portal's chooser and PIN prompt, `C_Sign`, a completed 
 handshake — has been run headless end to end by
 [`tools/portal-stack.sh`](tools/portal-stack.sh), with every hop proved from the log of the process
 that made it. [docs/TESTING.md](docs/TESTING.md) tier 2b is the command, the transcript, and two UX
-findings that came out of it: **one handshake used to put up two choosers**, because the
-certificate is built in this process and used in the network process — this backend now asks the
-portal to let its own descendants reuse the grant, so it is one chooser and one PIN — and a
+findings that came out of it: **one handshake puts up two choosers**, because the certificate is
+built in this process and used in the network process and each is a separate D-Bus peer, and a
 **second sign-in in the same backend process puts up none at all**.
 
 `pkcs11` is the fallback: any p11-kit token named on the backend's command line, for an operator
@@ -330,7 +329,7 @@ defers to it; where one of them disagrees, this is right and it is a bug. Last c
 | Client certificates through the `pkcs11` provider | **Implemented** | a token named on the command line; the fallback, and what the tests use with no portal in the picture |
 | Client certificates through the `portal` provider | **Implemented** | the primary path. Both portals on one private bus, headless, a real WebKitGTK sign-in signed by the card's key: `tools/portal-stack.sh` |
 | Caller attribution to the certificate portal's chooser | **Partial** | the certificate portal's window names **this backend**, not the application. The fix is in-process in the shared frontend and is **not written** |
-| One chooser per sign-in | **Implemented** | it used to be **two**, three seconds apart, because the certificate is resolved in this process and again in WebKit's network process. That process is a child of this one, and this one asks the portal for `delegate_to_children`, so its grant is derived from the first with no window: counted at the end of every `tools/portal-stack.sh` run, and a second chooser is a regression |
+| One chooser per sign-in | **Not implemented** | it is **two**, three seconds apart, because the certificate is resolved in this process and again in WebKit's network process, and a grant belongs to the D-Bus peer that acquired it. The process-tree delegation that fixed it is out of the portal interface and archived on `experimental/certificate-webauthentication+delegation`; the count is at the end of every `tools/portal-stack.sh` run, and a **third** chooser is a regression |
 | Per-transaction isolation of certificate authority | **Partial** | grants survive the transaction and an authenticated connection survives the grant. See [SECURITY.md](docs/SECURITY.md), "What closing a transaction does NOT do" |
 | A real identity provider | **Not implemented** | nothing here has ever talked to Entra ID, and no card has ever been in a reader for it. The client's every step is proved against `tools/mock-token-endpoint.py`, which is a protocol fixture and not a tenant |
 | The Entra client, `clients/entra/` | **Implemented** | `login`, `token`, `accounts`, `logout`; PKCE, the callback classifier, the refresh grant, the proof-of-possession grant and its interactive fallback, and the Secret Service account store. Driven end to end against a mock authority through the headless portal stack: `tools/entra-e2e.sh` |
@@ -464,7 +463,7 @@ $ ../xdg-desktop-portal-certificate/tools/softhsm-fixture.sh
 $ tools/portal-stack.sh              # both portals, one private bus, one Xvfb
 $ tools/portal-stack.sh --second-start
 $ tools/portal-stack.sh --cancel-chooser -- --expect-response 2 \
-      --expect-reason no_certificate_adapter --no-require-code
+      --expect-reason credential_unavailable --no-require-code
 ```
 
 **The client, end to end**, which needs no card and no second service: a headless X server, a

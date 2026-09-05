@@ -172,13 +172,13 @@ limiting, and bypass the frontend's re-check of the returned URI. So:
 process can execute another path, manipulate its launch context, or connect straight to the bus.
 **The frontend resolves it; the backend is told and never asks** — a backend that resolved its own
 peer would resolve xdg-desktop-portal. The frontend distinguishes three honesty levels, forwards
-which one it got as `app_id_kind`, and this backend renders the difference:
+which one it got as `app_identity_level`, and this backend renders the difference:
 
-| Kind | Source | Status |
+| Value | Source | Status |
 |---|---|---|
-| Sandboxed | Flatpak/Snap, through the containment framework's mediation | authenticated metadata |
-| Cgroup-derived | the systemd/cgroup unit | a useful **label**, not a security principal |
-| Unverified | an unsandboxed peer | unique bus name and UID are reliable; publisher is not established |
+| `sandboxed` | Flatpak/Snap, through the containment framework's mediation | authenticated metadata |
+| `host` | a host process, identified from the systemd/cgroup unit | a useful **label**, not a security principal |
+| `unidentified` | an unsandboxed peer with nothing to identify it by | unique bus name and UID are reliable; publisher is not established |
 
 A caller-supplied app id is only a claim, and is never treated as more.
 
@@ -187,7 +187,7 @@ Consequences, enforced rather than advised:
 - **Every result is bound to the initiating unique D-Bus connection.** If that connection goes
   away, the transaction is cancelled and nobody else receives the completion.
 - The chrome displays what the frontend verified, and says plainly when it could not — from the
-  `app_id` and `app_id_kind` it was given, never from anything it re-derived.
+  `app_id` and `app_identity_level` it was given, never from anything it re-derived.
 - An unverified label is **never** the sole key for a storage partition. An unverifiable host caller
   gets `shared` or `ephemeral` — never a partition it named. This is a large part of why there is no
   per-application persistent mode in version 1.
@@ -337,27 +337,25 @@ rather than reading it out of a message, would satisfy the rule; so would a capa
 issues to a named peer and later recognises. In-process is simply the cheapest way to satisfy the
 rule. See [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
 
-**One consent for one process tree, and why it does not break that rule.** This backend sets
-`PKCS11_PORTAL_CERTIFICATE_DELEGATE_TO_CHILDREN=1` in `main()`, before anything can load p11-kit
-and before WebKit's network process is forked, so the grant the module acquires in *this* process
-is marked delegable and the network process — a child of this one — is answered from it instead of
-being asked. That is what turned two choosers into one; the measurement is in
-[TESTING.md](TESTING.md).
+**Two consents for one sign-in, and why that is where this stands.** One mutual-TLS handshake
+needs the certificate portal's module in two processes — here, to build the `GTlsCertificate`, and
+in WebKit's network process, to use the key — and they are separate D-Bus peers, so the user is
+asked twice, seconds apart, for the same card and the same certificate.
 
-Nothing there believes anyone about anybody's identity. The frontend derives the second caller's
-process from **its own bus connection's pidfd**, walks `/proc` itself, and compares against a pidfd
-it kept when the first grant was made. No app id, no token and no assertion crosses a message; this
-backend cannot name the process it wants covered, and could not lie about it if it tried. What this
-backend asserts is only about *itself*: that the processes it starts are its own work.
+The process-tree delegation that answered the second from the first is **out of the portal
+interface**. It never believed anyone about anybody's identity — the frontend derived the second
+caller's process from its own connection's pidfd and walked `/proc` itself — but it could not fire
+at all for a Flatpak caller, whose app-info pidfd is the sandbox instance's and identical for every
+process in it, and ancestry alone crosses application boundaries: a host process that runs
+`flatpak run com.other.App` produces a descendant. It is archived on the frontend's
+`experimental/certificate-webauthentication+delegation` branch, and this backend no longer sets
+`PKCS11_PORTAL_CERTIFICATE_DELEGATE_TO_CHILDREN`.
 
-That assertion is true here and is worth stating as a rule rather than a habit. Every descendant of
-this process is a WebKit helper this backend started for this sign-in. **This backend runs no code
-on anybody else's behalf**: it does not launch applications, it does not exec anything a caller
-names, and its transactions do not spawn user-supplied programs. A process that did any of those
-must not set that variable, because a parent on the same UID can read and write its children's
-memory in any case — which is also the argument for why delegating downwards gives a descendant
-nothing this process could not have obtained itself and forwarded. If this backend ever gains a
-path that runs foreign code, this variable has to go with it.
+What would replace it is a grant that belongs to the **app-info identity** rather than to the
+D-Bus peer, which is the model upstream would recognise and which needs no process-tree walk at
+all. It fixes the sandboxed case; host processes have no instance identity, so it does not fix
+this one. Two choosers is the honest state, and it is counted at the end of every
+`tools/portal-stack.sh` run.
 
 - **The PIN never reaches this process.** It is entered in the Certificate portal backend's window, against
   another process's memory. There is no buffer here to scrub and no bug here that can leak one.
@@ -470,7 +468,7 @@ with a card and no certificate portal uses.
 - **Nothing about a certificate is logged**: not the PKCS#11 URI, not the label, not the serial, not
   the subject. Only counts.
 - **When no provider can run**, the challenge is declined; if the server required one, the load then
-  fails and the transaction ends `2` with reason `no_certificate_adapter` — one of the XML's symbols.
+  fails and the transaction ends `2` with reason `credential_unavailable` — one of the XML's symbols.
   A flow that did not actually need a certificate is not failed by a challenge it ignored.
 - **The hardening yields, for one interval, on the `portal` provider only.** `PR_SET_DUMPABLE(0)`
   makes this process's `/proc` entries root-owned, and xdg-desktop-portal identifies a caller by
@@ -487,7 +485,7 @@ with a card and no certificate portal uses.
   `process-hardening outcome=identifiable-begin` / `-end`, so an operator can see every interval in
   which the process was readable without having asked for breadcrumbs. **The `pkcs11` provider opens
   no window at all**: it calls no portal, and the PIN it holds is exactly what the flag protects.
-- **The residual risk delegation does not remove:** the backend can still provoke a certificate
+- **The residual risk:** the backend can still provoke a certificate
   prompt, repeatedly, on behalf of a caller it may be unable to identify. Rate limiting in the
   frontend and honest caller display in the backend stand between that and a nuisance — and the
   rate limiting is not implemented, so at present only the honest display does. Under the `portal`

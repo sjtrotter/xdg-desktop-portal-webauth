@@ -22,24 +22,41 @@ has stopped paying for itself.
 ```
 repository   a local checkout of xdg-desktop-portal
 remote       upstream → https://github.com/flatpak/xdg-desktop-portal.git
+             origin   → https://github.com/sjtrotter/xdg-desktop-portal.git
 branch       experimental/certificate-webauthentication
-base         upstream/main = c95490a  settings: include xdp-dex.h for the
-                                      dex_scheduler_spawnv fallback
-commits      661e441  doc: List the experimental portals in the interface reference
-             3a32e9b  web-authentication: Add an experimental WebAuthentication portal  ← this one
-             703fb22  certificate: Add an experimental Certificate portal
-             aa1d697  session-dex: Add xdp_session_dex_close()
-             3f46e3c  xdp: Add a gate for experimental portals
+base         upstream/main = 86bd3e2  po: Update Russian translation
+commits      02b679a  xdp: Add a gate for experimental portals            ┐ series 1
+             e587d47  session-dex: Add xdp_session_dex_close()            ┘
+             214af63  web-authentication: Add an experimental
+                      WebAuthentication portal                   ← this one ┐
+             d74fab2  doc: List the experimental portals in the             │ series 2
+                      interface reference                                   │
+             8efe3ef  tests: Add WebAuthentication portal tests             ┘
+             0e5c595  request-dex: Let a portal see that a request was    ┐
+                      closed                                              │ series 3
+             1dec352  certificate: Add an experimental Certificate portal │
+             42664d2  tests: Add Certificate portal tests                 ┘
 ```
 
-`3a32e9b` is the commit this repository tracks. `3f46e3c` is the
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate. `703fb22` is the Certificate portal the
-`portal` certificate adapter calls — **on the same branch, in the same frontend process**,
-which is what makes the delegation gap solvable at all
+**Three series, proposed in that order.** This interface is the second of the three, and it
+is the one that stands on its own: one method, no session object, and no change to anything
+shared beyond the gate. `1dec352` is the Certificate portal the `portal` certificate adapter
+calls — on the same branch, in the same frontend process
 ([decisions/0007](decisions/0007-certificate-adapter.md)).
 
-Test results, from the branch write-up: `meson test` green on the whole suite,
-`tests/test_webauthentication.py` 38 passed, `tests/test_certificate.py` 40 passed,
+**What this interface lost when the branch was rewritten**: the AVD vocabulary. The generic
+XML no longer names `no_certificate_adapter` or `unrelated_certificate_challenge`, which are
+certificate concepts in a portal that has nothing to do with certificates; this backend emits
+`credential_unavailable` for the first and keeps the second as one of its own additions. The
+identity option is `app_identity_level` with `sandboxed` / `host` / `unidentified`, shared
+with the Certificate interface, which used to have its own three names for the same
+distinction. The completion rule now states the equivalences the URI parser applies, and a
+wildcard host is refused rather than matched literally. The timeout contract says what the
+frontend actually does: it clamps and forwards, and the deadline is the backend's.
+
+Test results: `meson test --suite integration --suite unit` green upstream except a
+pre-existing `usb` failure (`umockdev-run` is not installed there),
+`tests/test_webauthentication.py` 54 passed, `tests/test_certificate.py` 84 passed,
 `gitlint --commits upstream/main..HEAD` passes, `black --check` passes.
 
 ## Why `experimental` is not a claim of acceptance
@@ -102,7 +119,7 @@ vocabulary, the matching rule or the backend's structure.
 | This repository said | The branch says | Why |
 |---|---|---|
 | `completion_uri` must be "absolute, `https` or an exactly named custom scheme, with no userinfo and no wildcard" | "absolute URI with a host, no userinfo and no wildcard" | The custom-scheme carve-out is not in the XML. A custom scheme with a host still parses, but "an exactly named custom scheme" is not a documented category any more |
-| the `reason` symbols were this repository's list | fixed by the XML: impl side `timeout`, `no_display`, `no_engine`, `session_terminated`, `no_certificate_adapter`, `unrelated_certificate_challenge`; public side adds `no_backend`, `backend_disappeared`, `backend_completion_mismatch`, `backend_protocol_error` | Settled, and the split between the two lists is itself informative: a backend cannot report `backend_disappeared` about itself |
+| the `reason` symbols were this repository's list | fixed by the XML: impl side `timeout`, `no_display`, `no_engine`, `user_cancelled`, `session_terminated`, `credential_unavailable`; public side adds `backend_disappeared`, `backend_completion_mismatch`, `backend_protocol_error` | Settled, and the split between the two lists is itself informative: a backend cannot report `backend_disappeared` about itself. The list is generic on purpose: `no_certificate_adapter` named a piece of this backend |
 | `timeout` default and ceiling were prose | 300 default, 900 ceiling, always forwarded | Settled in code |
 | `title` "length-limited" | ≤ 256 characters and single-line | Settled in code |
 | the interface was ours to version | **experimental**: it can change or be removed without a version bump, and is not exported unless the gate is set | This is the largest change to what a consumer must expect |

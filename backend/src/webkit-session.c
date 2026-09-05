@@ -381,7 +381,7 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 			/* The portal provider's token prompts on its own protected path, so
 			 * a PIN request reaching this process means the token is not the one
 			 * that was expected. */
-			self->pending_reason = WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER;
+			self->pending_reason = WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE;
 			webkit_authentication_request_cancel(request);
 			return TRUE;
 		}
@@ -413,8 +413,8 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 	if (self->adapter == NULL)
 	{
 		webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_CERT_DECLINED, "reason",
-		                  WEBAUTH_FIELD_OUTCOME, WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER, NULL);
-		self->pending_reason = WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER;
+		                  WEBAUTH_FIELD_OUTCOME, WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE, NULL);
+		self->pending_reason = WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE;
 		webkit_authentication_request_cancel(request);
 		return TRUE;
 	}
@@ -423,7 +423,7 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 		WebAuthCertChallenge challenge = {
 			.origin = host,
 			.app_id = webauth_transaction_app_id(self->transaction),
-			.app_id_kind = webauth_transaction_app_id_kind(self->transaction),
+			.app_identity_level = webauth_transaction_app_identity_level(self->transaction),
 			.parent = webauth_chrome_window(self->chrome),
 		};
 
@@ -433,9 +433,9 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 	if (certificate == NULL)
 	{
 		webauth_log_event(G_LOG_LEVEL_WARNING, WEBAUTH_EVENT_CERT_DECLINED, "reason",
-		                  WEBAUTH_FIELD_OUTCOME, WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER, "detail",
+		                  WEBAUTH_FIELD_OUTCOME, WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE, "detail",
 		                  WEBAUTH_FIELD_OUTCOME, error->message, NULL);
-		self->pending_reason = WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER;
+		self->pending_reason = WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE;
 		webkit_authentication_request_cancel(request);
 		return TRUE;
 	}
@@ -577,7 +577,7 @@ WebAuthWebkitSession* webauth_webkit_session_new(WebAuthTransaction* transaction
 		                  adapter_error->message, NULL);
 
 	self->chrome = webauth_chrome_new(webauth_transaction_app_id(transaction),
-	                                  webauth_transaction_app_id_kind(transaction), title_hint,
+	                                  webauth_transaction_app_identity_level(transaction), title_hint,
 	                                  on_cancel, self);
 
 	self->view = WEBKIT_WEB_VIEW(

@@ -45,12 +45,18 @@ typedef enum
 
 /** The reason symbols this backend emits. The first six are the impl XML's own
  *  vocabulary; the rest are additions, listed in docs/IMPL-INTERFACE.md, which
- *  the XML permits by saying "for instance". */
+ *  the XML permits by saying "for instance".
+ *
+ *  credential_unavailable is the generic one: the flow needed a credential this
+ *  backend could not supply. It used to be spelled no_certificate_adapter,
+ *  which named a piece of this backend in an interface that has nothing to do
+ *  with certificates. What KIND of credential is a detail field in the log,
+ *  never a word on the wire. */
 #define WEBAUTH_REASON_TIMEOUT "timeout"
 #define WEBAUTH_REASON_NO_DISPLAY "no_display"
 #define WEBAUTH_REASON_NO_ENGINE "no_engine"
 #define WEBAUTH_REASON_SESSION_TERMINATED "session_terminated"
-#define WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER "no_certificate_adapter"
+#define WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE "credential_unavailable"
 #define WEBAUTH_REASON_UNRELATED_CERTIFICATE_CHALLENGE "unrelated_certificate_challenge"
 #define WEBAUTH_REASON_USER_CANCELLED "user_cancelled"
 #define WEBAUTH_REASON_REQUEST_CLOSED "request_closed"
@@ -66,12 +72,12 @@ typedef struct WebAuthTransaction WebAuthTransaction;
  *  adapter holds is released. */
 typedef void (*WebAuthTransactionHook)(gpointer user_data);
 
-/** @app_id and @app_id_kind are what the frontend established and are used for
+/** @app_id and @app_identity_level are what the frontend established and are used for
  *  display only; this process never re-derives them. @mode is the EFFECTIVE
  *  storage mode (storage.h). */
 WebAuthTransaction* webauth_transaction_new(GDBusMethodInvocation* invocation,
                                             WebAuthImplRequest* request, const char* app_id,
-                                            const char* app_id_kind, const char* start_uri,
+                                            const char* app_identity_level, const char* start_uri,
                                             const char* completion_uri, WebAuthSessionMode mode,
                                             guint timeout_seconds);
 
@@ -105,7 +111,7 @@ gboolean webauth_transaction_is_done(WebAuthTransaction* self);
 const char* webauth_transaction_start_uri(WebAuthTransaction* self);
 const char* webauth_transaction_completion_uri(WebAuthTransaction* self);
 const char* webauth_transaction_app_id(WebAuthTransaction* self);
-const char* webauth_transaction_app_id_kind(WebAuthTransaction* self);
+const char* webauth_transaction_app_identity_level(WebAuthTransaction* self);
 WebAuthSessionMode webauth_transaction_session_mode(WebAuthTransaction* self);
 GCancellable* webauth_transaction_cancellable(WebAuthTransaction* self);
 

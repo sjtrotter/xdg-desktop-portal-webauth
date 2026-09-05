@@ -7,8 +7,8 @@
       data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
 
   on the xdg-desktop-portal branch experimental/certificate-webauthentication,
-  at commit 1a963b1 "web-authentication: Promise the completion rule that is
-  enforced".
+  at commit 214af63 "web-authentication: Add an experimental WebAuthentication
+  portal". (The branch is rebased on upstream, so that id moves.)
 
   IT MUST TRACK THAT FILE. The interface is defined by the portal frontend, not
   by this backend; a divergence here is a backend that no longer implements the
@@ -36,11 +36,11 @@
       A matched navigation must never be loaded, in any frame: it carries the
       result of the sign-in.
 
-      Everything the backend is told has already been validated and, where
-      policy applies, already narrowed by the frontend. ``session_mode`` in
-      particular arrives as a decision rather than a request: a backend that
-      cannot honour ``ephemeral`` must fail rather than quietly use the shared
-      store.
+      Everything the backend is told has been validated by the frontend, and
+      the values it is told are the ones the frontend decided: ``timeout`` has
+      already been clamped, and ``session_mode`` arrives as a decision rather
+      than a request, so a backend that cannot honour ``ephemeral`` must fail
+      rather than quietly use the shared store.
 
       This is an **experimental** interface and can change or get removed
       without a version bump.
@@ -72,22 +72,25 @@
 
         * ``session_mode`` (``s``)
 
-          ``shared`` or ``ephemeral``. Already validated and already narrowed
-          by policy.
+          ``shared`` or ``ephemeral``. Already validated.
 
         * ``timeout`` (``u``)
 
-          Seconds. Already clamped to the ceiling. The backend enforces its own
-          deadline as well.
+          Seconds, already clamped to the ceiling. The frontend does not run a
+          timer of its own: the backend owns the window, so the backend is the
+          end that can end the flow, and a backend that never answers is a
+          request that never ends.
 
         * ``title`` (``s``)
 
           Untrusted application text, already length limited.
 
-        * ``app_id_kind`` (``s``)
+        * ``app_identity_level`` (``s``)
 
-          How much @app_id can be trusted: ``sandboxed``, ``cgroup`` or
-          ``host``. The backend renders the difference; it never re-derives it.
+          How much @app_id can be trusted: ``sandboxed`` when a sandbox engine
+          vouched for it, ``host`` when it was derived from a host process,
+          and ``unidentified`` when the frontend could not establish one at
+          all. The backend renders the difference; it never re-derives it.
 
         ``handle_token`` is not forwarded, and neither are keys the frontend
         does not know.
@@ -99,14 +102,18 @@
           The matched URI, complete and undecoded, obtained from the web engine
           rather than reconstructed, including query and fragment. Present only
           when @response is ``0``. The frontend re-checks it against the
-          @completion_uri it passed in before handing it to the application.
+          @completion_uri it passed in before handing it to the application,
+          comparing the two on their parsed components; see
+          :ref:`org.freedesktop.portal.experimental.WebAuthentication.Start`
+          for the rule.
 
         * ``reason`` (``s``)
 
           An optional stable symbol explaining a non-zero @response, for
           instance ``timeout``, ``no_display``, ``no_engine``,
-          ``session_terminated``, ``no_certificate_adapter`` or
-          ``unrelated_certificate_challenge``.
+          ``user_cancelled``, ``session_terminated`` or
+          ``credential_unavailable``. The frontend forwards it verbatim, so a
+          backend that invents a value hands it straight to applications.
     -->
     <method name="Start">
       <arg type="o" name="handle" direction="in"/>

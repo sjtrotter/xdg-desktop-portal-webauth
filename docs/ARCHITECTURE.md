@@ -84,10 +84,10 @@ against `xdg-desktop-portal/desktop-portal/account.c` and
 | Concern | Frontend (xdg-desktop-portal, branch) | Backend (`backend/`) | Upstream this mirrors |
 |---|---|---|---|
 | **Owns the bus name applications call** | Yes: `org.freedesktop.portal.Desktop` | No; owns `org.freedesktop.impl.portal.desktop.webauth`, which applications must not call | it *is* `org.freedesktop.portal.Desktop` vs `org.freedesktop.impl.portal.desktop.<backend>` |
-| **App id derivation** | **Only here.** `xdp_invocation_get_app_info()`: Flatpak/Snap mediation, cgroup label, or host (unidentified) | Never. Its D-Bus peer is the portal, not the application; it is *told* `app_id` and `app_id_kind` | `shared/xdp-app-info*.c`; `app_id` is an impl argument |
+| **App id derivation** | **Only here.** `xdp_invocation_get_app_info()`: Flatpak/Snap mediation (`sandboxed`), a cgroup label (`host`), or nothing (`unidentified`) | Never. Its D-Bus peer is the portal, not the application; it is *told* `app_id` and `app_identity_level` | `shared/xdp-app-info*.c`; `app_id` is an impl argument |
 | **Same-UID peer check** | Yes, before the request is parsed | Refuses any sender that is not its frontend | frontend-side in every portal |
 | **Argument validation** | Yes: `start_uri` must be absolute `https` with a host; `completion_uri` absolute, with a host, no userinfo; both rejected for control characters, backslashes and over-length. A malformed request is a D-Bus error, no backend is woken | Again, independently. Its safety must not depend on a frontend having been correct | `validate_reason()` + `xdp_filter_options()` in `account.c` |
-| **Option filtering** | Yes: known keys only, unknown keys dropped, unknown values rejected (`session_mode` must be exactly `shared` or `ephemeral`), `timeout` clamped to 900 s and always forwarded (default 300), `title` ≤ 256 chars and single-line, `handle_token` not forwarded, `app_id_kind` added | Receives an already-filtered vardict | `XdpOptionKey` tables |
+| **Option filtering** | Yes: known keys only, unknown keys dropped, unknown values rejected (`session_mode` must be exactly `shared` or `ephemeral`), `timeout` clamped to 900 s and always forwarded (default 300), `title` ≤ 256 chars and single-line, `handle_token` not forwarded, `app_identity_level` added | Receives an already-filtered vardict | `XdpOptionKey` tables |
 | **Session-mode / storage policy** | Decides it, and forwards it as a decision | Obeys it. Never derives a partition from an app id | `xdp-permissions.c`, portal-side policy |
 | **Rate limiting** | Yes, per connection | No | frontend-side |
 | **Request object the app holds** | Yes: `/org/freedesktop/portal/desktop/request/<sender>/<token>`, exported before the backend is called | Exports its own impl Request at the same path on its own bus name, for `Close()` only | `xdp-request-dex.c` vs gtk's `src/request.c` |
@@ -375,8 +375,8 @@ FreeRDP needs two tokens for one connection, in this order.
    navigation policy matches it exactly, commits the completion, destroys the window before it
    renders, releases the grant, unexports the impl Request, and returns
    `(0, { completion_uri })`. A non-zero response carries a `reason` from the XML's list —
-   `timeout`, `no_display`, `no_engine`, `session_terminated`, `no_certificate_adapter`,
-   `unrelated_certificate_challenge`.
+   `timeout`, `no_display`, `no_engine`, `user_cancelled`, `session_terminated`,
+   `credential_unavailable` — or one of this backend's own additions.
 7. **The frontend** re-checks that URI against the one it forwarded, emits
    `Response(0, { completion_uri })` on the public Request, and unexports it.
 8. The client classifies `completion_uri` against its transaction, extracts `code`, exchanges it

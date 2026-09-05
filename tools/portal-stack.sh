@@ -603,20 +603,19 @@ inner() {
 
 	# A SECOND Start AGAINST THE SAME BACKEND PROCESS. The module keeps its grant
 	# until C_Finalize, so the question is whether a second handshake reuses it
-	# or provokes a second chooser -- and the answer depends on which PROCESS
-	# resolves the URI the second time. Counted, not assumed: both kinds of
-	# grant, so that a delegation is not mistaken for a reuse.
+	# or provokes another chooser -- and the answer depends on which PROCESS
+	# resolves the URI the second time. Counted, not assumed.
 	if [ "$SECOND_START" = 1 ]; then
 		local before after
-		before="$(grep -cE 'grant-created|grant-delegated' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
+		before="$(grep -c 'grant-created' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
 		echo
 		echo "=== Start #2, same backend process ==="
 		python3 "$REPO/tools/webauth-e2e.py" "${e2e[@]}" "${E2E_ARGS[@]}" \
 			2>&1 | tee "$LOGDIR/e2e-2.log"
 		[ "${PIPESTATUS[0]}" = 0 ] || rc=1
-		after="$(grep -cE 'grant-created|grant-delegated' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
+		after="$(grep -c 'grant-created' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
 		echo
-		echo "second Start: grants before=$before after=$after (created or delegated)"
+		echo "second Start: grants before=$before after=$after"
 	fi
 
 	if [ "$KEEP" = 1 ]; then
@@ -651,9 +650,9 @@ inner() {
 		expect_log "5 the chooser was refused" "$LOGDIR/certificate.log" \
 			'chooser-cancelled' || rc=1
 		expect_log "the challenge was declined" "$LOGDIR/backend.log" \
-			'certificate-declined reason=no_certificate_adapter' || rc=1
+			'certificate-declined reason=credential_unavailable' || rc=1
 		expect_log "the window closed on an answer" "$LOGDIR/e2e.log" \
-			'Response reason=no_certificate_adapter' || rc=1
+			'Response reason=credential_unavailable' || rc=1
 		expect_log "the hardening window closed again" "$LOGDIR/backend.log" \
 			'process-hardening outcome=identifiable-end' || rc=1
 		if grep -qE 'certificate-answered' "$LOGDIR/backend.log"; then
@@ -669,10 +668,6 @@ inner() {
 			'^\(process:[0-9]+\): pkcs11-portal-certificate-DEBUG.*grant acquired' || rc=1
 		expect_log "5 the backend created a grant" "$LOGDIR/certificate.log" \
 			'grant-created' || rc=1
-		expect_log "5 the network process reused the grant" "$LOGDIR/certificate.log" \
-			'grant-delegated' || rc=1
-		expect_log "5 the module was told so" "$LOGDIR/backend.log" \
-			'grant acquired.*delegated_from=parent' || rc=1
 		expect_log "6 the PIN was accepted" "$LOGDIR/certificate.log" \
 			'login-ok' || rc=1
 		expect_log "6 the signature was produced" "$LOGDIR/certificate.log" \
@@ -704,15 +699,10 @@ inner() {
 			'chooser-shown app_id=\(none\) identity=unidentified' || rc=1
 		expect_log "5 the backend created a grant" "$LOGDIR/certificate.log" \
 			'grant-created' || rc=1
-		# THE SECOND MODULE INSTANCE DID NOT ASK AGAIN. The network process is
-		# a CHILD of this backend, and the grant this backend's own instance
-		# holds was marked delegable, so the frontend answered the network
-		# process from it: one certificate, one chooser, one consent. Both
-		# halves are checked, the portal's and the module's.
-		expect_log "5 the network process reused the grant" "$LOGDIR/certificate.log" \
-			'grant-delegated' || rc=1
-		expect_log "5 the module was told so" "$LOGDIR/backend.log" \
-			'grant acquired.*delegated_from=parent' || rc=1
+		# THE SECOND MODULE INSTANCE ASKS AGAIN. The network process is a
+		# separate D-Bus peer, so it gets a chooser of its own: two module
+		# instances, two grants, TWO choosers. The delegation that answered the
+		# second from the first is out of the portal interface.
 		expect_log "6 the PIN was accepted" "$LOGDIR/certificate.log" \
 			'login-ok' || rc=1
 		expect_log "6 the signature was produced" "$LOGDIR/certificate.log" \
@@ -731,15 +721,12 @@ inner() {
 	# HOW MANY WINDOWS A USER ACTUALLY SAW, counted rather than assumed. One
 	# handshake needs the certificate built in the BACKEND's process and the key
 	# used in WebKit's NETWORK process; each is a separate p11-kit module
-	# instance with a grant of its own. Each used to put up its own chooser.
-	# Now the network process is a descendant of this backend and this backend
-	# asks for delegation, so the second grant is DERIVED from the first and no
-	# window goes up for it: two module instances, two grants, ONE chooser. The
-	# PIN is asked once, at the first Sign, because only the network process
-	# signs.
+	# instance with a grant of its own, and each puts up its own chooser: two
+	# module instances, two grants, TWO choosers. A THIRD is a regression -- it
+	# means a chain verification acquired a credential. The PIN is asked once,
+	# at the first Sign, because only the network process signs.
 	echo "module instances: $(grep -c 'the Certificate portal offers' "$LOGDIR/backend.log" 2>/dev/null | tail -1)"
 	echo "choosers granted: $(grep -c 'grant-created' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
-	echo "grants delegated: $(grep -c 'grant-delegated' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
 	echo "PIN prompts:      $(grep -c 'login-ok' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
 	echo "signatures:       $(grep -c 'operation-completed' "$LOGDIR/certificate.log" 2>/dev/null | tail -1)"
 

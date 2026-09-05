@@ -252,7 +252,7 @@ EntraWebAuthResult entra_webauth_start(const char* parent_window, const char* st
 		 * The reason symbol is the only thing that can tell them apart. */
 		if (g_strcmp0(run.reason, "no_backend") == 0 ||
 		    g_strcmp0(run.reason, "backend_disappeared") == 0 ||
-		    g_strcmp0(run.reason, "no_certificate_adapter") == 0 ||
+		    g_strcmp0(run.reason, "credential_unavailable") == 0 ||
 		    g_strcmp0(run.reason, "no_display") == 0)
 		{
 			entra_webauth_set_unavailable(error);

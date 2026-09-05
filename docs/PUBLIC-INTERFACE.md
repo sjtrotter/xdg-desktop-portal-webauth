@@ -60,8 +60,8 @@ flow, and answers with the URI the flow finished on. There is **no `Session` obj
 |---|---|---|
 | `handle_token` | `s` | last element of the Request path, so the caller can subscribe before calling. Not forwarded to the backend. |
 | `activation_token` | `s` | window activation, passed through. |
-| `session_mode` | `s` | `shared` (default) or `ephemeral`. **An unknown value is an error, never a fallback.** An application may ask for `ephemeral`; it can never turn `ephemeral` off if policy requires it. `shared` means shared between flows run by this backend — never with the user's browser. |
-| `timeout` | `u` | seconds; default 300, ceiling 900. A caller can only shorten it. |
+| `session_mode` | `s` | `shared` (default) or `ephemeral`. **An unknown value is an error, never a fallback.** `shared` means shared between flows run by this backend — never with the user's browser; `ephemeral` means a data store made for this flow and destroyed with it. |
+| `timeout` | `u` | seconds; default 300, ceiling 900. A caller can only shorten it. The frontend clamps it and forwards it; **the deadline itself is the backend's**, which is the end that owns the window. |
 | `title` | `s` | a short hint about what the sign-in is for. Application-supplied text, shown as such, never as the identity of the window. |
 
 Unknown keys are dropped, not forwarded.
@@ -73,7 +73,7 @@ Unknown keys are dropped, not forwarded.
   response is `0`.
 - `reason` (`s`) — an optional stable symbol explaining a non-zero response: `timeout`,
   `no_display`, `no_backend`, `backend_disappeared`, `backend_completion_mismatch`,
-  `backend_protocol_error`, `session_terminated`, `no_certificate_adapter`. It is a
+  `backend_protocol_error`, `session_terminated`, `credential_unavailable`. It is a
   diagnostic, never a substitute for the response code, and consumers must tolerate its
   absence.
 
@@ -86,8 +86,12 @@ to make, in any frame**, on the parsed URI:
 
 - scheme and host compared **case insensitively**;
 - effective ports compared with **default ports normalised** (`:443` equals the default);
-- **paths compared exactly**;
-- **no userinfo**;
+- **paths compared exactly**, on the form the URI parser produces — so `%63allback` equals
+  `callback`, `%2f` equals `%2F`, `/a/../callback` equals `/callback`, and an
+  internationalised host equals its punycode spelling. An empty path and `/` are **not**
+  equal, and neither is a host with a trailing dot: both fail closed;
+- **no userinfo, and no wildcard**: a `completion_uri` whose host contains `*` is refused
+  by `Start()` rather than matched literally;
 - **query and fragment carry the result of the flow and take no part in matching**;
 - **a match ends the flow and is never loaded**, whichever frame it happened in. The XML said
   "subframe navigations do not end the flow" until 2026-09-04; no backend on WebKitGTK 6 could
@@ -105,7 +109,8 @@ application trusts, rather than a relay of whatever backend a distribution insta
 
 The frontend's half is implemented and tested upstream —
 `web-authentication.c:completion_uri_matches()`, `test_completion_mismatch_rejected`, and
-the negative control `test_completion_normalisation_accepted`. This repository's half is
+`test_completion_normalisation_accepted` / `test_completion_near_miss_refused`, which name
+each equivalence and each near miss one by one. This repository's half is
 [`../backend/src/completion.h`](../backend/src/completion.h) and has no implementation
 yet; [IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains why both exist.
 
