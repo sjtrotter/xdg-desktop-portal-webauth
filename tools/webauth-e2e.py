@@ -83,9 +83,15 @@ def write_verifier(path, verifier, state):
 
     os.open with O_CREAT|O_EXCL and mode 0600 is the only way to create a file
     that was never, for any instant, readable by another user; opening it and
-    chmod-ing afterwards leaves exactly that window. O_EXCL because refusing to
-    overwrite is the right answer for a file holding half a credential.
+    chmod-ing afterwards leaves exactly that window. O_EXCL because a file
+    holding half a credential is never overwritten in place: a previous one is
+    moved aside to <path>.prev (replacing an older .prev) so a rerun works.
     """
+    if os.path.lexists(path):
+        previous = path + ".prev"
+        if os.path.lexists(previous):
+            os.unlink(previous)
+        os.rename(path, previous)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(f"code_verifier={verifier}\nstate={state}\n")
