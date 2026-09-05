@@ -23,7 +23,11 @@ struct WebAuthWebkitSession
 	WebKitNetworkSession* network_session;
 	WebKitWebView* view;
 
+	/* Chosen at the FIRST client-certificate challenge and not before, and the
+	 * certificate it builds is kept for the rest of the transaction. */
 	const WebAuthCertAdapter* adapter;
+	gboolean adapter_chosen;
+	GTlsCertificate* certificate;
 
 	char* parent_window;
 	char* activation_token;
@@ -125,6 +129,8 @@ static void teardown(gpointer user_data)
 
 	if (self->adapter != NULL)
 		self->adapter->release();
+
+	g_clear_object(&self->certificate);
 
 	if (self->view != NULL)
 	{
@@ -344,6 +350,34 @@ static void on_web_process_terminated(WebKitWebView* view, WebKitWebProcessTermi
 	                           WEBAUTH_REASON_SESSION_TERMINATED);
 }
 
+/* THE PROVIDER IS CHOSEN AT THE CHALLENGE AND NOT AT THE WINDOW, and that is
+ * the difference between a sign-in that touches the certificate portal and one
+ * that does not. Choosing it means asking the portal whether its interface is
+ * exported, which is a call to the portal made on behalf of a transaction that
+ * may never need a certificate at all. Most sign-ins are that transaction.
+ *
+ * The cost is that a machine with no provider says so when a challenge arrives
+ * rather than when the window opens; the decline path logs the reason and the
+ * detail, so nothing is lost but the earliness. Chosen once per transaction,
+ * whether or not the choice succeeded. */
+static const WebAuthCertAdapter* choose_adapter(WebAuthWebkitSession* self)
+{
+	g_autoptr(GError) error = NULL;
+
+	if (self->adapter_chosen)
+		return self->adapter;
+
+	self->adapter_chosen = TRUE;
+	self->adapter = webauth_cert_adapter_select(&error);
+
+	if (self->adapter == NULL)
+		webauth_log_event(G_LOG_LEVEL_DEBUG, WEBAUTH_EVENT_CERT_DECLINED, "provider",
+		                  WEBAUTH_FIELD_OUTCOME, "none", "detail", WEBAUTH_FIELD_OUTCOME,
+		                  error->message, NULL);
+
+	return self->adapter;
+}
+
 /* The challenge must belong to the page the window is showing. A subresource on
  * a third host asking a hardware token to authenticate the user is not part of
  * the sign-in, and the user is not in a position to tell. */
@@ -364,7 +398,6 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 	WebAuthWebkitSession* self = user_data;
 	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
 	const char* host = webkit_authentication_request_get_host(request);
-	g_autoptr(GTlsCertificate) certificate = NULL;
 	g_autoptr(GError) error = NULL;
 	WebKitCredential* credential = NULL;
 
@@ -410,7 +443,7 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 		return TRUE;
 	}
 
-	if (self->adapter == NULL)
+	if (choose_adapter(self) == NULL)
 	{
 		webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_CERT_DECLINED, "reason",
 		                  WEBAUTH_FIELD_OUTCOME, WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER, NULL);
@@ -419,6 +452,13 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 		return TRUE;
 	}
 
+	/* ONE IMPORT PER TRANSACTION. A flow that is challenged twice -- an identity
+	 * provider that redirects to a second host to collect the certificate is the
+	 * ordinary case -- would otherwise import the object again, and on the portal
+	 * provider an import is a chooser the user has already answered. The object
+	 * carries PKCS#11 URIs rather than a key, so the second challenge is answered
+	 * with the same certificate and nothing is cached that a handshake needs. */
+	if (self->certificate == NULL)
 	{
 		WebAuthCertChallenge challenge = {
 			.origin = host,
@@ -427,10 +467,10 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 			.parent = webauth_chrome_window(self->chrome),
 		};
 
-		certificate = self->adapter->acquire(&challenge, &error);
+		self->certificate = self->adapter->acquire(&challenge, &error);
 	}
 
-	if (certificate == NULL)
+	if (self->certificate == NULL)
 	{
 		webauth_log_event(G_LOG_LEVEL_WARNING, WEBAUTH_EVENT_CERT_DECLINED, "reason",
 		                  WEBAUTH_FIELD_OUTCOME, WEBAUTH_REASON_NO_CERTIFICATE_ADAPTER, "detail",
@@ -444,8 +484,8 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 	                  WEBAUTH_FIELD_OUTCOME, self->adapter->name, "host", WEBAUTH_FIELD_HOST, host,
 	                  NULL);
 
-	credential =
-	    webkit_credential_new_for_certificate(certificate, WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
+	credential = webkit_credential_new_for_certificate(self->certificate,
+	                                                   WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
 	webkit_authentication_request_authenticate(request, credential);
 	webkit_credential_free(credential);
 
@@ -550,7 +590,6 @@ WebAuthWebkitSession* webauth_webkit_session_new(WebAuthTransaction* transaction
                                                  const char* title_hint, GError** error)
 {
 	WebAuthWebkitSession* self = g_new0(WebAuthWebkitSession, 1);
-	g_autoptr(GError) adapter_error = NULL;
 
 	self->transaction = webauth_transaction_ref(transaction);
 	self->parent_window = g_strdup(parent_window);
@@ -565,16 +604,6 @@ WebAuthWebkitSession* webauth_webkit_session_new(WebAuthTransaction* transaction
 		g_free(self);
 		return NULL;
 	}
-
-	/* Chosen before the window opens rather than in the middle of a handshake,
-	 * so that a machine with no provider says so once, in the log, instead of
-	 * failing a TLS negotiation with nothing to point at. A NULL adapter is not
-	 * an error: most sign-ins need no certificate at all. */
-	self->adapter = webauth_cert_adapter_select(&adapter_error);
-	if (self->adapter == NULL)
-		webauth_log_event(G_LOG_LEVEL_DEBUG, WEBAUTH_EVENT_CERT_DECLINED, "provider",
-		                  WEBAUTH_FIELD_OUTCOME, "none", "detail", WEBAUTH_FIELD_OUTCOME,
-		                  adapter_error->message, NULL);
 
 	self->chrome = webauth_chrome_new(webauth_transaction_app_id(transaction),
 	                                  webauth_transaction_app_id_kind(transaction), title_hint,

@@ -448,6 +448,15 @@ with a card and no certificate portal uses.
 - **When no provider can run**, the challenge is declined; if the server required one, the load then
   fails and the transaction ends `2` with reason `no_certificate_adapter` — one of the XML's symbols.
   A flow that did not actually need a certificate is not failed by a challenge it ignored.
+- **Nothing reaches the certificate portal until a challenge arrives, and a transaction that is
+  never challenged never reaches it at all.** The provider is *chosen* at the first
+  `CLIENT_CERTIFICATE_REQUESTED`, not when the window opens, because choosing it means asking the
+  portal whether its interface is exported; the certificate is *built* in the same handler, which is
+  what makes the portal draw its chooser. Most sign-ins need no certificate, and those must cost the
+  certificate portal nothing — no D-Bus call, no module load, and above all no chooser in front of a
+  user who was only asked to sign in. The certificate the first challenge produces is then kept for
+  the rest of the transaction, so a provider that redirects to a second host to collect it does not
+  put the same question a second time.
 - **The hardening yields, for one interval, on the `portal` provider only.** `PR_SET_DUMPABLE(0)`
   makes this process's `/proc` entries root-owned, and xdg-desktop-portal identifies a caller by
   opening `/proc/<pid>/root` — so while it is set, every call this process *makes* to the portal is
@@ -455,7 +464,9 @@ with a card and no certificate portal uses.
   fatal on the `portal` provider, where the certificate portal's PKCS#11 module runs inside this
   process and calls `CreateSession` and `AcquireCredential` as an ordinary application.
   [`../backend/src/harden.h`](../backend/src/harden.h) opens a counted window around that one
-  constructor and closes it the moment it returns. In that interval this process holds **no PIN**
+  constructor and closes it the moment it returns — and because the constructor runs only inside the
+  challenge handler, the window exists only for transactions that were actually challenged, once
+  each. In that interval this process holds **no PIN**
   — the `portal` provider never has one — and **no authorization code**, because the challenge is
   answered before the flow has redirected anywhere; giving the flag up for the life of the process
   would expose the same `/proc` entries while the completion URI is in memory, which is the moment

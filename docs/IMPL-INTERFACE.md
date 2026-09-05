@@ -187,6 +187,15 @@ all of them. A caller that needs to know why must ask the certificate portal, wh
 (Measured in [TESTING.md](TESTING.md) tier 2b: Escape at the chooser, response `2`, reason
 `no_certificate_adapter`, 1.9 seconds.)
 
+**It is also reported late on purpose.** A provider is neither chosen nor asked whether it can run
+until WebKit delivers the first `CLIENT_CERTIFICATE_REQUESTED`, because asking the `portal` provider
+that question is a D-Bus call to the certificate portal, and a sign-in that never needs a
+certificate must not make it. A machine with no provider therefore says so when a challenge arrives
+rather than when the window opens, and a transaction that is never challenged says nothing at all
+and ends normally. The certificate the first challenge produces is kept for the rest of the
+transaction, so a provider that redirects to a second host to collect it is answered from the same
+object rather than by importing it again.
+
 A frontend must tolerate a reason it does not know, which the branch's frontend does: it forwards
 the string unchanged. If any of these earn their place, they belong in the XML.
 
