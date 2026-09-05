@@ -91,11 +91,27 @@ x11_dep = dependency('x11', required: false)
 # against no PKCS#11 library of its own. It enumerates nothing, loads no module
 # and never calls C_Login: that is the certificate portal's work, and on the
 # pkcs11 provider it is GnuTLS's. See docs/decisions/0007-certificate-adapter.md.
+#
+# p11-kit is looked up ONLY to read one string out of its pkg-config file -- the
+# directory it reads module configuration from -- and is deliberately NOT added
+# to any dependency list, so the sentence above stays true. The portal provider
+# tests for a FILE in that directory to decide whether it is available; it never
+# opens it. Without p11-kit's .pc file the upstream default is used, which is
+# what a distribution's p11-kit installs into anyway.
+p11kit_dep = dependency('p11-kit-1', version: '>= 0.23', required: false)
+p11kit_module_configs = datadir / 'p11-kit' / 'modules'
+if p11kit_dep.found()
+  p11kit_module_configs = p11kit_dep.get_variable(
+    pkgconfig: 'p11_module_configs',
+    default_value: p11kit_module_configs,
+  )
+endif
 
 config = configuration_data()
 config.set_quoted('PACKAGE_VERSION', meson.project_version())
 config.set('HAVE_GTK_WAYLAND', gtk_wayland_dep.found() ? 1 : 0)
 config.set('HAVE_GTK_X11', (gtk_x11_dep.found() and x11_dep.found()) ? 1 : 0)
+config.set_quoted('P11_KIT_MODULE_CONFIGS', p11kit_module_configs)
 configure_file(output: 'config.h', configuration: config)
 
 config_inc = include_directories('.')
@@ -127,7 +143,8 @@ summary(
     'public interface (frontend)': 'org.freedesktop.portal.experimental.WebAuthentication',
     'frontend gate': 'XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication',
     'called by': 'xdg-desktop-portal only, never by applications',
-    'client certificates': 'providers: portal (not yet usable) and pkcs11',
+    'client certificates': 'providers: portal (primary) and pkcs11 (fallback)',
+    'p11-kit module configuration read from': p11kit_module_configs,
   },
   section: 'interfaces',
 )
@@ -136,7 +153,7 @@ summary(
   {
     'web view, chrome and interception': true,
     'client certificate from a PKCS#11 token': true,
-    'certificate portal provider usable': false,
+    'certificate portal provider usable': true,
     'in-process certificate chooser or PIN prompt': false,
     'frontend branch merged upstream': false,
     'safe to depend on': false,

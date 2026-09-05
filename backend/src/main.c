@@ -30,8 +30,6 @@
 
 #include <locale.h>
 #include <stdio.h>
-#include <sys/prctl.h>
-#include <sys/resource.h>
 
 #include <adwaita.h>
 #include <gio/gio.h>
@@ -39,6 +37,8 @@
 #include <gtk/gtk.h>
 
 #include "config.h"
+
+#include "harden.h"
 #include "redact.h"
 #include "tls/client_cert.h"
 #include "webauthentication-impl.h"
@@ -149,46 +149,6 @@ static const char* description =
     "  branch that has not been proposed to anyone, and it can change or be\n"
     "  removed without a version bump.";
 
-/* TWO LINES THAT DECIDE WHERE A CREDENTIAL CAN END UP, run before anything else
- * can crash. This process holds completion URIs carrying authorization codes,
- * session cookies for an identity provider, and -- on the pkcs11 provider -- a
- * token PIN.
- *
- * PR_SET_DUMPABLE(0) stops a core dump being written at all AND makes
- * /proc/self/mem and the rest root-owned, which is what blocks a same-uid ptrace
- * attach on a normal kernel. RLIMIT_CORE 0 is the belt to that braces.
- *
- * IT DOES NOT REACH THE WEB ENGINE'S CHILDREN, and that is by design rather than
- * an oversight: PR_SET_DUMPABLE is reset to 1 by execve (fs/exec.c,
- * commit_creds), so WebKitNetworkProcess and WebKitWebProcess start dumpable
- * however this process is set. They are separate processes with their own
- * hardening story -- WebKit's own sandbox -- and the credential-bearing state
- * this flag protects (the PIN buffer, the completion URI) lives here, in the UI
- * process. docs/SECURITY.md says which half is covered. */
-static void harden(void)
-{
-	struct rlimit no_core = { 0, 0 };
-
-	/* A command-line flag rather than an environment variable on purpose: an
-	 * installed service file's Exec line is fixed, so nothing that merely shares
-	 * the session can turn the hardening off the way
-	 * dbus-update-activation-environment could. */
-	if (opt_allow_core)
-	{
-		webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_HARDENING, "outcome",
-		                  WEBAUTH_FIELD_OUTCOME, "disabled-by-flag", NULL);
-		return;
-	}
-
-	if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0)
-		webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_HARDENING, "outcome",
-		                  WEBAUTH_FIELD_OUTCOME, "prctl-dumpable-failed", NULL);
-
-	if (setrlimit(RLIMIT_CORE, &no_core) != 0)
-		webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_HARDENING, "outcome",
-		                  WEBAUTH_FIELD_OUTCOME, "rlimit-core-failed", NULL);
-}
-
 /* THE WINDOW FOLLOWS THE SESSION'S LIGHT/DARK SETTING, AND HAS TO BE TOLD IT
  * DIRECTLY. libadwaita takes the colour scheme from the SETTINGS PORTAL, which
  * looks the caller up by /proc/<pid> -- and PR_SET_DUMPABLE(0) makes this
@@ -282,7 +242,7 @@ int main(int argc, char** argv)
 
 	/* As early as the options allow: everything before this point is
 	 * g_option_context_parse() on a fixed argv. */
-	harden();
+	webauth_harden(opt_allow_core);
 
 	if (opt_version)
 	{
@@ -302,12 +262,12 @@ int main(int argc, char** argv)
 	 * BUT NOT IF THE OPERATOR ALREADY SAID WHICH DOMAINS THEY WANTED.
 	 * g_log_writer_default_set_debug_domains() REPLACES $G_MESSAGES_DEBUG
 	 * rather than adding to it, and the domain that matters most when this
-	 * backend goes wrong is not its own: it is "pkcs11-portal-certificate",
-	 * the certificate portal's client-side PKCS#11 module, which runs INSIDE
-	 * THIS PROCESS to build a certificate and inside the web engine's network
-	 * process to use the key. Silencing it turned a module that was being
-	 * refused by the portal into a bare "the requested data were not
-	 * available", and cost an afternoon. */
+	 * backend goes wrong is not its own: it is
+	 * "pkcs11-portal-certificate", the certificate portal's client-side
+	 * PKCS#11 module, which runs INSIDE THIS PROCESS to build the certificate
+	 * and inside the web engine's network process to use the key. Silencing it
+	 * turned a module that was refusing to load into a bare "the requested data
+	 * were not available", and cost an afternoon. */
 	if (opt_verbose && g_getenv("G_MESSAGES_DEBUG") == NULL)
 	{
 		const char* domains[] = { G_LOG_DOMAIN, NULL };

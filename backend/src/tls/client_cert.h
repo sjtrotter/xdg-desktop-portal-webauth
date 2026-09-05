@@ -18,13 +18,14 @@
  *
  *    portal   the certificate the user granted to this application, presented
  *             by the Certificate portal's client-side PKCS#11 module and named
- *             by the URI in portal-token.h. PREFERRED: the card, the chooser
- *             and the PIN all stay in that service, and this process never sees
- *             a PIN. The module does not exist yet, so this provider reports
- *             itself unavailable and selection falls through.
- *    pkcs11   any p11-kit token, named by --client-cert-uri. This is what the
- *             end-to-end tests use against SoftHSM, and what an operator with a
- *             card and no certificate portal uses today.
+ *             by the URIs in portal-token.h. PREFERRED, AND THE PRIMARY PATH:
+ *             the card, the chooser and the PIN all stay in that service, and
+ *             this process never sees a PIN. Unavailable, and therefore skipped
+ *             by "auto", on a machine where the portal is not running or its
+ *             module is not in p11-kit's configuration.
+ *    pkcs11   any p11-kit token, named by --client-cert-uri. THE FALLBACK: an
+ *             operator with a card and no certificate portal, and the way a
+ *             mutual-TLS handshake is exercised with no portal in the picture.
  *
  *  THERE IS NO "inproc" PROVIDER, and its absence is a decision rather than an
  *  omission: a chooser and a PIN prompt inside a web browser process is the

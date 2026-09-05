@@ -27,21 +27,31 @@
  *  agreement, and it is the only thing the two repositories share.
  *
  *  WHAT THIS PROVIDER STILL DOES ITSELF: it checks that the Certificate portal
- *  interface is exported before claiming to be available, so that a machine
- *  without one falls through to the pkcs11 provider instead of failing a
- *  handshake. It never asks for a PIN: the module's token declares
+ *  interface is exported AND that the portal's module configuration is in one of
+ *  p11-kit's module directories, before claiming to be available, so that a
+ *  machine missing either half falls through to the pkcs11 provider instead of
+ *  failing a handshake. It never asks for a PIN: the module's token declares
  *  CKF_PROTECTED_AUTHENTICATION_PATH and the portal prompts in its own window,
  *  which is the entire reason to prefer this provider.
  *
- *  IT IS NOT USABLE YET. The module does not exist; available() therefore fails
- *  on every machine today, with a message that says which half is missing.
- *  docs/decisions/0007-certificate-adapter.md records the decision and the
- *  evidence for it.
+ *  IT IS USABLE. The module is xdg-desktop-portal-certificate's
+ *  src/module/libpkcs11-portal-certificate.so, and the whole path -- WebKit
+ *  authenticate, this provider, p11-kit, the module, CreateSession and
+ *  AcquireCredential on the public interface, the certificate portal's chooser
+ *  and PIN prompt, C_Sign, a completed mutual-TLS handshake -- has been run
+ *  headless end to end by tools/portal-stack.sh. docs/TESTING.md tier 2 is the
+ *  command; docs/decisions/0007-certificate-adapter.md records the decision and
+ *  the evidence for it.
  */
 
 /** Whether the Certificate portal interface is exported on
  *  org.freedesktop.portal.Desktop right now. Asked with NO_AUTO_START: a portal
  *  that is not running is a portal that cannot answer. */
 gboolean webauth_cert_portal_interface_present(GError** error);
+
+/** The portal's p11-kit module configuration file, searched for in the user
+ *  directory, /etc/pkcs11/modules and p11-kit's own module directory, in that
+ *  order; NULL when it is in none of them. Newly allocated. */
+char* webauth_cert_portal_module_config_path(void);
 
 #endif /* WEBAUTH_TLS_CLIENT_CERT_PORTAL_H */

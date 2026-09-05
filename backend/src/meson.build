@@ -23,6 +23,7 @@ impl_dbus_sources = gnome.gdbus_codegen(
 # because it is the one piece of this backend that a test can exhaust.
 webauth_core_sources = files(
   'completion.c',
+  'harden.c',
   'options.c',
   'redact.c',
   'storage.c',
