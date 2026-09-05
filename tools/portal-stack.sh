@@ -29,8 +29,6 @@
 #
 # THE HOPS IT PROVES, each from a log line rather than from the exit code:
 #
-#   0  NOTHING REACHED THE PORTAL BEFORE THE CHALLENGE:
-#      the first line from the module comes after it              backend.log
 #   1  webkit `authenticate`, CLIENT_CERTIFICATE_REQUESTED   backend.log
 #   2  tls/client_cert_portal.c builds the GTlsCertificate    backend.log
 #   3  p11-kit loads the module -- in the BACKEND's process,
@@ -431,35 +429,6 @@ expect_log() {
 	return 1
 }
 
-# THE ORDER, WHICH IS THE WHOLE POINT OF A LAZY PROVIDER. The certificate portal
-# is a service with a chooser in it, so a transaction that is never challenged
-# must never reach it. The backend's log carries both sides -- its own
-# `certificate-challenge` and, from the module it loads, every
-# pkcs11-portal-certificate line -- so the first module line coming AFTER the
-# first challenge is proof that nothing imported the certificate at start-up.
-check_challenge_precedes_the_portal() {
-	local log="$LOGDIR/backend.log" challenge module
-
-	challenge="$(grep -nE 'certificate-challenge host=' "$log" 2>/dev/null | head -1 | cut -d: -f1)"
-	module="$(grep -nE 'pkcs11-portal-certificate' "$log" 2>/dev/null | head -1 | cut -d: -f1)"
-
-	if [ -z "$challenge" ]; then
-		printf '  FAIL  %-34s (no certificate-challenge in backend.log)\n' \
-			"0 the portal came after the challenge"
-		return 1
-	fi
-
-	if [ -n "$module" ] && [ "$module" -lt "$challenge" ]; then
-		printf '  FAIL  %-34s the module ran at line %s, before the challenge at line %s\n' \
-			"0 the portal came after the challenge" "$module" "$challenge"
-		return 1
-	fi
-
-	printf '  ok    %-34s challenge line %s, first module line %s\n' \
-		"0 the portal came after the challenge" "$challenge" "${module:--}"
-	return 0
-}
-
 check_completion_was_not_fetched() {
 	local path
 	path="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urlsplit(sys.argv[1]).path)' \
@@ -634,7 +603,6 @@ inner() {
 	echo
 	echo "=== hop by hop ==="
 	if [ "$CANCEL_CHOOSER" = 1 ]; then
-		check_challenge_precedes_the_portal || rc=1
 		expect_log "1 webkit asked for a certificate" "$LOGDIR/backend.log" \
 			'certificate-challenge host=localhost' || rc=1
 		expect_log "5 the chooser was refused" "$LOGDIR/certificate.log" \
@@ -650,7 +618,6 @@ inner() {
 			rc=1
 		fi
 	elif [ "$EXTERNAL_IDP" = 1 ]; then
-		check_challenge_precedes_the_portal || rc=1
 		expect_log "1 webkit asked for a certificate" "$LOGDIR/backend.log" \
 			'certificate-challenge host=' || rc=1
 		expect_log "2 the portal provider took it" "$LOGDIR/backend.log" \
@@ -668,7 +635,6 @@ inner() {
 		expect_log "8 the flow completed" "$LOGDIR/e2e.log" '^PASS$' || rc=1
 		echo "  info  certificate host(s): $(grep -oE 'certificate-challenge host=[^ ]+' "$LOGDIR/backend.log" 2>/dev/null | sort -u | sed 's/.*host=//' | tr '\n' ' ')"
 	else
-		check_challenge_precedes_the_portal || rc=1
 		expect_log "1 webkit asked for a certificate" "$LOGDIR/backend.log" \
 			'certificate-challenge host=localhost' || rc=1
 		expect_log "2 the portal provider took it" "$LOGDIR/backend.log" \
@@ -805,7 +771,6 @@ else
 	dbus-run-session -- bash -c "
 		$(declare -f xdp_wait_for_name)
 		$(declare -f expect_log)
-		$(declare -f check_challenge_precedes_the_portal)
 		$(declare -f check_completion_was_not_fetched)
 		$(declare -f inner)
 		$(declare -f body)

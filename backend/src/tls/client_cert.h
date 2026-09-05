@@ -55,18 +55,13 @@ typedef struct
 {
 	const char* name; /**< "portal" or "pkcs11" */
 
-	/** Whether this provider can run right now. Asked at the FIRST client
-	 *  certificate challenge of a transaction and not before: on the portal
-	 *  provider the question is put to the portal itself, and a sign-in that is
-	 *  never challenged must not put it. */
+	/** Whether this provider can run right now, checked before a challenge
+	 *  arrives so a transaction can fail early and clearly rather than
+	 *  mid-handshake. */
 	gboolean (*available)(GError** error);
 
 	/** Build the certificate to present. Returns NULL and sets @error when no
-	 *  credential can be produced; the challenge is then declined.
-	 *
-	 *  CALLED AT MOST ONCE PER TRANSACTION. The caller keeps what comes back and
-	 *  answers any later challenge with it, because on the portal provider a
-	 *  second import is a second chooser for a question already answered. */
+	 *  credential can be produced; the challenge is then declined. */
 	GTlsCertificate* (*acquire)(const WebAuthCertChallenge* challenge, GError** error);
 
 	/** The PIN to answer a WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED

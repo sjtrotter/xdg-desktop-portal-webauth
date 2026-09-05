@@ -328,12 +328,6 @@ signatures:       1
 portal-stack: PASS
 ```
 
-The run now prints one line above these, `0 the portal came after the challenge`, added on
-2026-09-05 with the change that made the provider lazy. It is not a log line but an ordering
-assertion over `backend.log`: the line number of the first `certificate-challenge` against the line
-number of the first `pkcs11-portal-certificate` line, from either module instance. It fails if
-anything reached the certificate portal before WebKit asked for a certificate.
-
 Each line is from the process that made it: `backend.log` for this backend and for both module
 instances (the network process inherits this process's stderr), `certificate.log` for the sibling,
 `server.log` for the identity provider, `access.log` for the guarantee. Nothing here is inferred
@@ -356,16 +350,8 @@ noise. One TLS handshake needs the certificate in **two processes**:
    second p11-kit module instance, in a second process, with a grant of its own.
 
 Two module instances mean two `CreateSession`/`AcquireCredential` pairs, and therefore **two
-choosers asking the same question**. The user answers the same prompt twice for one sign-in. Only
-one PIN prompt appears, because only the network process signs.
-
-**Both of them stand inside the challenge**, and hop 0 is the check that says so: nothing in this
-backend reaches the certificate portal until WebKit asks for a certificate, so the first line the
-module writes to `backend.log` comes after `certificate-challenge`. The first chooser belongs to
-this process building the `GTlsCertificate` in the `authenticate` handler; the second belongs to the
-network process re-resolving the URI a moment later. The whole handshake waits for both, and the
-gap between them is however long a chooser takes to answer — not a fixed interval, and not something
-that happens before the user has done anything.
+choosers, about three seconds apart, asking the same question**. The user answers the same prompt
+twice for one sign-in. Only one PIN prompt appears, because only the network process signs.
 
 Neither half can be removed as things stand. The UI process cannot hand WebKit a URI, and the
 network process cannot be handed the UI process's grant: a grant belongs to the D-Bus peer that
@@ -532,11 +518,8 @@ desktop's own prompter rather than in a window this project drew.
 | the card signed | the certificate backend's `login-ok` and `operation-completed` |
 | the flow ended without fetching the redirect | `navigation outcome=matched`, and `completed` |
 
-Expect **two choosers, both after the redirect to `certauth.`**, for the reason tier 2b measures:
-the certificate is built in this backend's process and used in WebKit's network process. Neither can
-appear before the challenge — a chooser on the sign-in page, before the redirect, would not be this
-backend, which reaches the portal only from the `authenticate` handler; hop 0 of the headless run is
-that ordering asserted from the log. On a real card that is two grants and, unlike the
+Expect **two choosers**, for the reason tier 2b measures: the certificate is built in this backend's
+process and used in WebKit's network process. On a real card that is two grants and, unlike the
 fixture, possibly two PIN prompts — the second grant is a second login on the token, and whether the
 backend's session is still logged in decides it. **That is the first thing to find out.**
 
