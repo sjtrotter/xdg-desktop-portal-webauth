@@ -61,6 +61,7 @@
 #     tools/portal-stack.sh --cancel-chooser    # Escape at the chooser
 #     tools/portal-stack.sh --second-start      # two Starts, one backend process
 #     tools/portal-stack.sh --keep              # leave it up
+#     tools/portal-stack.sh --uninstall-module  # remove --live's p11-kit module file
 #
 # Everything after `--` goes to tools/webauth-e2e.py.
 #
@@ -77,6 +78,16 @@
 # --live uses the REAL session bus and the REAL certificate backend, takes
 # org.freedesktop.portal.Desktop for the duration, and drives nothing: the
 # person at the keyboard answers the chooser and the PIN prompt.
+#
+# --live also installs, the first time it runs and only if nothing is already
+# there, a p11-kit module file into the REAL per-user config
+# ($XDG_CONFIG_HOME/pkcs11/modules, default ~/.config/pkcs11/modules) naming
+# the certificate portal's client-side module -- restricted with `enable-in`
+# to the two processes that need it, this backend and WebKit's network
+# process, so it is never offered to ssh, curl, a browser, or anything else
+# on the machine. It is left in place after the run so the next --live does
+# not have to ask again; `--uninstall-module` removes exactly that file, and
+# only if this script is the one that wrote it.
 
 set -u
 
@@ -104,6 +115,7 @@ DRIVE=1
 CANCEL_CHOOSER=0
 SECOND_START=0
 KEEP=0
+UNINSTALL_MODULE=0
 COMPLETION_URI="https://example.invalid/cb"
 START_PATH="/start"
 SESSION_MODE=
@@ -118,8 +130,92 @@ die() {
 . "$REPO/tools/lib.sh"
 
 usage() {
-	sed -n '3,80p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '3,90p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 	exit 0
+}
+
+# ------------------------------------------------------------ --live's real p11-kit module
+#
+# INSTALLED, NOT ENVIRONMENT-OVERRIDDEN, and only for --live. The private-mode
+# CONFDIR below points $XDG_CONFIG_HOME at a throwaway directory, which is a
+# rehearsal shortcut: it proves the module loads, not that a real deployment's
+# p11-kit configuration is set up correctly. --live leaves $XDG_CONFIG_HOME as
+# the real environment's value, so this writes the module file p11-kit would
+# actually read: $XDG_CONFIG_HOME/pkcs11/modules (falling back to
+# ~/.config/pkcs11/modules the same way p11-kit's own
+# common/path.c:expand_homedir() does), created 0700, file 0600, and only if
+# absent.
+#
+# enable-in, NOT disable-in, and that is a deliberate departure from the
+# sibling's shipped module file: pkcs11.conf(5) says "Do not specify both
+# enable-in and disable-in for the same module", and p11-kit's
+# is_module_enabled_unlocked() (p11-kit/modules.c) takes the enable-in branch
+# whenever both are configured and never consults disable-in at all -- with
+# both set, disable-in is silently dead weight. An enable-in allowlist of
+# exactly the two processes that need this module is strictly narrower than
+# any disable-in list could be: it already excludes xdg-desktop-portal,
+# xdg-desktop-portal-certificate, p11-kit-server, and every other p11-kit
+# consumer on the machine -- ssh, curl, browsers included -- which is the
+# whole point of not installing this globally.
+#
+# The two names are matched by p11-kit as the BASE NAME OF argv[0]
+# (p11-kit/util.c:_p11_get_progname_unlocked -> common/compat.c's
+# getprogname(), which on glibc/Linux reads program_invocation_short_name,
+# with a fallback that resolves /proc/self/exe when argv[0] is an absolute
+# path -- see docs/TESTING.md for how this was verified on this machine).
+# "xdg-desktop-portal-webauth" is this backend's own built binary name;
+# "WebKitNetworkProcess" is the literal executable WebKitGTK execs for its
+# network process (/usr/libexec/webkit2gtk-*/WebKitNetworkProcess).
+MODULE_MARKER="# Installed by tools/portal-stack.sh --live."
+MODULE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/pkcs11/modules"
+MODULE_FILE="$MODULE_DIR/xdg-desktop-portal-certificate.module"
+
+install_module_file() {
+	if [ -e "$MODULE_FILE" ]; then
+		if head -1 -- "$MODULE_FILE" | grep -qF "$MODULE_MARKER"; then
+			echo "${0##*/}: $MODULE_FILE already installed"
+			return 0
+		fi
+		die "$MODULE_FILE already exists and was not written by this script; refusing to
+touch it. If it is meant to be this module, remove it yourself, or point
+CERTIFICATE_REPO/XDG_CONFIG_HOME elsewhere:
+    $MODULE_FILE"
+	fi
+
+	[ -f "$CERT_MODULE_SO" ] ||
+		die "no client-side module at $CERT_MODULE_SO; build $CERTIFICATE_REPO"
+	local so_path
+	so_path="$(realpath -e -- "$CERT_MODULE_SO")" || die "could not resolve $CERT_MODULE_SO"
+
+	(
+		umask 077
+		mkdir -p -- "$MODULE_DIR" &&
+			cat >"$MODULE_FILE" <<EOF
+$MODULE_MARKER
+# See docs/TESTING.md "Live run against Entra" and the sibling's
+# docs/decisions/0011-client-side-pkcs11-module.md. Installed: $(date +%F)
+# Remove with: tools/portal-stack.sh --uninstall-module
+module: $so_path
+critical: no
+enable-in: xdg-desktop-portal-webauth, WebKitNetworkProcess
+EOF
+	) || die "could not write $MODULE_FILE"
+
+	echo "${0##*/}: installed $MODULE_FILE"
+	echo "${0##*/}: remove it with: ${0##*/} --uninstall-module"
+}
+
+uninstall_module_file() {
+	if [ ! -e "$MODULE_FILE" ]; then
+		echo "${0##*/}: $MODULE_FILE not present"
+		return 0
+	fi
+	head -1 -- "$MODULE_FILE" | grep -qF "$MODULE_MARKER" ||
+		die "$MODULE_FILE was not written by this script (its first line does not match);
+refusing to remove it:
+    $MODULE_FILE"
+	rm -f -- "$MODULE_FILE" || die "could not remove $MODULE_FILE"
+	echo "${0##*/}: removed $MODULE_FILE"
 }
 
 while [ $# -gt 0 ]; do
@@ -130,6 +226,7 @@ while [ $# -gt 0 ]; do
 	--cancel-chooser) CANCEL_CHOOSER=1 ;;
 	--second-start) SECOND_START=1 ;;
 	--keep) KEEP=1 ;;
+	--uninstall-module) UNINSTALL_MODULE=1 ;;
 	--completion-uri=*) COMPLETION_URI="${1#--completion-uri=}" ;;
 	--start-path=*) START_PATH="${1#--start-path=}" ;;
 	--session-mode=*) SESSION_MODE="${1#--session-mode=}" ;;
@@ -149,6 +246,13 @@ gtk | system | auto) ;;
 *) die "--pin-prompt takes gtk, system or auto" ;;
 esac
 
+# Independent of everything else this script sets up: no LOGDIR, no build
+# checks, no display. It only touches $MODULE_FILE.
+if [ "$UNINSTALL_MODULE" = 1 ]; then
+	uninstall_module_file
+	exit $?
+fi
+
 if [ -n "${LOGDIR:-}" ]; then
 	fixture_make "$LOGDIR" portal-stack
 else
@@ -165,6 +269,7 @@ command -v dbus-run-session >/dev/null || die "dbus-run-session not found"
 [ -x "$BACKEND" ] || die "no backend at $BACKEND; set BACKEND"
 [ -x "$CERT_BACKEND" ] || die "no certificate backend at $CERT_BACKEND; set CERTIFICATE_REPO"
 [ -f "$CERT_MODULE_SO" ] || die "no client-side module at $CERT_MODULE_SO; build the sibling repository"
+[ "$MODE" = live ] && install_module_file
 [ -x "$XDP_BUILD/desktop-portal/xdg-desktop-portal" ] || die "no frontend; set XDP_BUILD"
 [ -x "$XDP_BUILD/document-portal/xdg-permission-store" ] || die "no permission store; set XDP_BUILD"
 # THE FIXTURE BELONGS TO THE SIBLING REPOSITORY, so it carries the sibling's
@@ -211,20 +316,29 @@ xdp_conf_set "$DEVDIR/portals.conf" \
 
 # ------------------------------------------------------------ p11-kit, for this run only
 #
-# THE PROCESS THAT RESOLVES THE URI IS NOT THIS SCRIPT AND NOT THE FRONTEND. The
-# certificate is built in the BACKEND's process and used in WebKit's NETWORK
-# process, which is a child of it; both find the module only because p11-kit
-# reads $XDG_CONFIG_HOME/pkcs11/modules and the backend is started with that
-# variable pointed here. `module:` is absolute because a build tree is not
-# p11-kit's module directory.
-CONFDIR="$LOGDIR/config"
-(umask 077 && mkdir -p "$CONFDIR/pkcs11/modules")
-cat >"$CONFDIR/pkcs11/modules/xdg-desktop-portal-certificate.module" <<EOF
+# PRIVATE MODE ONLY. THE PROCESS THAT RESOLVES THE URI IS NOT THIS SCRIPT AND
+# NOT THE FRONTEND. The certificate is built in the BACKEND's process and used
+# in WebKit's NETWORK process, which is a child of it; both find the module
+# only because p11-kit reads $XDG_CONFIG_HOME/pkcs11/modules and the backend is
+# started with that variable pointed here. `module:` is absolute because a
+# build tree is not p11-kit's module directory. `disable-in` is fine here,
+# unlike in the real per-user file install_module_file() writes for --live:
+# this directory holds nothing else that enable-in would need to coexist
+# with, and it is only ever read by the processes this script itself starts.
+#
+# --live does NOT do this: it leaves $XDG_CONFIG_HOME as the real
+# environment's value and relies on install_module_file(), above, having put
+# the module where p11-kit's real configuration actually looks.
+if [ "$MODE" = private ]; then
+	CONFDIR="$LOGDIR/config"
+	(umask 077 && mkdir -p "$CONFDIR/pkcs11/modules")
+	cat >"$CONFDIR/pkcs11/modules/xdg-desktop-portal-certificate.module" <<EOF
 module: $CERT_MODULE_SO
 critical: no
 priority: -10
 disable-in: xdg-desktop-portal, xdg-desktop-portal-certificate, p11-kit-server
 EOF
+fi
 
 # ------------------------------------------------------------ the server's own certificate
 #
@@ -555,7 +669,9 @@ inner() {
 # with no compositor can start and xdotool can drive. --live uses the desktop
 # the person running it is sitting at.
 XDG_DESKTOP_PORTAL_DIR="$DEVDIR"
-XDG_CONFIG_HOME="$CONFDIR"
+# Private mode only: --live leaves $XDG_CONFIG_HOME as the real environment's
+# value, see install_module_file() and the p11-kit comment above.
+[ "$MODE" = private ] && XDG_CONFIG_HOME="$CONFDIR"
 
 if [ "$MODE" = private ]; then
 	"$XVFB" "$SCREEN" -screen 0 1280x1024x24 -nolisten tcp >"$LOGDIR/xvfb.log" 2>&1 &
@@ -585,7 +701,10 @@ fi
 #
 #   XDG_CONFIG_HOME    where p11-kit finds the certificate portal's module, in
 #                      THIS backend's process and in WebKit's network process,
-#                      which inherits it.
+#                      which inherits it. In private mode this points at the
+#                      throwaway CONFDIR above; in --live it is left as the
+#                      real environment's value, and install_module_file()
+#                      put the module where that real value actually points.
 #   XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL
 #                      BOTH gates. Neither portal is exported without its name.
 #

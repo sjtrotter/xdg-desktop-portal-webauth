@@ -448,9 +448,19 @@ spends a real PIN retry counter if the PIN is wrong.
 - the card is in the reader and `p11tool --list-tokens` shows it (OpenSC through p11-kit; the
   certificate backend finds it the same way);
 - `xdg-desktop-portal-certificate` is installed, or built and reachable through
-  `$CERTIFICATE_REPO`, and **its p11-kit module file is installed** — `--live` does not write one,
-  because on the real machine the module must be in p11-kit's own configuration where the user can
-  see it and remove it (`p11-kit list-modules | grep xdg-desktop-portal-certificate`);
+  `$CERTIFICATE_REPO`. Its p11-kit module file does not have to be installed by hand: `--live`
+  installs it itself, once, into the **real** per-user configuration —
+  `$XDG_CONFIG_HOME/pkcs11/modules/xdg-desktop-portal-certificate.module` (default
+  `~/.config/pkcs11/modules`), created 0700/0600, and only if nothing is already there. The file
+  carries `enable-in: xdg-desktop-portal-webauth, WebKitNetworkProcess` — **not** `disable-in`,
+  because `pkcs11.conf(5)` says not to set both on one module and p11-kit's
+  `is_module_enabled_unlocked()` (`p11-kit/modules.c`) takes the `enable-in` branch and never
+  consults `disable-in` when both are present. An `enable-in` allowlist of exactly the two
+  processes that need this module is what keeps it off every other p11-kit consumer on the
+  machine — ssh, curl, browsers included — which is the reason it was never safe to install
+  globally with no restriction. Verify with `p11-kit list-modules` (must not show it) versus
+  `exec -a xdg-desktop-portal-webauth p11-kit list-modules` (must show it); remove it with
+  `tools/portal-stack.sh --uninstall-module`, which refuses to touch a file it did not write;
 - the frontend on the branch is what owns `org.freedesktop.portal.Desktop` — `--live` takes the
   name for the duration and the system portal comes back by activation afterwards;
 - `<tenant>` is the directory (tenant) id of the US Government tenant.
