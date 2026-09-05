@@ -131,6 +131,72 @@ produce an endpoint or signer at all before this one can consume it. Stand in fo
 hand-run `p11-kit server` for the first pass — worth doing regardless, because it isolates whether a
 failure is in the producing or the consuming.
 
+### Result, 2026-09-04: the URI survives, and the handshake completes
+
+**Answered, for the half that matters: YES.** A `GTlsCertificate` whose private key is a PKCS#11
+URI satisfies a WebKitGTK 2.52 client-certificate challenge and completes a mutual-TLS handshake
+against a server that **requires** a client certificate.
+
+What was run: [`spikes/webkit-client-cert.c`](../spikes/webkit-client-cert.c) — GTK4 plus
+WebKitGTK 6.0, a `WebKitNetworkSession`, and one `authenticate` handler — against a SoftHSM token
+holding an RSA-2048 client certificate and its key, on Fedora 44 with WebKitGTK 2.52.5,
+GLib 2.88.3, glib-networking 2.80 (GnuTLS backend), GnuTLS 3.8.13 and p11-kit 0.26.5. Two servers:
+`gnutls-serv --require-client-cert`, and `tools/mtls-server.py` with Python `ssl.CERT_REQUIRED` and
+a CA file, which rejects a client that produces no certificate at the TLS layer
+(`tlsv13 alert certificate required`).
+
+Verbatim, from the spike against the CERT_REQUIRED server:
+
+```
+authenticate scheme=7 host=localhost
+certificate outcome=built kind=pkcs11
+load outcome=finished uri=https://localhost:18444/
+```
+
+and from `gnutls-serv`'s side of the same exercise:
+
+```
+Subject: CN=Portal Test User,O=Example Org
+Client Signature: RSA-PSS-RSAE-SHA256
+```
+
+**The private key never left the token.** The SoftHSM object is `CKA_PRIVATE` and `CKA_SENSITIVE`,
+so its value cannot be read by the UI process at all; the signature above therefore was made
+through the module, addressed by URI, inside WebKit's **network process**. That is the answer to
+the question this spike existed to ask: WebKit carries the certificate to the network process by
+URI rather than as key material. `libwebkitgtk-6.0.so` carries the GTlsCertificate property name
+`private-key-pkcs11-uri`, which is the mechanism.
+
+**The PIN.** SoftHSM requires `C_Login`, and there are exactly two ways in — neither of them a
+`GTlsInteraction`:
+
+- **`WebKitNetworkSession` has no TLS interaction setter.** There is no
+  `webkit_network_session_set_tls_interaction()`; the compile fails. So the GLib route the sketch
+  assumed does not exist.
+- **WebKit asks for the PIN itself.** After the certificate is supplied, the `authenticate` signal
+  is emitted a second time with
+  `WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED` (scheme 9), and
+  `webkit_credential_new_for_certificate_pin()` satisfies it. This is the route the backend uses.
+- A `pin-value` in the key URI also works and is what the first pass used. The backend **refuses**
+  it (`src/tls/client_cert.c`): a URI on a command line is a PIN in `/proc/*/cmdline`.
+
+**What this does NOT answer**, and the steps stay open: dynamic module registration *after* the
+network process exists (step 2), two concurrent endpoints (6), card removal mid-handshake (7),
+grant lifetime against a closed D-Bus connection (8), which process opens a p11-kit socket (9), and
+the whole version matrix (10). Nothing here involves the smart card portal, because the module it
+would publish does not exist yet.
+
+**What it decides.** The `portal` adapter stops being "broker a `Sign`" and becomes "resolve a URI
+through the certificate portal's own PKCS#11 module": there is no external-signer seam in WebKit or
+glib-networking to plug a brokered `Sign` into, and there is a working URI seam.
+`backend/src/tls/portal-token.h` is that agreement, and
+[decisions/0007](decisions/0007-certificate-adapter.md) records the decision.
+
+Steps 11 (`nativeclient` interception against the `.us` authority) and 13 (the in-process adapter)
+are gone rather than pending: 11 needs a real tenant, and 13 describes a component this backend no
+longer has. Step 12, storage isolation, is now an end-to-end test rather than a spike; see
+[TESTING.md](TESTING.md).
+
 **Why it is the more fundamental of the two.** It is the largest uncertainty in the effort estimate
 (see [ROADMAP.md](ROADMAP.md)), it sets the support floor, and it decides whether the delegated-card
 story is real or aspirational. It must also be answered long before any interface is proposed to
