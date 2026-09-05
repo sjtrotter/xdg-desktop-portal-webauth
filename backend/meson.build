@@ -101,6 +101,7 @@ config_inc = include_directories('.')
 
 subdir('data')
 subdir('src')
+subdir('tests')
 
 summary(
   {
