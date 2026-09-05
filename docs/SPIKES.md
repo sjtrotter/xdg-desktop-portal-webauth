@@ -1,6 +1,6 @@
 # Go / no-go spikes
 
-Status: design sketch. None of these have been run.
+Status: **S2 has been run and is answered** (see its Result section); S1 and S3 have not.
 
 Two questions decide whether this project is worth building as described — one per component. Both are
 answerable in days, with code that already exists, and both must be answered **before** any

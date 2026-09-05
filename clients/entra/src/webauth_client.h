@@ -24,6 +24,10 @@
  *
  *  IT TALKS TO xdg-desktop-portal AND TO NOTHING ELSE. The portal routes to a
  *  backend, and none of that is visible here: this client never names a backend,
+ *  A WORKING REFERENCE FOR THIS CALL EXISTS: tools/webauth-e2e.py makes exactly
+ *  it, in python, and is what the backend's end-to-end tests drive the portal
+ *  with. Read it before writing this in C; docs/TESTING.md says what it proved.
+ *
  *  never reads a .portal file, never calls org.freedesktop.impl.portal.* - which
  *  it could not be permitted to do anyway - and cannot tell which backend served
  *  it. A machine that installs a different backend changes nothing in this file.

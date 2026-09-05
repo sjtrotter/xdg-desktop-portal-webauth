@@ -149,5 +149,5 @@ Under [0008](0008-build-to-the-upstream-shape.md) each of these is a separate **
 process implementing `org.freedesktop.impl.portal.experimental.WebAuthentication`, declaring itself
 in a `.portal` file, and selected in `portals.conf` — rather than an implementation behind an
 in-process vtable with a capability mask. The list above is unchanged; only who chooses, and when,
-has moved. See [`backend/src/webkit_session.h`](../../backend/src/webkit_session.h)
+has moved. See [`backend/src/webkit-session.h`](../../backend/src/webkit-session.h)
 and [../IMPL-INTERFACE.md](../IMPL-INTERFACE.md).

@@ -1,8 +1,11 @@
 # Upstreaming: the frontend is already upstream-shaped, and what is left
 
-Status: design sketch. **Nothing has been proposed to anyone.** No issue has been opened,
-no pull request exists, no maintainer has been contacted, and the branch this document is
-about is local-only — nothing was forked and nothing was pushed.
+Status: **nothing has been proposed to anyone.** No issue has been opened, no pull request
+exists, no maintainer has been contacted, and the branch this document is about is
+local-only — nothing was forked and nothing was pushed. What has changed since the last
+version is that the backend is now implemented and has been run against the branch's
+frontend end to end ([TESTING.md](TESTING.md)), so the claim "this shape works" is an
+observation rather than a design argument.
 
 What changed since the previous version of this document is that "the frontend, if
 accepted, would move into xdg-desktop-portal" stopped being a plan with a mapping table
@@ -70,13 +73,15 @@ An out-of-tree backend, plus an application:
 |---|---|
 | `backend/src/main.c` | the D-Bus activated executable |
 | `backend/src/webauthentication-impl.h`, `request-impl.h` | the impl skeleton, one file per portal interface |
-| `backend/src/transaction.h`, `webkit_session.h`, `chrome.h`, `externalwindow.h`, `storage.h`, `completion.h`, `redact.h` | the window, the engine, the chrome, the partition, the matcher, the logging rules |
-| `backend/src/tls/` | the certificate adapter and both implementations |
+| `backend/src/transaction.c`, `webkit-session.c`, `chrome.c`, `external-window.c`, `storage.c`, `completion.c`, `options.c`, `redact.c` | the window, the engine, the chrome, the partition, the matcher, the logging rules |
+| `backend/src/tls/` | the certificate adapter and its two providers, `portal` and `pkcs11` |
+| `backend/tests/` | the rules, tested with no display and no bus |
 | `backend/data/webauth.portal.in` | `DBusName`, `Interfaces`, `UseIn`; installed into `$datadir/xdg-desktop-portal/portals` |
 | `backend/data/org.freedesktop.impl.portal.desktop.webauth.service.in` | D-Bus activation |
 | `backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` | a **verbatim tracking copy** of the branch's file; deleted the day the branch lands and the file ships in xdg-desktop-portal's interfaces directory |
 | `clients/entra/` | the Entra ID / AVD token client. **Never moves.** It is a consumer. |
-| `tools/` | `trigger-webauthentication.sh`, `dev-stack.sh` |
+| `tools/` | the fixture, the fixture identity provider, the private-bus stack, the Xvfb smoke test, the public-interface client |
+| `spikes/` | `webkit-client-cert.c`, S2's answer |
 
 What is *gone*, and was deleted rather than moved: `service/frontend/src/webauthentication.h`,
 `request.h`, `session.h`, `app-info.h`, `portal-impl.h`, `main.c`, its interface XML, its
@@ -108,9 +113,10 @@ adapter — which matters more here than anything in the paragraph above:
 | `client_cert_portal.h` said | The branch says | Consequence |
 |---|---|---|
 | `CreateSession(a{sv}) → o session_handle` | `CreateSession(a{sv}) → o handle`, a **Request**; the session handle arrives in its `Response` | The adapter must subscribe before calling, and must not treat the return value as a session |
-| `OpenPkcs11Endpoint(o session, a{sv}) → h fd, s, s, u` | **not on the interface at all** | The `portal` adapter's compatibility transport does not exist. Brokered `Sign` is all there is, and it needs an external-signer path in WebKitGTK/glib-networking that is not known to exist. The `inproc` adapter is therefore not a fallback but the only implementation that can currently work |
+| `OpenPkcs11Endpoint(o session, a{sv}) → h fd, s, s, u` | **not on the interface at all** | The compatibility transport does not exist — and after [S2](SPIKES.md) it is not what was needed. WebKit resolves a client certificate from a **PKCS#11 URI** in its network process, so the seam is a permanently registered module the Certificate portal publishes, not an fd handed over per grant. `backend/src/tls/portal-token.h` is the resulting contract, and it is now the thing that needs agreeing between the two repositories |
 | `context` carrying the challenging origin | **no such option** | The origin can only travel in `reason`, as application-supplied text |
-| a `pkcs11_endpoint` capability bit | `GetCapabilities` has no such key | `WEBAUTH_GRANT_ENDPOINT` is gone from the adapter's capability mask |
+| a `pkcs11_endpoint` capability bit | `GetCapabilities` has no such key | Gone from the adapter, along with the capability mask itself: a provider is available or it is not |
+| brokered `Sign` would satisfy the handshake | the interface is unchanged, but WebKit has no seam for it | S2: there is no external-signer path and no `GTlsInteraction` on a `WebKitNetworkSession`. This is the one place where the branch's interface is *not* the constraint — the engine is |
 
 ## What remains before this could be a pull request
 

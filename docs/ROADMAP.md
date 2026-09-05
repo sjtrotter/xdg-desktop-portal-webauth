@@ -1,6 +1,8 @@
 # Roadmap
 
-Status: design sketch. The sketch itself is done; nothing after it has started.
+Status: phases 0c and 0d are **done** and 0a/0b were already done upstream; everything from phase 1
+on is untouched, and the Entra client has not started. What "done" means here is
+[TESTING.md](TESTING.md): a fixture, not a tenant and not a card.
 
 **What has changed since this document was last honest about its own scope:** the frontend is no
 longer this project's to build. It is an xdg-desktop-portal branch
@@ -66,28 +68,34 @@ frontend owes when a backend cannot start, dies, or misbehaves
 measure of what
 [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md) saved.
 
-### 0c. Backend: WebKitGTK web view — **1–2 weeks**
+### ~~0c. Backend: WebKitGTK web view — 1–2 weeks~~ — **done, here**
 
 The GTK4/WebKitGTK 6.0 backend: the impl skeleton and its Request object, `parent_window` parsing
 and parenting, window, navigation policy, interception before load, the backend's copy of the
-completion matcher, storage partitioning across *all* engine state, disabled downloads and autofill,
-no TLS-error bypass, structural redaction.
+completion matcher, storage partitioning across engine state, disabled downloads, popups and
+permissions, no TLS-error bypass, structural redaction. All of it is in `backend/src/`, and
+[TESTING.md](TESTING.md) is what it has been run against.
 
-A web view with a strict navigation policy, and nothing about certificates.
+**Two things came out of building it that the estimate did not have.** WebKitGTK 6.0 exposes no
+frame identity on a navigation policy decision, so "top-level navigations only" cannot be enforced
+as written — see [IMPL-INTERFACE.md](IMPL-INTERFACE.md); and a `WebKitNetworkSession` with a data
+directory does not persist cookies until its cookie manager is given a file, which is the kind of
+thing only an end-to-end test finds.
 
-### 0d. Backend: certificate adapter — **2–4 weeks**
+### 0d. Backend: certificate adapter — **done for `pkcs11`; `portal` waits on another repository**
 
-`tls/client_cert.h` and both implementations. The adapter itself is trivial; the two things behind
-it are not.
+`tls/client_cert.c` and its two providers. The estimate assumed the expensive half was lifting a
+chooser and a PIN prompt out of the Remmina plugin and porting them to GTK 4. [S2](SPIKES.md)
+removed that work rather than scheduling it: WebKit resolves a certificate from a PKCS#11 URI in its
+network process and asks for the PIN itself, so this backend names a token and does no card handling
+at all. There is no `inproc` provider.
 
-**`inproc` first**, because it is the path known to work and it is what makes the rest of phase 0
-independent of another project's schedule: lift the chooser and PIN prompt out of the Remmina plugin,
-port them from GTK 3 to GTK 4, replace `gtk_dialog_run()`'s nested main loops with asynchronous
-responses, and — if practical — replace the `p11tool` subprocess with the p11-kit and GnuTLS APIs,
-dropping the runtime dependency on `gnutls-utils`/`gnutls-bin`.
+**`pkcs11` is done**: a token named by `--client-cert-uri`, a PIN from a file, and a mutual-TLS
+handshake that completes against a server requiring a client certificate.
 
-**`portal` when S2 says it works**, not before. Preferred once proven, because it takes the PIN and
-the chooser out of this process entirely.
+**`portal` is written and reports itself unavailable.** What it needs is not in this repository: the
+Certificate portal must publish a client-side PKCS#11 module presenting the token named in
+`backend/src/tls/portal-token.h`. That is the next thing to agree between the two projects.
 
 Common to both, and disproportionately risky for its size: recognising the challenge, displaying the
 origin, refusing challenges from unrelated hosts, and releasing whatever the adapter held on **every**

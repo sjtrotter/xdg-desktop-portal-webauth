@@ -1,6 +1,8 @@
 # Architecture
 
-Status: design sketch. Nothing described here is implemented.
+Status: the backend is implemented and has been run end to end against a fixture identity provider
+([TESTING.md](TESTING.md)); the Entra client is still a sketch. Where this document says "would",
+it still means it.
 
 Web authentication is **a portal frontend and a portal backend**, plumbed exactly as
 xdg-desktop-portal plumbs every portal it has — because the frontend *is* xdg-desktop-portal.
@@ -41,8 +43,11 @@ xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `3a32e9
                     │  certificate adapter ───┐               │
                     └─────────────────────────┼───────────────┘
                                               │
-             portal (preferred, but see below)┴──▶ org.freedesktop.portal.experimental
-                       inproc (fallback) ──▶ p11-kit + own chooser and PIN    .Certificate
+       portal (preferred; needs a module ┴──▶ the Certificate portal's OWN PKCS#11
+        that does not exist yet)              module, named by URI: portal-token.h
+                                              ▲ chooser, consent and PIN stay there
+       pkcs11 (--client-cert-uri) ───────────▶ any p11-kit token. No chooser, no
+                                              PIN prompt, no card handling here
 ```
 
 **`[GATED]`** is load-bearing: the public interface is not exported unless the portal was started
@@ -57,11 +62,12 @@ windows. None of them knows anything about RDP.
 separate project in its own repository (`xdg-desktop-portal-certificate`), sketched in parallel;
 its frontend is the *same* xdg-desktop-portal branch as ours. It is the *preferred* way to satisfy
 a certificate challenge — but the mechanism connecting it to a WebKit handshake is unproven and has
-got less proven, not more: `OpenPkcs11Endpoint` is not on that interface at all, so brokered `Sign`
-is the only thing the portal adapter can use, and that needs an external-signer path in
-WebKitGTK/glib-networking which is not known to exist. So the certificate path is an adapter with
-an in-process fallback, and the fallback is currently the only implementation that can work. A
-machine with no certificate portal installed still signs in. See
+a mechanism, which spike [S2](SPIKES.md) has now settled: WebKit carries a certificate to its
+network process as a **PKCS#11 URI** and resolves it there, so the seam between the two projects is
+a p11-kit module the Certificate portal publishes, not a brokered `Sign`. That module does not
+exist yet, so the `portal` provider reports itself unavailable and the `pkcs11` provider — a token
+named on this backend's command line — is what works today. A machine with no certificate portal
+installed still signs in. See
 [decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md).
 
 Note what the arrow into the backend **is**: a D-Bus interface, not the in-process vtable version 0
@@ -90,7 +96,7 @@ against `xdg-desktop-portal/desktop-portal/account.c` and
 | **Completion matching** | Re-checks the returned URI against the requested one | **Enforces it against live navigations** and stops before load | see [IMPL-INTERFACE.md](IMPL-INTERFACE.md) |
 | **TLS client certificates, PIN** | Never sees either | Yes, behind the adapter | backend-side |
 | **Backend discovery** | Yes: `.portal` files and `portals.conf` | Declares itself in one `.portal` file | `xdp-portal-config.c`; gtk's `data/gtk.portal` |
-| **Deadline** | Backstop, slightly longer | Authoritative | frontend proxy timeout is `G_MAXINT`; backend runs the real one |
+| **Deadline** | **None**: the proxy timeout is `G_MAXINT` and there is no backstop | The only one there is, started when the window opens | a gap against every other portal, noted in [SECURITY.md](SECURITY.md) |
 | **Remembered decisions (permission store)** | None in version 1 — see below | None | `xdp-permissions.c` / `org.freedesktop.impl.portal.PermissionStore` |
 
 **On the permission store.** Upstream frontends remember per-application decisions for portals
@@ -147,9 +153,9 @@ specified rather than discovered, and two of them are new: the frontend can vani
 a window belonging to no request is the leaked-window failure the interface promises not to have),
 and this process can vanish (the frontend owes the answer).
 
-### `webkit_session` — [`src/webkit_session.h`](../backend/src/webkit_session.h)
+### `webkit-session` — [`src/webkit-session.h`](../backend/src/webkit-session.h)
 
-The GTK4 + WebKitGTK 6.0 web view. It tests every top-level navigation and finishes the transaction
+The GTK4 + WebKitGTK 6.0 web view. It tests every navigation and finishes the transaction
 *before the navigation is loaded*, because the completion URI carries the credential the flow was
 for; it answers TLS client-certificate challenges bound to the verified host of the page it is
 showing; it uses exactly the partition it was given; it renders the security chrome. Fixed, not
@@ -175,7 +181,7 @@ marked as application-supplied. Accessibility lives here as acceptance criteria 
 for every backend-owned control, meaningful focus order, screen-reader announcement of caller and
 origin, no meaning carried by colour alone, focus restored to the calling application on close.
 
-### `externalwindow` — [`src/externalwindow.h`](../backend/src/externalwindow.h)
+### `external-window` — [`src/external-window.h`](../backend/src/external-window.h)
 
 Parsing `x11:<xid>` and `wayland:<handle>` and parenting the window. Backend work, because the
 frontend has no display connection. An invalid identifier degrades to an unparented window and
@@ -196,26 +202,23 @@ silently downgrade one.
 
 ### `tls/client_cert` — [`src/tls/`](../backend/src/tls/)
 
-Answering a TLS client-certificate challenge, behind an adapter with two implementations:
+Answering a TLS client-certificate challenge, behind an adapter with two providers. Both end in the
+same call — `g_tls_certificate_new_from_pkcs11_uris()` — because [S2](SPIKES.md) established that
+this is the seam WebKit actually has:
 
-- **`portal`** — call `org.freedesktop.portal.experimental.Certificate` on
-  `org.freedesktop.portal.Desktop` as an ordinary client: `CreateSession` (a Request, whose
-  Response carries the session handle) then `AcquireCredential` with `purpose: "client_auth"`, then
-  satisfy the operation by brokered `Sign` behind a GnuTLS external-signer path — unproven.
-  **Preferred when available**, because the chooser and the PIN then belong to one trusted service
-  shared by every application, and the PIN never reaches this process. Note two things the branch's
-  XML settled against this adapter: there is **no `OpenPkcs11Endpoint`**, so the compatibility
-  transport that was the second option does not exist; and there is **no `context` option**, so the
-  destination host can only travel in `reason`, as application-supplied text.
-- **`inproc`** — enumerate with p11-kit, show this backend's own chooser and PIN prompt, and build
-  the certificate with `g_tls_certificate_new_from_pkcs11_uris()` against the **system** p11-kit
-  configuration. **Retained as the fallback**, and there is no release in which the AVD case is
-  blocked on another project shipping.
+- **`portal`** — a URI naming the token that the Certificate portal's own client-side PKCS#11 module
+  presents ([`src/tls/portal-token.h`](../backend/src/tls/portal-token.h)). The card, the chooser,
+  the consent and the PIN stay in that service; the token declares
+  `CKF_PROTECTED_AUTHENTICATION_PATH`, so this backend answers no PIN challenge at all.
+  **Preferred**, and unavailable until that module exists.
+- **`pkcs11`** — any p11-kit token, named by `--client-cert-uri` on this backend's command line,
+  with a PIN read from the file `--client-cert-pin-file` names. No chooser, no prompt, no
+  enumeration.
 
-**Why the fallback is not scaffolding.** The ends of the chain are documented and fine; the middle
-is not: a PKCS#11 URI cannot name a socket, p11-kit remoting needs the client module registered in
-*configuration*, GLib's constructor has no module parameter, and WebKit's network process may not
-see a module registered after it started. That is spike [S2](SPIKES.md).
+**There is no `inproc` provider and no in-process card handling**, which is a change from the
+sketch: a chooser and a PIN prompt inside a browser process is the design the Certificate portal
+exists to replace. What S2 left open — dynamic registration, concurrency, card removal, the version
+matrix — is in [SPIKES.md](SPIKES.md).
 
 **What the split did not fix, and made visible — and what has since changed.** Over D-Bus, under
 the `portal` adapter, this backend is the Certificate portal's *caller*, so that portal derives
@@ -355,9 +358,9 @@ FreeRDP needs two tokens for one connection, in this order.
 6. **The backend** exports its impl Request at the same handle, parses `parent_window`, opens the
    window with chrome naming the app id it was given and the origin the engine reports; the user
    authenticates; `certauth.login.microsoftonline.us` challenges for a client certificate; **the
-   certificate adapter runs** — the smart card portal's chooser and PIN window under the `portal`
-   adapter, this backend's own under `inproc`, both naming application, origin, certificate and
-   purpose; the handshake completes; the authority redirects to the `nativeclient` URL; the
+   certificate adapter runs** — under the `portal` provider the Certificate portal's own chooser and
+   PIN window, naming application, origin, certificate and purpose; under `pkcs11` the token the
+   operator named; the handshake completes; the authority redirects to the `nativeclient` URL; the
    navigation policy matches it exactly, commits the completion, destroys the window before it
    renders, releases the grant, unexports the impl Request, and returns
    `(0, { completion_uri })`. A non-zero response carries a `reason` from the XML's list —

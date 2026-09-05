@@ -1,6 +1,8 @@
 # Contributing
 
-This is a design sketch. The most useful contribution right now is an argument, not a patch.
+The portal backend is implemented; the Entra client is a design sketch. For the client, the most
+useful contribution is still an argument rather than a patch; for the backend, see
+[docs/TESTING.md](docs/TESTING.md) before changing anything, because most of its rules have a test.
 
 ## What is most wanted
 

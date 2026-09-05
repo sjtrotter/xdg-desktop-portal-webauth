@@ -1,7 +1,13 @@
 # Tests
 
-There are no tests **here**, because there is no implementation here. This file describes the
-strategy, so that the first code written has somewhere to be tested from.
+**The backend's tests are `backend/tests/`, run by `meson test -C build-backend`, and the
+end-to-end runs are `tools/ui-smoke.sh`; what they cover and what they proved is
+[../docs/TESTING.md](../docs/TESTING.md).** This directory holds no tests: it holds the strategy
+they were written from, kept because the strategy outlived the sketch and the Entra client has
+still not started.
+
+The fixture tables below are the ones `backend/tests/test-completion.c` now carries, with the
+frontend's own cases marked `FRONTEND` in that file.
 
 **Half of it exists already, in the frontend's repository.** The xdg-desktop-portal branch
 `experimental/certificate-webauthentication` ships `tests/templates/webauthentication.py` (a
@@ -30,10 +36,12 @@ The single most valuable fixture set in the project: a table of
 **This table must be run against both implementations.** One rule is enforced in two places — the
 backend, against live navigations, and the frontend, against the URI a backend returns
 ([../docs/IMPL-INTERFACE.md](../docs/IMPL-INTERFACE.md)) — and two implementations of one rule can
-drift. **One of the two is written and tested already**, in another repository:
+drift. **Both are now written and tested.** This repository's is `backend/src/completion.c`, covered by
+`backend/tests/test-completion.c`; the frontend's is in another repository:
 `desktop-portal/web-authentication.c:completion_uri_matches()` on the xdg-desktop-portal branch,
-covered by `test_completion_mismatch_rejected` and `test_completion_normalisation_accepted`. Read it
-before writing this one, and port the fixtures both ways. Shared fixtures are the only thing standing between "they agree" and "they agreed when they
+covered by `test_completion_mismatch_rejected` and `test_completion_normalisation_accepted`. The
+fixtures have been ported one way, from the frontend to here; porting the additions back is
+outstanding. Shared fixtures are the only thing standing between "they agree" and "they agreed when they
 were written". A fixture that passes in one and fails in the other is a release blocker, not a
 discrepancy to reconcile later.
 

@@ -1,8 +1,12 @@
 # xdg-desktop-portal-webauth, and the Entra token client
 
-**Status: design sketch. Nothing works yet.** This repository contains design documents, a
-repository skeleton, and two stub binaries that build and print usage. No web view has been opened
-and no token has ever been acquired by this code.
+**Status: the portal backend works against a fixture; the Entra client is still a sketch.** The
+backend opens a real WebKitGTK window, intercepts the completion navigation before it loads, and
+answers a TLS client-certificate challenge with a certificate whose private key stays on a PKCS#11
+token — verified end to end on a private bus under Xvfb, including mutual TLS, cancellation,
+`Close()`, and shared versus ephemeral storage ([docs/TESTING.md](docs/TESTING.md)). **No token has
+ever been acquired by this code, and it has never talked to a real identity provider or a real
+card.** `clients/entra/` is still a stub that exits `70`.
 
 ## It is a portal backend, plus a client
 
@@ -119,10 +123,19 @@ further from being one rather than closer: the branch's Certificate interface ha
 leaves brokered `Sign` as the only way to use a grant, and brokered `Sign` needs an external-signer
 path in WebKitGTK/glib-networking that is not known to exist.
 
-So the backend keeps the certificate path behind an **adapter** with two implementations — `portal`
-(preferred, and currently unusable) and `inproc` (the path known to work) — and a machine with no
-certificate portal installed still signs in. Spike [S2](docs/SPIKES.md) is what decides when that
-changes. See
+**Spike [S2](docs/SPIKES.md) has since answered how it will connect, and it is not brokered
+`Sign`.** WebKitGTK carries a client certificate to its network process as a **PKCS#11 URI** and
+resolves it there — the key never leaves the token — and it asks for the token PIN itself. There is
+no external-signer seam, and no `GTlsInteraction` on a `WebKitNetworkSession`. So the seam between
+the two projects is a **p11-kit module the Certificate portal publishes**, and the backend names the
+token it presents: [`backend/src/tls/portal-token.h`](backend/src/tls/portal-token.h) is that
+agreement.
+
+The certificate path is therefore an **adapter with two providers** — `portal` (preferred; the
+module does not exist yet, so it reports itself unavailable) and `pkcs11` (any p11-kit token, named
+on the backend's command line, which is what works today). **There is no in-process chooser and no
+in-process PIN prompt**, and there will not be one: that is the window the Certificate portal exists
+to own. See
 [docs/decisions/0007-certificate-adapter.md](docs/decisions/0007-certificate-adapter.md).
 
 ## Layer 2 — the web authentication portal (`backend/`, plus a frontend elsewhere)
@@ -364,22 +377,35 @@ $ ./build/subprojects/xdg-desktop-portal-webauth/xdg-desktop-portal-webauth --he
 $ ./build/subprojects/entra-token-client/entra-token-helper --help
 ```
 
-Both stubs need only GLib and GIO. WebKitGTK 6.0, GTK 4 and p11-kit are declared optional in the
-**backend** and libsecret in the **client**; they are reported in the configure summary and nothing
-uses them yet.
-
-Two scripts drive the real thing, and neither touches your session bus unless you ask it to:
+The **backend** needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0, all required: every method it
+implements opens a web view, and a backend that cannot must not claim the interface. It links
+against no PKCS#11 library of its own — a certificate is named by URI and GnuTLS resolves it. The
+**client** is still a stub and needs only GLib and GIO; libsecret is declared optional and unused.
 
 ```console
-$ tools/dev-stack.sh
+$ meson test -C build-backend        # the rules: completion, options, storage, redaction
 ```
 
-starts, on a **private bus** made by `dbus-run-session`: `xdg-permission-store` (the portal refuses
-to start without it), this backend, and a development xdg-desktop-portal from the branch with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` and an `XDG_DESKTOP_PORTAL_DIR`
-pointing at a throwaway directory holding this repository's `.portal` file and a `portals.conf`
-selecting it. Then it runs the trigger. Point it at your build with
-`XDP_BUILD=/path/to/xdg-desktop-portal/build`.
+Then the real thing, and none of it touches your session bus or your display:
+
+```console
+$ tools/softhsm-fixture.sh           # a CA, a server certificate, a token, a PIN file
+$ tools/ui-smoke.sh                  # Xvfb + private bus + the whole stack, plain https
+$ tools/ui-smoke.sh --mtls           # the server demands a client certificate
+$ tools/ui-smoke.sh --cancel --start-path=/wait
+```
+
+`tools/ui-smoke.sh` starts an Xvfb and runs `tools/dev-stack.sh` inside it. That starts, on a
+**private bus** made by `dbus-run-session`: `xdg-permission-store` (the portal refuses to start
+without it), a fixture identity provider, a development xdg-desktop-portal from the branch with
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` and an `XDG_DESKTOP_PORTAL_DIR` of its
+own, this backend, and `tools/webauth-e2e.py` — which calls the **public** interface exactly as an
+application would. Point it at your frontend build with
+`XDP_BUILD=/path/to/xdg-desktop-portal/build`. Every run also checks, from the fixture server's
+access log, that the completion URI was never fetched.
+
+[docs/TESTING.md](docs/TESTING.md) has all of it, including what the runs proved and what only a
+real tenant and a real card can answer.
 
 ```console
 $ tools/trigger-webauthentication.sh          # version + Start + both rejection cases
@@ -477,9 +503,10 @@ Recorded properly rather than argued away. The full versions, with what each one
 3. **Shared session state amplifies a malicious caller**, which can start a flow riding a session
    the user already established.
 4. **Client certificates raise the stakes.** A flow here can end with a hardware token
-   authenticating. The `portal` adapter would take the PIN out of this process entirely; the
-   `inproc` fallback does not, and it is what ships until S2 passes. Either way the backend can
-   *provoke* that prompt, naming an origin, on behalf of a caller it may be unable to identify.
+   authenticating. The `portal` provider takes the PIN out of this process entirely and is not
+   usable yet; the `pkcs11` provider reads a PIN the operator put in a file. Either way the backend
+   can *provoke* that operation, naming an origin, on behalf of a caller it may be unable to
+   identify.
 5. **A web engine becomes security-critical infrastructure** — for distributions and for this
    project, permanently.
 6. **"Protocol-agnostic" can become unbounded scope** and turn this into a browser. Version 1 is
@@ -539,20 +566,30 @@ backend/                    the portal BACKEND — its own meson project.
                                          which it must track
   data/webauth.portal.in                 DBusName, Interfaces, UseIn
   data/org.freedesktop.impl.portal.desktop.webauth.service.in   D-Bus activation
-  src/                                   webauthentication-impl.h, request-impl.h,
-                                         transaction.h, webkit_session.h, chrome.h,
-                                         externalwindow.h, storage.h, completion.h,
-                                         redact.h
-  src/tls/                               the certificate adapter and both implementations:
-                                         client_cert.h, client_cert_portal.h,
-                                         client_cert_inproc.h, pkcs11.h, chooser.h, pin.h
+  data/org.freedesktop.impl.portal.Request.xml   the shared backend Request, also a copy
+  src/                                   webauthentication-impl.c  the impl skeleton, the peer check
+                                         request-impl.c            Close(), and nothing else
+                                         transaction.c             one answer, every exit path
+                                         webkit-session.c          the engine and the interception
+                                         chrome.c                  the trusted part of the window
+                                         external-window.c         x11:/wayland: parenting
+                                         completion.c              the matching rule
+                                         storage.c options.c redact.c
+  src/tls/                               client_cert.c             the adapter and its selection
+                                         client_cert_portal.c      the Certificate portal's token
+                                         client_cert_pkcs11.c      any p11-kit token, by URI
+                                         portal-token.h            the names the other repo must use
+  tests/                                 the rules, with no display and no bus
 clients/entra/              layer 3 — entra-token-client (its own meson project)
   src/                                   CLI stub plus header sketches: OAuth, clouds,
                                          cache, IPC schema
-tools/                      dev-stack.sh, trigger-webauthentication.sh
-docs/                       ARCHITECTURE, PUBLIC-INTERFACE, IMPL-INTERFACE, UPSTREAMING,
-                            ENTRA-CLIENT-CLI, SECURITY, SPIKES, ROADMAP, decisions/
-tests/                      the offline test strategy (no tests yet)
+spikes/                     webkit-client-cert.c — S2, kept because its answer is load-bearing
+tools/                      softhsm-fixture.sh, mtls-server.py, dev-stack.sh, ui-smoke.sh,
+                            webauth-e2e.py, trigger-webauthentication.sh, lib.sh
+docs/                       ARCHITECTURE, PUBLIC-INTERFACE, IMPL-INTERFACE, TESTING,
+                            UPSTREAMING, ENTRA-CLIENT-CLI, SECURITY, SPIKES, ROADMAP,
+                            decisions/
+tests/                      the offline test strategy; the tests themselves are backend/tests/
 ```
 
 `backend/` mirrors the sibling `xdg-desktop-portal-certificate` repository's own top-level `src/` + `data/`, as
