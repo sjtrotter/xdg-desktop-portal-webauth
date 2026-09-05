@@ -24,8 +24,8 @@
  *  ONE RULE, TWO ENFORCEMENT POINTS - and they must agree.
  *
  *  It is enforced HERE because only this process sees a navigation: the web view
- *  tests every top level navigation and the transaction completes BEFORE the
- *  matched navigation loads. It is enforced AGAIN in the frontend --
+ *  tests every navigation it is asked to make, in ANY frame, and the transaction
+ *  completes BEFORE the matched navigation loads. It is enforced AGAIN in the frontend --
  *  xdg-desktop-portal, desktop-portal/web-authentication.c,
  *  completion_uri_matches(), on the branch
  *  experimental/certificate-webauthentication -- which re-parses the
@@ -59,8 +59,10 @@ gboolean webauth_completion_start_uri_is_valid(const char* uri, GError** error);
  *  navigation is intercepted before any attempt at external protocol handling. */
 gboolean webauth_completion_uri_is_valid(const char* uri, GError** error);
 
-/** Whether @candidate, a top level navigation, completes a transaction expecting
- *  @completion_uri. Subframe navigations are never offered to this function. */
+/** Whether @candidate, a navigation in any frame, completes a transaction
+ *  expecting @completion_uri. WebKitGTK 6 exposes no frame identity on a policy
+ *  decision, so every navigation reaches this function and a match in a subframe
+ *  ends the flow too -- which is what the public XML promises. */
 gboolean webauth_completion_matches(const char* candidate, const char* completion_uri);
 
 #endif /* WEBAUTH_COMPLETION_H */

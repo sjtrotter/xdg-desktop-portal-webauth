@@ -115,7 +115,7 @@ This is the table that matters, and it is the thing an upstream discussion would
 | **Completion matching against live navigations** | No | **Enforces** | Only the backend has navigations. This is the interception, and it must stop the load. |
 | **Completion re-check of the returned URI** | **Enforces** | No | The application trusts the frontend's bus name, not whichever backend a distribution installed. |
 | Intercept *before load* | No | **Enforces** | The completion URI carries the credential; fetching it would send that credential to a server with no part in the exchange. |
-| Top-level navigations only | No | **Partly** — see the deviations below | Frame knowledge is engine knowledge, and WebKitGTK 6.0 does not expose it on a navigation policy decision. |
+| Completion match in **any** frame | No | **Enforces** | The XML asks for exactly this, and it is what an engine can deliver: a navigation policy decision carries no frame identity. |
 | TLS client certificates, PIN, card | Never sees them | **Enforces** every rule in [SECURITY.md](SECURITY.md) | The handshake is the backend's. |
 | `parent_window` parsing | No, forwards opaquely | **Enforces** | Only the backend has a display connection and a window. |
 | Exactly one `Response` | **Enforces** | Returns once | See above. |
@@ -127,8 +127,9 @@ This is the table that matters, and it is the thing an upstream discussion would
 The rule is defined once, in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) under "Completion matching".
 It is enforced twice, and the two checks answer different questions:
 
-1. **The backend**, against every top-level navigation, deciding *when to stop the browser*. This is
-   the security-critical interception: match, commit, destroy the window, and never load the page.
+1. **The backend**, against every navigation the view is asked to make in any frame, deciding
+   *when to stop the browser*. This is the security-critical interception: match, commit, destroy
+   the window, and never load the page.
 2. **The frontend**, against the single URI the backend returned, deciding *what the application is
    told*. If the returned URI is not the one the application asked for — different host, different
    path, anything — the response becomes `2` with reason `backend_completion_mismatch` and the URI is
@@ -195,20 +196,26 @@ the frontend validates first. This backend answers `(2, {"reason": "invalid_requ
 returning a D-Bus error, because a D-Bus error out of `Start` reaches the application as
 `backend_disappeared`, which is a false statement about what happened.
 
-**3. Subframe navigations cannot be told apart, and are therefore blocked rather than honoured.**
-The public XML says "Subframe navigations do not end the flow". WebKitGTK 6.0's
-`WebKitNavigationPolicyDecision` exposes **no frame identity** — there is no `frame_info`, no
-`is_main_frame`, and `WebKitFrame` lives in the web-process extension API, not here. So the backend
-cannot distinguish a top-level navigation from a subframe one at the moment it must decide.
+**3. Frames cannot be told apart, and the interface no longer pretends otherwise.** WebKitGTK
+6.0's `WebKitNavigationPolicyDecision` exposes **no frame identity**: there is no `frame_info` and
+no `is_main_frame`, `webkit_navigation_action_get_frame_name()` names a link's *target* frame and
+is NULL for an ordinary navigation, and `WebKitFrame` lives in the web-process extension API and
+not here. So this backend cannot distinguish a top-level navigation from a subframe one at the
+moment it must decide, and no backend on this engine can.
 
-What it does instead: a navigation matching the completion URI is **always ignored**, in any frame,
-so the URI is never fetched by anything; and the transaction completes on it. The residual risk is
-that a page which can create a frame pointing at the completion URI could end the flow with a URI it
-chose — an authorization-code injection. The compensating controls are the frontend's re-check,
-which forces the URI to be the one the application asked for, and the application's own `state`
-check, which is the one that actually detects an injected code. This is a **known gap against the
-XML's wording**, and closing it needs either a WebKit API addition or a web-process extension; it is
-in [ROADMAP.md](ROADMAP.md).
+The public XML used to promise "Subframe navigations do not end the flow", which was a promise
+about the frontend that only a backend could keep and no backend could. **It now promises what is
+enforced**: a navigation matching the completion URI, *in any frame*, ends the flow and is never
+loaded. This backend implements exactly that, in `on_decide_policy()` for the navigation decision
+and again for the response decision.
+
+Blocking the load is the half that matters, and it holds in every frame: nothing fetches the
+completion URI, so nothing carries the authorization code to a server with no part in the exchange.
+The residual is the other half — a page that can create a frame pointing at the completion URI can
+end the flow with a URI it chose, which is authorization-code injection. The compensating controls
+are unchanged and are named where they live: the frontend's re-check, which forces the returned URI
+to be the one the application asked for, and the application's own `state`, which is the check that
+actually detects an injected code and uses a secret no part of this design ever sees.
 
 **And one thing the interface documentation implies that is not true of the branch:** the frontend
 has **no deadline of its own**. It forwards a clamped `timeout` and then awaits the impl call with a

@@ -7,8 +7,8 @@
       data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
 
   on the xdg-desktop-portal branch experimental/certificate-webauthentication,
-  at commit 3a32e9b "web-authentication: Add an experimental WebAuthentication
-  portal".
+  at commit 1a963b1 "web-authentication: Promise the completion rule that is
+  enforced".
 
   IT MUST TRACK THAT FILE. The interface is defined by the portal frontend, not
   by this backend; a divergence here is a backend that no longer implements the
@@ -31,8 +31,10 @@
       @short_description: Backend for the web sign-in portal
 
       This backend interface owns the web view: it opens the window, watches
-      every top level navigation, stops the flow when the completion URI is
-      reached, and reports the URI it stopped on.
+      every navigation the view is asked to make in any frame, stops the flow
+      when the completion URI is reached, and reports the URI it stopped on.
+      A matched navigation must never be loaded, in any frame: it carries the
+      result of the sign-in.
 
       Everything the backend is told has already been validated and, where
       policy applies, already narrowed by the frontend. ``session_mode`` in

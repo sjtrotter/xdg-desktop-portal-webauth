@@ -81,15 +81,18 @@ Response codes are the portal's usual three: `0` completed, `1` cancelled, `2` o
 
 ## Completion matching
 
-The rule, from the public XML, is matched against **every top level navigation** on the
-parsed URI:
+The rule, from the public XML, is matched against **every navigation the web view is asked
+to make, in any frame**, on the parsed URI:
 
 - scheme and host compared **case insensitively**;
 - effective ports compared with **default ports normalised** (`:443` equals the default);
 - **paths compared exactly**;
 - **no userinfo**;
 - **query and fragment carry the result of the flow and take no part in matching**;
-- **subframe navigations do not end the flow**.
+- **a match ends the flow and is never loaded**, whichever frame it happened in. The XML said
+  "subframe navigations do not end the flow" until 2026-09-04; no backend on WebKitGTK 6 could
+  keep that promise, and the wording now says what is enforced. See
+  [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
 
 It is enforced twice and the two checks answer different questions: the **backend** decides
 when to stop the browser, and must complete the transaction *before the matched navigation

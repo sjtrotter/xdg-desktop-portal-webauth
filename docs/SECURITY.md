@@ -66,7 +66,7 @@ this repository. What the end-to-end runs actually demonstrated is [TESTING.md](
 | `completion_uri` re-validated: absolute, host, no userinfo | `src/completion.c` | **Implemented** |
 | Exact completion matching on parsed URIs, ports normalised, query and fragment ignored | `src/completion.c`, unit-tested against the frontend's fixtures | **Implemented** |
 | The matched navigation is **ignored, never loaded** | `src/webkit-session.c` | **Implemented**, and checked end to end from the server's access log |
-| Subframe navigations do not end the flow | — | **Not enforceable on WebKitGTK 6.0**: no frame identity on a navigation policy decision. A match in any frame is blocked from loading and does end the flow. See [IMPL-INTERFACE.md](IMPL-INTERFACE.md) |
+| A completion match in **any** frame ends the flow and is never loaded | `src/webkit-session.c` | **Implemented**, and it is what the XML now promises. WebKitGTK 6.0 exposes no frame identity on a navigation policy decision, so no backend on this engine can do less or more. See [IMPL-INTERFACE.md](IMPL-INTERFACE.md) |
 | `session_mode` obeyed as a decision; an unknown value is an error | `src/storage.c` | **Implemented** |
 | `ephemeral` uses an ephemeral network session from creation | `src/webkit-session.c` | **Implemented** |
 | An unidentified caller is narrowed to `ephemeral` | `src/storage.c` | **Implemented** |
@@ -228,12 +228,15 @@ Each rule with the reason. The full definition is in [PUBLIC-INTERFACE.md](PUBLI
 - **Custom schemes are matched structurally and never dispatched externally.** Naming a scheme does
   not prove owning it; the navigation is intercepted before any attempt at external protocol
   handling, and scheme ownership stays a matter for client registration and caller-side validation.
-- **Top-level navigations only** — *and this backend cannot currently tell.* A subframe navigating
-  to the completion URI should not be the end of the flow, because treating it as one would let
-  embedded content end the transaction with a URI it chose. WebKitGTK 6.0 exposes no frame identity
-  on a navigation policy decision, so the backend blocks the navigation in **any** frame (the URI is
-  never fetched) and completes on it. The compensating controls are the frontend's re-check and the
-  application's own `state`. Recorded as a known gap in [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
+- **A match in any frame ends the flow, and is never loaded.** WebKitGTK 6.0 exposes no frame
+  identity on a navigation policy decision, so no backend on this engine can tell a top-level
+  navigation from a subframe one; the public XML now promises what is enforceable instead of
+  promising that subframes cannot complete a flow. The half that is a security property holds
+  everywhere: nothing fetches the completion URI, in any frame, so the authorization code never
+  leaves for a server with no part in the exchange. The half that is not: embedded content that can
+  point a frame at the completion URI can end the transaction with a URI it chose. The compensating
+  controls are the frontend's re-check and the application's own `state`. See
+  [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
 - **Complete before load.** The matched navigation completes the transaction and destroys the window
   *before it is loaded*. The completion URI routinely carries the credential the flow was for;
   letting the engine fetch it sends that credential to a remote server with no part in the exchange.

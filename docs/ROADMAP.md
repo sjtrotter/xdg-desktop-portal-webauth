@@ -77,10 +77,11 @@ permissions, no TLS-error bypass, structural redaction. All of it is in `backend
 [TESTING.md](TESTING.md) is what it has been run against.
 
 **Two things came out of building it that the estimate did not have.** WebKitGTK 6.0 exposes no
-frame identity on a navigation policy decision, so "top-level navigations only" cannot be enforced
-as written — see [IMPL-INTERFACE.md](IMPL-INTERFACE.md); and a `WebKitNetworkSession` with a data
-directory does not persist cookies until its cookie manager is given a file, which is the kind of
-thing only an end-to-end test finds.
+frame identity on a navigation policy decision, so "top-level navigations only" could not be
+enforced as written, and the interface was changed to promise what is enforced instead — see
+[IMPL-INTERFACE.md](IMPL-INTERFACE.md); and a `WebKitNetworkSession` with a data directory does not
+persist cookies until its cookie manager is given a file, which is the kind of thing only an
+end-to-end test finds.
 
 ### 0d. Backend: certificate adapter — **done for `pkcs11`; `portal` waits on another repository**
 
