@@ -361,6 +361,8 @@ Every one of those currently exits `70` with `not implemented (design sketch)`. 
 The two components are **independent meson projects** with no build-time dependency in either
 direction. That is how the claim that the portal is protocol-independent stays testable rather than
 aspirational: `backend/` must contain no Entra, Azure, OAuth or RDP identifier, and that is a grep.
+The only mentions that survive it are three comments explaining *why* a rule exists — an OAuth
+`state`, a convincing sign-in page — and none of them is a code path.
 
 ```console
 $ meson setup build-backend backend       && ninja -C build-backend

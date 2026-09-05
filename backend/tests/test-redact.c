@@ -12,14 +12,14 @@
 #include "redact.h"
 
 #define CODE "4/0AY0e-g7SECRETCODEVALUE"
-#define COMPLETION "https://login.microsoftonline.com/common/oauth2/nativeclient?code=" CODE
+#define COMPLETION "https://login.example.com/common/oauth2/nativeclient?code=" CODE
 
 static void test_uri_is_never_rendered(void)
 {
 	g_autofree char* rendered = webauth_redact_field(WEBAUTH_FIELD_URI, COMPLETION);
 
 	g_assert_null(strstr(rendered, CODE));
-	g_assert_null(strstr(rendered, "login.microsoftonline.com"));
+	g_assert_null(strstr(rendered, "login.example.com"));
 	g_assert_true(g_str_has_prefix(rendered, "<uri:"));
 }
 
@@ -27,7 +27,7 @@ static void test_uri_shape_keeps_the_host_and_drops_the_query(void)
 {
 	g_autofree char* rendered = webauth_redact_field(WEBAUTH_FIELD_URI_SHAPE, COMPLETION);
 
-	g_assert_nonnull(strstr(rendered, "login.microsoftonline.com"));
+	g_assert_nonnull(strstr(rendered, "login.example.com"));
 	g_assert_nonnull(strstr(rendered, "https"));
 	/* The path is a length, not a path: a path can carry an identifier. */
 	g_assert_null(strstr(rendered, "nativeclient"));

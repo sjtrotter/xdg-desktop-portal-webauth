@@ -23,7 +23,7 @@ static void test_start_uri_valid(void)
 		"https://login.example.com/authorize?client_id=test",
 		"https://login.example.com",
 		"https://login.example.com:8443/authorize",
-		"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=a#f",
+		"https://login.example.com/common/oauth2/v2.0/authorize?client_id=a#f",
 		NULL,
 	};
 
@@ -73,7 +73,7 @@ static void test_completion_uri_valid(void)
 {
 	static const char* good[] = {
 		COMPLETION,
-		"https://login.microsoftonline.com/common/oauth2/nativeclient",
+		"https://login.example.com/common/oauth2/nativeclient",
 		/* A custom scheme is matched structurally and never dispatched. */
 		"com.example.app://callback.example/done",
 		"http://127.0.0.1:1234/cb",
