@@ -298,7 +298,7 @@ exists to replace; building one here would make this backend a second place wher
 lives, and the two would drift. What this process does is name a certificate by URI and let GnuTLS
 resolve it.
 
-### Under the `portal` provider — preferred, and not usable yet
+### Under the `portal` provider — preferred, and the primary path
 
 **What changed.** Spike [S2](SPIKES.md) established that WebKit carries a certificate to its network
 process **as a PKCS#11 URI** and asks for the token PIN itself; there is no external-signer seam a
@@ -307,8 +307,11 @@ provider is not "call `Sign` for every operation": it names a token that the Cer
 client-side PKCS#11 module presents, and the module is what calls that portal.
 [`backend/src/tls/portal-token.h`](../backend/src/tls/portal-token.h) is the agreement — the token's
 label, manufacturer and model, and the requirement that it declare
-`CKF_PROTECTED_AUTHENTICATION_PATH`. **That module does not exist yet**, so the provider reports
-itself unavailable and `auto` falls through to `pkcs11`.
+`CKF_PROTECTED_AUTHENTICATION_PATH`. **That module exists**, and this whole path has been run
+headless end to end — `tools/portal-stack.sh`, both portals on one private bus, a real WebKitGTK
+sign-in signed by the card's key. The provider reports itself unavailable, and `auto` falls through
+to `pkcs11`, only on a machine where the portal is not running or its module is not in p11-kit's
+configuration.
 
 **Read this second: the delegation gap, and what has changed about it.** Over D-Bus the backend
 calls the Certificate portal as an ordinary client of *its public interface*, so the portal derives
@@ -324,11 +327,16 @@ so it can pass the *original* app id along in-process, with nothing untrusted in
 attestation crossing a bus. That is the "shared frontend" fix both projects described as arriving at
 acceptance, and it has arrived early. **It is not written yet**, on that branch.
 
-**The caveat is permanent.** The fix works *only* in-process. Across a process boundary, passing an
-app id along is an unattested assertion of someone else's identity, there is no cross-process
-attestation protocol here, none is being built, and doing it as a stopgap is not a smaller version
-of the in-process fix — it is the thing the in-process fix exists to avoid needing. See
-[decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
+**The caveat is permanent, and it is narrower than "in-process only".** What is forbidden is
+**believing a caller about a third party's identity**: an app id passed in a field by a peer that
+could have put anything there is identity laundering, there is no cross-process attestation protocol
+here, none is being built, and doing it as a stopgap is not a smaller version of the in-process fix
+— it is the thing the in-process fix exists to avoid needing. It is *not* forbidden to delegate
+across a boundary at all. Authenticated IPC, where the frontend derives each peer's identity itself
+rather than reading it out of a message, would satisfy the rule; so would a capability the frontend
+issues to a named peer and later recognises, which is one of the two candidate answers to the
+two-chooser problem. Neither is built. In-process is simply the cheapest way to satisfy the rule.
+See [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
 
 - **The PIN never reaches this process.** It is entered in the Certificate portal backend's window, against
   another process's memory. There is no buffer here to scrub and no bug here that can leak one.

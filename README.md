@@ -308,6 +308,30 @@ These live in the **Entra client**, never in the portal.
 | Completion URI | `https://login.microsoftonline.com/common/oauth2/nativeclient` | *the same* — there is no `.us` variant |
 | Public client id | `a85cf173-4192-42f8-81fa-777a763e6e2c` | *the same* |
 
+## Current capabilities
+
+**This table is the one place that says what works.** Every other document in this repository
+defers to it; where one of them disagrees, this is right and it is a bug. Last checked 2026-09-04.
+
+| | Status | |
+|---|---|---|
+| The impl interface: `Start`, `Close`, one `Response`, same-UID and frontend-owner checks | **Implemented** | `backend/src/webauthentication-impl.c`, unit- and end-to-end tested |
+| A hosted WebKitGTK window with security chrome, parented to `parent_window` | **Implemented** | origin and caller shown; downloads, popups and every permission refused; TLS errors fail closed with no bypass |
+| Completion interception — a match in **any** frame ends the flow and is never loaded | **Implemented** | proved from the fixture server's access log: the completion URI is never fetched |
+| Storage partitioning: `shared` per app id, `ephemeral` per `Start` | **Implemented** | including the cookie jar, which a data directory alone does not persist |
+| Deadline, exactly one terminal result, teardown on every exit path | **Implemented** | `backend/src/transaction.c` |
+| Client certificates through the `pkcs11` provider | **Implemented** | a token named on the command line; the fallback, and what the tests use with no portal in the picture |
+| Client certificates through the `portal` provider | **Implemented** | the primary path. Both portals on one private bus, headless, a real WebKitGTK sign-in signed by the card's key: `tools/portal-stack.sh` |
+| Caller attribution to the certificate portal's chooser | **Partial** | the certificate portal's window names **this backend**, not the application. The fix is in-process in the shared frontend and is **not written** |
+| One chooser per sign-in | **Partial** | **two**, about three seconds apart: the certificate is resolved in this process and again in WebKit's network process. Measured, not solved |
+| Per-transaction isolation of certificate authority | **Partial** | grants survive the transaction and an authenticated connection survives the grant. See [SECURITY.md](docs/SECURITY.md), "What closing a transaction does NOT do" |
+| A real identity provider | **Not implemented** | nothing here has ever talked to Entra ID, and no card has ever been in a reader for it |
+| The Entra client, `clients/entra/` | **Not implemented** | a stub that exits `70`. No token has been acquired by this code |
+| A second, unrelated consumer | **Not implemented** | the exit criterion, and the thing every reviewer asked for first |
+| A second backend for the interface | **Not implemented** | which is what would show the interface is not this backend with a bus name |
+| Rate limiting, and a browser-backed session | **Not implemented** | the first belongs to the frontend; the second is a different backend |
+| Independent security review, a second maintainer | **Not implemented** | — |
+
 ## Ownership split
 
 | Layer | Owns | Does not own |
@@ -565,9 +589,12 @@ Recorded properly rather than argued away. The full versions, with what each one
     up per-request capability negotiation. It was done anyway, to avoid a second rewrite and to make
     the upstream patch a rename; the full argument and every cost is
     [docs/decisions/0008](docs/decisions/0008-build-to-the-upstream-shape.md). What has changed is
-    that the frontend half is no longer this project's to maintain
-    ([docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)), which
-    removes most of the cost and all of the "collapse it back" escape hatch.
+    that the frontend half lives in xdg-desktop-portal's tree, where the people whose review
+    matters can see it
+    ([docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)). That is
+    worth having, and it is **not** a transfer of maintenance: **until the branch is accepted it is
+    ours** — ours to rebase, to keep green, and to redesign when upstream asks. It also removes the
+    "collapse it back" escape hatch, which was part of the cost and remains so.
 
 **And the exit criterion:** if caller identity, displayed origin and storage partitioning cannot be
 made convincing, **collapse the browser layer back into the Entra client**. A narrowly scoped Entra/AVD helper is better than a generic authentication portal with an

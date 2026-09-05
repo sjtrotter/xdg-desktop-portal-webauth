@@ -125,13 +125,28 @@ export the interface in any of them.
   client of the *public* `org.freedesktop.portal.experimental.Certificate` on
   `org.freedesktop.portal.Desktop` — and the interface it calls no longer has
   `OpenPkcs11Endpoint`, which changes what the `portal` adapter can actually do.
-- **The delegation gap closes in-process, and only in-process.** 0007 and 0008 both said
-  this backend naming the wrong application in the certificate portal's chooser is solved
-  only when both interfaces live in one trusted frontend process. They do now — the same
+- **The delegation gap gets a cheap answer in-process.** 0007 and 0008 both said this
+  backend naming the wrong application in the certificate portal's chooser is solved when
+  both interfaces live in one trusted frontend process. They do now — the same
   xdg-desktop-portal, the same branch — so the frontend can hand the original app id to
   its own certificate side without anything crossing a bus. It does not do so yet; that is
-  unwritten work on the branch. The caveat is permanent and must not be dropped: across a
-  process boundary this is unattested identity assertion and is not to be built.
+  unwritten work on the branch.
+
+  **An earlier version of this line said "and only in-process". That is wrong.** The rule
+  is narrower and more useful: **never believe a caller about a third party's identity**.
+  An app id read out of a message from a peer that could have put anything there is
+  identity laundering and is not to be built. Delegation across a boundary is not itself
+  forbidden — authenticated IPC, where the frontend derives each peer's identity itself,
+  would satisfy the rule, and so would a capability the frontend issues to a named peer and
+  later recognises. Neither is built. In-process is the cheapest way to satisfy the rule,
+  not the only one.
+- **The branch is ours until it is accepted.** Moving the frontend into xdg-desktop-portal's
+  tree buys review in the right place and the reuse of `Request`, `Session`, app-id
+  derivation and `.portal` discovery. It does **not** transfer maintenance: an unmerged
+  branch is this author's to rebase, to keep green and to redesign when upstream asks, and
+  upstream may redesign the interface rather than rename it. Any sentence in this
+  repository that reads as though the frontend became somebody else's problem is describing
+  the intended end state and not today.
 - **One rule, two implementations, and one of them is now tested.** The completion matcher
   still exists twice — here, against live navigations, and in the frontend, re-checking
   what this backend returns. The frontend's copy has tests

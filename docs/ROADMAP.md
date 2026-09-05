@@ -83,7 +83,7 @@ enforced as written, and the interface was changed to promise what is enforced i
 persist cookies until its cookie manager is given a file, which is the kind of thing only an
 end-to-end test finds.
 
-### 0d. Backend: certificate adapter — **done for `pkcs11`; `portal` waits on another repository**
+### 0d. Backend: certificate adapter — **done for both providers**
 
 `tls/client_cert.c` and its two providers. The estimate assumed the expensive half was lifting a
 chooser and a PIN prompt out of the Remmina plugin and porting them to GTK 4. [S2](SPIKES.md)
@@ -94,9 +94,14 @@ at all. There is no `inproc` provider.
 **`pkcs11` is done**: a token named by `--client-cert-uri`, a PIN from a file, and a mutual-TLS
 handshake that completes against a server requiring a client certificate.
 
-**`portal` is written and reports itself unavailable.** What it needs is not in this repository: the
-Certificate portal must publish a client-side PKCS#11 module presenting the token named in
-`backend/src/tls/portal-token.h`. That is the next thing to agree between the two projects.
+**`portal` is done too, since 2026-09-04.** What it needed was not in this repository — a
+client-side PKCS#11 module from the Certificate portal, presenting the token named in
+`backend/src/tls/portal-token.h` — and that module now exists and is installed by name.
+`tools/portal-stack.sh` runs both portals on one private bus and completes a real WebKitGTK
+mutual-TLS handshake with the card's key. It reports itself unavailable only where the portal is not
+running or its module is not in p11-kit's configuration, and `auto` then falls through to `pkcs11`.
+What is **not** done is per-transaction lifetime: see [SECURITY.md](SECURITY.md), "What closing a
+transaction does NOT do".
 
 Common to both, and disproportionately risky for its size: recognising the challenge, displaying the
 origin, refusing challenges from unrelated hosts, and releasing whatever the adapter held on **every**
@@ -170,7 +175,8 @@ adapter runs. Testing on GNOME
 and KDE, on Wayland and X11, including `parent_window` parenting and `activation_token` behaviour.
 
 One packaging question is left, and it is smaller than it was: this repository ships one backend
-package plus a client, and the frontend is a patch to somebody else's package. The old question of
+package plus a client, and the frontend is a patch to somebody else's package — a patch this
+project carries until it is accepted. The old question of
 what a distribution does when two incubating frontends want a bus name is gone with the frontends
 ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). The new one is that a
 distribution cannot ship this at all until the branch is merged, which is an argument for opening
@@ -278,8 +284,8 @@ Not "never" — "not yet, and not before something asks for it".
   portal's. **Done, and it is xdg-desktop-portal**: both interfaces are on one branch, in one
   frontend process, which is what closes the delegation gap in-process
   ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). What remains is for
-  that frontend to actually forward the original app id internally, and the permanent caveat that
-  it works only in-process.
+  that frontend to actually forward the original app id internally, and the permanent caveat, which
+  is "never believe a caller about a third party" rather than "never cross a process".
 - **A system-browser backend, and a paste backend.** Formerly "a system-browser session": under the
   split these are separate backends selected by `portals.conf` rather than implementations behind a
   vtable.

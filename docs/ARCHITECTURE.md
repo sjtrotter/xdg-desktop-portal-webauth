@@ -231,10 +231,13 @@ its own certificate side, so it can pass the original app id along **in-process*
 attestation crossing a bus — which is exactly the "shared frontend" fix both projects described as
 arriving at acceptance. The frontend does not do this yet; it is unwritten work on that branch.
 
-**The caveat is permanent and must not be dropped:** that fix works only in-process. Across a
-process boundary, passing an app id along is an unattested assertion of someone else's identity,
-which is the identity-laundering [SECURITY.md](SECURITY.md) forbids, and it is not to be built as a
-stopgap. See [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
+**The caveat is permanent, and it is about trust rather than about processes:** never believe a
+caller about a third party's identity. An app id read out of a message from a peer that could have
+put anything there is the identity-laundering [SECURITY.md](SECURITY.md) forbids, and it is not to
+be built as a stopgap. Delegating across a boundary is not itself forbidden — authenticated IPC, or
+a capability the frontend issues and later recognises, would satisfy the rule; neither is built.
+In-process is the cheapest way to satisfy it, not the only one. See
+[decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
 
 **Rules the in-process path must keep** — and it is currently the only path that can run, so these
 are not fallback rules:
@@ -417,8 +420,10 @@ Note the shape of the certificate call: it goes back out to the portal and in ag
 backend. That is the correct direction and the only allowed one — a backend never calls another
 backend — and it is why both portals sharing one frontend process is what closes the delegation gap.
 
-The frontend is deliberately the boring process, and it is now somebody else's boring process: it
-can be restarted, it holds no window, and every desktop already has one. The backend is where the
+The frontend is deliberately the boring process, and it is now in somebody else's tree — which is
+where it can be reviewed, and is not the same as being somebody else's to maintain: until the branch
+is accepted it is this author's. It can be restarted, it holds no window, and every desktop already
+has one. The backend is where the
 security-critical infrastructure lives — a web engine, forever — and it is separately replaceable,
 which is what makes "a KDE backend" or "a system-browser backend" a packaging decision rather than a
 fork.

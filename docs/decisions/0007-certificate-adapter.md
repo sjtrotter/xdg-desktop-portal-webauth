@@ -77,6 +77,23 @@ BACKEND per [0008](0008-build-to-the-upstream-shape.md) and calls a different in
 > which is exactly the identity-laundering [../SECURITY.md](../SECURITY.md) forbids, and it is not
 > to be built as a stopgap.
 
+> **Amendment (2026-09-04, second).** Two sentences quoted above have been overtaken.
+>
+> - "That module does not exist yet, so the provider reports itself unavailable and `auto` falls
+>   through" — **the module exists.** `tools/portal-stack.sh` runs both portals on one private bus,
+>   headless, and completes a real WebKitGTK mutual-TLS handshake signed by the card's key. The
+>   `portal` provider is the primary path; it reports itself unavailable only where the portal is
+>   not running or its module is not in p11-kit's configuration.
+> - "The delegation gap is solvable now, **in-process only**" — the rule is narrower than that
+>   wording. What must never happen is **believing a caller about a third party's identity**;
+>   delegating across a boundary is not itself forbidden, and authenticated IPC or a
+>   frontend-issued capability would satisfy the rule. Neither is built, and in-process remains the
+>   cheapest way to satisfy it. See [0010](0010-backend-only-frontend-lives-upstream.md).
+>
+> And one thing the amendment above did not anticipate: a finished transaction cannot revoke the
+> grants it caused, because they belong to two PKCS#11 module instances and one of them is in
+> another process. [../SECURITY.md](../SECURITY.md), "What closing a transaction does NOT do".
+
 > **Amendment (0008).** Nothing in this decision changed, but its home did: the adapter and both
 > its implementations are now in the backend, because the TLS handshake and the window belong to
 > the backend. Two consequences worth stating. First, the `portal` adapter calls the certificate
