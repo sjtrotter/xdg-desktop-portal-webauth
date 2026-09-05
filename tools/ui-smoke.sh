@@ -44,7 +44,7 @@ REPO="$(here)"
 
 XVFB="${XVFB:-$(command -v Xvfb || true)}"
 XDOTOOL="${XDOTOOL:-$(command -v xdotool || true)}"
-SCREEN="${SCREEN:-:78}"
+SCREEN="${SCREEN:-:92}"
 WINDOW_TITLE="${WINDOW_TITLE:-Web sign-in}"
 
 die() {
