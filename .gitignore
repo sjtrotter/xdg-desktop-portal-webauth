@@ -31,3 +31,7 @@ compile_commands.json
 *.pfx
 *.log
 .xdp-env
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc

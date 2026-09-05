@@ -64,6 +64,7 @@
 #     tools/portal-stack.sh --cancel-chooser    # Escape at the chooser
 #     tools/portal-stack.sh --second-start      # two Starts, one backend process
 #     tools/portal-stack.sh --keep              # leave it up
+#     tools/portal-stack.sh --no-e2e            # stand the stack up and drive nothing
 #     tools/portal-stack.sh --uninstall-module  # remove --live's p11-kit module file
 #
 # Everything after `--` goes to tools/webauth-e2e.py.
@@ -77,6 +78,12 @@
 # the author runs against the real card and the real identity provider.
 #
 #     tools/portal-stack.sh --live --pin-prompt=system -- --start-uri ...
+#
+# --no-e2e --keep is the shape docs/TESTING.md's "Live token exchange" uses: the
+# stack goes up, nothing is driven, and the author runs entra-token-helper
+# against it from another terminal on the same bus. With --no-e2e there is no
+# fixture identity provider and no hop-by-hop report, because there is no flow
+# to report on until somebody starts one.
 #
 # --live uses the REAL session bus and the REAL certificate backend, takes
 # org.freedesktop.portal.Desktop for the duration, and drives nothing: the
@@ -115,6 +122,7 @@ CERT_FIXTURE="${CERT_FIXTURE:-portal-test-rsa}"
 MODE=private
 PIN_PROMPT=gtk
 DRIVE=1
+RUN_E2E=1
 CANCEL_CHOOSER=0
 SECOND_START=0
 KEEP=0
@@ -226,6 +234,7 @@ while [ $# -gt 0 ]; do
 	--live) MODE=live ;;
 	--pin-prompt=*) PIN_PROMPT="${1#--pin-prompt=}" ;;
 	--no-drive) DRIVE=0 ;;
+	--no-e2e) RUN_E2E=0 ;;
 	--cancel-chooser) CANCEL_CHOOSER=1 ;;
 	--second-start) SECOND_START=1 ;;
 	--keep) KEEP=1 ;;
@@ -520,6 +529,7 @@ inner() {
 	# handshake completes only if the certificate the module handed over is that
 	# one. Nothing else on the machine would satisfy it.
 	EXTERNAL_IDP=0
+	[ "$RUN_E2E" = 0 ] && EXTERNAL_IDP=1
 	for a in "${E2E_ARGS[@]}"; do
 		case "$a" in --entra-authorize|--start-uri|--start-uri=*) EXTERNAL_IDP=1 ;; esac
 	done
@@ -579,12 +589,17 @@ inner() {
 	fi
 	[ -n "$SESSION_MODE" ] && e2e+=(--session-mode "$SESSION_MODE")
 
-	echo
-	echo "=== Start #1 ==="
-	python3 "$REPO/tools/webauth-e2e.py" "${e2e[@]}" "${E2E_ARGS[@]}" \
-		2>&1 | tee "$LOGDIR/e2e.log"
-	e2e_rc="${PIPESTATUS[0]}"
-	[ "$e2e_rc" = 0 ] || rc=1
+	if [ "$RUN_E2E" = 1 ]; then
+		echo
+		echo "=== Start #1 ==="
+		python3 "$REPO/tools/webauth-e2e.py" "${e2e[@]}" "${E2E_ARGS[@]}" \
+			2>&1 | tee "$LOGDIR/e2e.log"
+		e2e_rc="${PIPESTATUS[0]}"
+		[ "$e2e_rc" = 0 ] || rc=1
+	else
+		echo
+		echo "${0##*/}: --no-e2e: nothing is driven; start a flow yourself"
+	fi
 
 	# A SECOND Start AGAINST THE SAME BACKEND PROCESS. The module keeps its grant
 	# until C_Finalize, so the question is whether a second handshake reuses it
@@ -607,7 +622,12 @@ inner() {
 	if [ "$KEEP" = 1 ]; then
 		echo
 		echo "${0##*/}: --keep: stack up on $DBUS_SESSION_BUS_ADDRESS"
-		echo "  start URI https://localhost:$PORT$START_PATH"
+		if [ "$EXTERNAL_IDP" = 1 ]; then
+			echo "  no fixture identity provider: the caller names its own"
+			echo "  DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+		else
+			echo "  start URI https://localhost:$PORT$START_PATH"
+		fi
 		wait "$FE"
 	fi
 
@@ -615,6 +635,13 @@ inner() {
 	kill ${DRIVER:+"$DRIVER"} "$BE" "$CE" "$FE" ${SERVER:+"$SERVER"} ${PERM:+"$PERM"} \
 		${PROMPTER:+"$PROMPTER"} 2>/dev/null
 	sleep 1
+
+	if [ "$RUN_E2E" = 0 ]; then
+		echo
+		echo "${0##*/}: --no-e2e: no flow ran, so there is no hop-by-hop report"
+		echo "logs in $LOGDIR"
+		return "$rc"
+	fi
 
 	echo
 	echo "=== hop by hop ==="
@@ -784,7 +811,7 @@ export G_MESSAGES_DEBUG="webauth pkcs11-portal-certificate"
 
 export PIN LOGDIR REPO XDP_BUILD BACKEND CERT_BACKEND CERT_BUILD CERT_MODULE_SO \
 	CERT_SOFTHSM_DIR CERT_FIXTURE SOFTHSM_MODULE XDOTOOL DRIVE PIN_PROMPT MODE \
-	COMPLETION_URI START_PATH SESSION_MODE SECOND_START CANCEL_CHOOSER KEEP
+	COMPLETION_URI START_PATH SESSION_MODE SECOND_START CANCEL_CHOOSER KEEP RUN_E2E
 
 # The e2e arguments cross into the dbus-run-session shell as one newline
 # separated string, because an array does not survive an export.
