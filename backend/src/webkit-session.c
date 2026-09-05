@@ -286,10 +286,24 @@ static gboolean on_load_failed(WebKitWebView* view, WebKitLoadEvent event, const
 	const char* reason = self->pending_reason != NULL ? self->pending_reason
 	                                                  : WEBAUTH_REASON_LOAD_FAILED;
 
-	/* A cancelled load is this backend's own doing -- an ignored policy decision
-	 * on the completion URI -- and is not a failure. */
-	if (g_error_matches(error, WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED) ||
-	    webauth_transaction_is_done(self->transaction))
+	if (webauth_transaction_is_done(self->transaction))
+		return TRUE;
+
+	/* A cancelled load is USUALLY this backend's own doing -- an ignored policy
+	 * decision on the completion URI -- and is then not a failure.
+	 *
+	 * IT IS NOT ALWAYS. Declining a TLS client-certificate challenge cancels the
+	 * load too, and WebKit reports that the same way: WEBKIT_NETWORK_ERROR_CANCELLED,
+	 * indistinguishable from here. Treating both as "not a failure" left a
+	 * transaction whose challenge had been declined with nothing to end it -- the
+	 * window stayed open until the caller's own timeout and the application was
+	 * told request_closed instead of the reason. Measured with the certificate
+	 * portal's chooser cancelled: 120 seconds of nothing.
+	 *
+	 * pending_reason is the difference, and it is only ever set by a path that
+	 * has already given up on this transaction. */
+	if (g_error_matches(error, WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED) &&
+	    self->pending_reason == NULL)
 		return TRUE;
 
 	webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_LOAD_FAILED, "reason",
