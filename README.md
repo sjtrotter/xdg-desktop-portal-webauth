@@ -146,9 +146,10 @@ process, the certificate portal's chooser and PIN prompt, `C_Sign`, a completed 
 handshake — has been run headless end to end by
 [`tools/portal-stack.sh`](tools/portal-stack.sh), with every hop proved from the log of the process
 that made it. [docs/TESTING.md](docs/TESTING.md) tier 2b is the command, the transcript, and two UX
-findings that came out of it: **one handshake puts up two choosers**, because the certificate is
-built in this process and used in the network process, and a **second sign-in in the same backend
-process puts up none at all**.
+findings that came out of it: **one handshake used to put up two choosers**, because the
+certificate is built in this process and used in the network process — this backend now asks the
+portal to let its own descendants reuse the grant, so it is one chooser and one PIN — and a
+**second sign-in in the same backend process puts up none at all**.
 
 `pkcs11` is the fallback: any p11-kit token named on the backend's command line, for an operator
 with a card and no certificate portal, and for exercising mutual TLS with no second service in the
@@ -321,7 +322,7 @@ defers to it; where one of them disagrees, this is right and it is a bug. Last c
 | Client certificates through the `pkcs11` provider | **Implemented** | a token named on the command line; the fallback, and what the tests use with no portal in the picture |
 | Client certificates through the `portal` provider | **Implemented** | the primary path. Both portals on one private bus, headless, a real WebKitGTK sign-in signed by the card's key: `tools/portal-stack.sh` |
 | Caller attribution to the certificate portal's chooser | **Partial** | the certificate portal's window names **this backend**, not the application. The fix is in-process in the shared frontend and is **not written** |
-| One chooser per sign-in | **Partial** | **two**, about three seconds apart: the certificate is resolved in this process and again in WebKit's network process. Measured, not solved |
+| One chooser per sign-in | **Implemented** | it used to be **two**, three seconds apart, because the certificate is resolved in this process and again in WebKit's network process. That process is a child of this one, and this one asks the portal for `delegate_to_children`, so its grant is derived from the first with no window: counted at the end of every `tools/portal-stack.sh` run, and a second chooser is a regression |
 | Per-transaction isolation of certificate authority | **Partial** | grants survive the transaction and an authenticated connection survives the grant. See [SECURITY.md](docs/SECURITY.md), "What closing a transaction does NOT do" |
 | A real identity provider | **Not implemented** | nothing here has ever talked to Entra ID, and no card has ever been in a reader for it |
 | The Entra client, `clients/entra/` | **Not implemented** | a stub that exits `70`. No token has been acquired by this code |

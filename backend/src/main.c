@@ -227,6 +227,27 @@ int main(int argc, char** argv)
 	 * own dialogs through the portal it is a backend of. */
 	g_unsetenv("GTK_USE_PORTAL");
 
+	/* ONE CHOOSER FOR ONE SIGN-IN, SET BEFORE ANYTHING CAN LOAD p11-kit.
+	 *
+	 * One mutual-TLS handshake needs the certificate portal's module in TWO
+	 * processes: here, to build the GTlsCertificate the challenge is answered
+	 * with, and in WebKit's network process, to use the key. They are separate
+	 * D-Bus peers, so the portal asked the user twice -- two choosers, seconds
+	 * apart, for the same card and the same certificate.
+	 *
+	 * This says the second one may be answered from the first. The frontend
+	 * grants it only to a process DESCENDED from this one, which the network
+	 * process is because this process starts it; the environment is the only
+	 * channel to a module p11-kit loads, and it has to be in place before the
+	 * module is loaded here and before the network process is forked, which is
+	 * why it is here and not next to the code that builds the certificate.
+	 *
+	 * What it trusts is written down in docs/SECURITY.md: the descendants of
+	 * this process are WebKit's own helpers, which this backend starts and
+	 * whose job is this sign-in. This backend runs no code on anyone else's
+	 * behalf. */
+	g_setenv("PKCS11_PORTAL_CERTIFICATE_DELEGATE_TO_CHILDREN", "1", TRUE);
+
 	g_set_prgname("xdg-desktop-portal-webauth");
 
 	context = g_option_context_new("- a backend for the experimental WebAuthentication portal");

@@ -219,9 +219,10 @@ actually detects an injected code and uses a secret no part of this design ever 
 
 **4. A transaction ends; the certificate authority it caused does not.** The interface has no way
 to say "and revoke what this transaction acquired", and this backend could not act on one if it had.
-The grants belong to two PKCS#11 module instances — this process's and WebKit's network process's —
-and the adapter has no session handle, no route to the other process, and no per-module
-`C_Finalize` that would not finalize every module GnuTLS loaded through p11-kit's proxy.
+The grants belong to two PKCS#11 module instances — this process's and WebKit's network process's,
+the second derived from the first because that process is a child of this one — and the adapter has
+no session handle, no route to the other process, and no per-module `C_Finalize` that would not
+finalize every module GnuTLS loaded through p11-kit's proxy.
 `portal_release()` therefore logs `certificate-released grant=retained_until_expiry` and returns.
 What ends a grant is its own expiry, the portal invalidating it, or the holding process exiting.
 

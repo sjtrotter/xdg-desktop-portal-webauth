@@ -334,9 +334,30 @@ here, none is being built, and doing it as a stopgap is not a smaller version of
 — it is the thing the in-process fix exists to avoid needing. It is *not* forbidden to delegate
 across a boundary at all. Authenticated IPC, where the frontend derives each peer's identity itself
 rather than reading it out of a message, would satisfy the rule; so would a capability the frontend
-issues to a named peer and later recognises, which is one of the two candidate answers to the
-two-chooser problem. Neither is built. In-process is simply the cheapest way to satisfy the rule.
-See [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
+issues to a named peer and later recognises. In-process is simply the cheapest way to satisfy the
+rule. See [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
+
+**One consent for one process tree, and why it does not break that rule.** This backend sets
+`PKCS11_PORTAL_CERTIFICATE_DELEGATE_TO_CHILDREN=1` in `main()`, before anything can load p11-kit
+and before WebKit's network process is forked, so the grant the module acquires in *this* process
+is marked delegable and the network process — a child of this one — is answered from it instead of
+being asked. That is what turned two choosers into one; the measurement is in
+[TESTING.md](TESTING.md).
+
+Nothing there believes anyone about anybody's identity. The frontend derives the second caller's
+process from **its own bus connection's pidfd**, walks `/proc` itself, and compares against a pidfd
+it kept when the first grant was made. No app id, no token and no assertion crosses a message; this
+backend cannot name the process it wants covered, and could not lie about it if it tried. What this
+backend asserts is only about *itself*: that the processes it starts are its own work.
+
+That assertion is true here and is worth stating as a rule rather than a habit. Every descendant of
+this process is a WebKit helper this backend started for this sign-in. **This backend runs no code
+on anybody else's behalf**: it does not launch applications, it does not exec anything a caller
+names, and its transactions do not spawn user-supplied programs. A process that did any of those
+must not set that variable, because a parent on the same UID can read and write its children's
+memory in any case — which is also the argument for why delegating downwards gives a descendant
+nothing this process could not have obtained itself and forwarded. If this backend ever gains a
+path that runs foreign code, this variable has to go with it.
 
 - **The PIN never reaches this process.** It is entered in the Certificate portal backend's window, against
   another process's memory. There is no buffer here to scrub and no bug here that can leak one.
@@ -372,7 +393,8 @@ Stated plainly, because the empty `portal_release()` used to say it by omission.
 
 **1. The grants are not released, and this backend cannot release them.** A grant belongs to the
 D-Bus peer that acquired it, and the peers are the two PKCS#11 module instances — this process's,
-which imported the certificate, and WebKit's network process's, which owns the handshake — not this
+which imported the certificate, and WebKit's network process's, which owns the handshake, whose
+grant is now *derived* from this process's rather than separately consented to — not this
 adapter. It has no session handle to pass to `ReleaseGrant`; it does not speak to the module, it
 speaks to GnuTLS; and there is no per-module `C_Finalize` it could call that would not also finalize
 every other module GnuTLS loaded through p11-kit's proxy. The network process's module is not even
@@ -381,7 +403,9 @@ in this address space.
 What actually ends those grants: **their own expiry**, which is the portal's default because the
 module requests no lifetime of its own; the portal **invalidating** them (the card leaving the
 reader, the certificate portal restarting, the frontend going away); or the holding process exiting,
-at which point `C_Finalize` calls `ReleaseGrant`. Measured in
+at which point `C_Finalize` calls `ReleaseGrant`. The derived grant has one more end than the
+others: it dies with the grant it came from, with reason `parent_released`, so releasing this
+process's grant releases the network process's too. Measured in
 [TESTING.md](TESTING.md): a second `Start` against the same backend process produced **no chooser,
 no PIN prompt and no signature**, because both grants were still alive.
 
