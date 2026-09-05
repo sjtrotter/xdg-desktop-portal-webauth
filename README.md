@@ -9,8 +9,12 @@ mutual TLS, cancellation, `Close()`, and shared versus ephemeral storage
 **`xdg-desktop-portal-certificate`**, through its client-side PKCS#11 module, with the card, the
 chooser and the PIN in that service and never in this process: both portals run against each other
 headless in [`tools/portal-stack.sh`](tools/portal-stack.sh), and every hop is proved from the log
-of the process that made it. **No token has ever been acquired by this code, and it has never talked
-to a real identity provider or a real card.** `clients/entra/` is still a stub that exits `70`.
+of the process that made it. Since 2026-09-05
+`clients/entra/` is a working Entra ID / AVD token client: it signs in through that portal,
+exchanges the code, caches the account in the Secret Service and mints the proof-of-possession
+tokens FreeRDP asks for, driven end to end against a mock authority in
+[`tools/entra-e2e.sh`](tools/entra-e2e.sh). **No token has ever been acquired from a real identity
+provider by this code, and no card has ever been in a reader for it.**
 
 ## It is a portal backend, plus a client
 
@@ -243,6 +247,10 @@ using the `req_cnf` FreeRDP supplies, caches refresh tokens in the Secret Servic
 presents four CLI verbs with a documented exit-code contract:
 [docs/ENTRA-CLIENT-CLI.md](docs/ENTRA-CLIENT-CLI.md).
 
+It is about 3,600 lines of C over GLib, libsoup-3, json-glib and libsecret. It links no web engine,
+no toolkit and no PKCS#11 library, and it opens no window: everything interactive it does is one
+`Start` call on the portal and one `Response` back.
+
 ### The problem it solves
 
 An Azure Virtual Desktop connection is not authenticated with a password. FreeRDP needs two OAuth
@@ -310,7 +318,7 @@ These live in the **Entra client**, never in the portal.
 ## Current capabilities
 
 **This table is the one place that says what works.** Every other document in this repository
-defers to it; where one of them disagrees, this is right and it is a bug. Last checked 2026-09-04.
+defers to it; where one of them disagrees, this is right and it is a bug. Last checked 2026-09-05.
 
 | | Status | |
 |---|---|---|
@@ -324,8 +332,8 @@ defers to it; where one of them disagrees, this is right and it is a bug. Last c
 | Caller attribution to the certificate portal's chooser | **Partial** | the certificate portal's window names **this backend**, not the application. The fix is in-process in the shared frontend and is **not written** |
 | One chooser per sign-in | **Implemented** | it used to be **two**, three seconds apart, because the certificate is resolved in this process and again in WebKit's network process. That process is a child of this one, and this one asks the portal for `delegate_to_children`, so its grant is derived from the first with no window: counted at the end of every `tools/portal-stack.sh` run, and a second chooser is a regression |
 | Per-transaction isolation of certificate authority | **Partial** | grants survive the transaction and an authenticated connection survives the grant. See [SECURITY.md](docs/SECURITY.md), "What closing a transaction does NOT do" |
-| A real identity provider | **Not implemented** | nothing here has ever talked to Entra ID, and no card has ever been in a reader for it |
-| The Entra client, `clients/entra/` | **Not implemented** | a stub that exits `70`. No token has been acquired by this code |
+| A real identity provider | **Not implemented** | nothing here has ever talked to Entra ID, and no card has ever been in a reader for it. The client's every step is proved against `tools/mock-token-endpoint.py`, which is a protocol fixture and not a tenant |
+| The Entra client, `clients/entra/` | **Implemented** | `login`, `token`, `accounts`, `logout`; PKCE, the callback classifier, the refresh grant, the proof-of-possession grant and its interactive fallback, and the Secret Service account store. Driven end to end against a mock authority through the headless portal stack: `tools/entra-e2e.sh` |
 | A second, unrelated consumer | **Not implemented** | the exit criterion, and the thing every reviewer asked for first |
 | A second backend for the interface | **Not implemented** | which is what would show the interface is not this backend with a bus name |
 | Rate limiting, and a browser-backed session | **Not implemented** | the first belongs to the frontend; the second is a different backend |
@@ -359,6 +367,9 @@ $ entra-token-helper login \
 Signed in as <user>@<tenant-domain>
 ```
 
+`--cloud usgov` is the same thing in one option: it fills in the authority host and, with no
+`--scope` given, those four scopes.
+
 Acquire the ARM gateway bearer token (silent if a refresh token is cached; otherwise one
 transaction):
 
@@ -371,7 +382,10 @@ $ entra-token-helper token \
 eyJ0eXAiOiJKV1Qi...
 ```
 
-Acquire the session-host PoP token, bound to the key FreeRDP generated:
+Acquire the session-host PoP token, bound to the key FreeRDP generated. **Expect a window here
+even with an account already stored**: the RDS-AAD scope is the one Entra puts its "make sure you
+trust this client" interstitial in front of, and that page is answered inside the portal's sign-in
+window. A PoP token is never cached, so every one of these is a fresh grant.
 
 ```console
 $ entra-token-helper token --json \
@@ -399,8 +413,8 @@ $ entra-token-helper logout --account <user>@<tenant-domain>
 Removed <user>@<tenant-domain>
 ```
 
-Every one of those currently exits `70` with `not implemented (design sketch)`. Only `--help` and
-`--version` succeed, in both binaries.
+Every one of those works. What has never happened is the last step of the first one: no
+authorization code from a real Entra ID tenant has ever been exchanged by this code.
 
 ## Building, and testing it on a dev machine
 
@@ -428,11 +442,15 @@ $ ./build/subprojects/entra-token-client/entra-token-helper --help
 The **backend** needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0, all required: every method it
 implements opens a web view, and a backend that cannot must not claim the interface. It links
 against no PKCS#11 library of its own — a certificate is named by URI and GnuTLS resolves it. The
-**client** is still a stub and needs only GLib and GIO; libsecret is declared optional and unused.
+**client** needs GLib, GIO, libsoup-3, json-glib and libsecret, all required: libsecret is not
+optional because a build without it would have to either keep no account or write a refresh token
+to a file, and [docs/SECURITY.md](docs/SECURITY.md) rules the second out.
 
 ```console
 $ meson test -C build-backend        # the rules: completion, options, storage, redaction,
                                      #            and the hardening window's counting
+$ meson test -C build-entra          # the rules: PKCE, the callback classifier, the ID token
+                                     #            claim, discovery, the cache key, redaction
 ```
 
 Then the real thing, and none of it touches your session bus or your display:
@@ -449,7 +467,16 @@ $ tools/portal-stack.sh --cancel-chooser -- --expect-response 2 \
       --expect-reason no_certificate_adapter --no-require-code
 ```
 
-Then the fallback provider, which needs no second service:
+**The client, end to end**, which needs no card and no second service: a headless X server, a
+private bus, the frontend and this backend, an Entra-shaped mock authority, and
+`entra-token-helper` driven through all four verbs against it.
+
+```console
+$ tools/entra-e2e.sh                 # login -> token from cache -> token --req-cnf -> logout
+$ tools/entra-e2e.sh --keep          # leave the stack up and drive it yourself
+```
+
+Then the fallback certificate provider, which needs no second service:
 
 ```console
 $ tools/softhsm-fixture.sh           # a CA, a server certificate, a token, a PIN file
@@ -649,11 +676,25 @@ backend/                    the portal BACKEND — its own meson project.
                                                                    window in which it yields
   tests/                                 the rules, with no display and no bus
 clients/entra/              layer 3 — entra-token-client (its own meson project)
-  src/                                   CLI stub plus header sketches: OAuth, clouds,
-                                         cache, IPC schema
+  src/                                   main.c                    the four verbs and their options
+                                         acquire.c                 what login and token actually do
+                                         webauth_client.c          the one call to the portal
+                                         oauth/transaction.c       state, PKCE, single use
+                                         oauth/callback.c          is this URI our response?
+                                         oauth/discovery.c         derive, then refine
+                                         oauth/token.c             the grants, and the pop variant
+                                         oauth/clouds.c            the sovereign table, the allowlist
+                                         oauth/jwt.c               the account name, and nothing else
+                                         oauth/http.c              the one HTTP client
+                                         cache/keyring.c           the account store and the cache key
+                                         ipc/request.c             statuses, exit codes, JSON
+                                         log/redact.c              structural redaction
+                                         entra-config.c            the user's allowlist additions
+  tests/                                 the rules, with no bus and no network
 spikes/                     webkit-client-cert.c — S2, kept because its answer is load-bearing
 tools/                      softhsm-fixture.sh, mtls-server.py, dev-stack.sh, ui-smoke.sh,
                             portal-stack.sh (BOTH portals, one bus, one Xvfb),
+                            entra-e2e.sh + mock-token-endpoint.py (the CLIENT, end to end),
                             webauth-e2e.py, trigger-webauthentication.sh, lib.sh
 docs/                       ARCHITECTURE, PUBLIC-INTERFACE, IMPL-INTERFACE, TESTING,
                             UPSTREAMING, ENTRA-CLIENT-CLI, SECURITY, SPIKES, ROADMAP,

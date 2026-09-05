@@ -1,8 +1,9 @@
 # Architecture
 
-Status: the backend is implemented and has been run end to end against a fixture identity provider
-([TESTING.md](TESTING.md)); the Entra client is still a sketch. Where this document says "would",
-it still means it.
+Status: the backend and the Entra client are both implemented and have both been run end to end —
+the backend against a fixture identity provider with a card behind it, the client against a mock
+authority through that same backend ([TESTING.md](TESTING.md)). Neither has talked to a real
+identity provider. Where this document says "would", it still means it.
 
 Web authentication is **a portal frontend and a portal backend**, plumbed exactly as
 xdg-desktop-portal plumbs every portal it has — because the frontend *is* xdg-desktop-portal.
@@ -267,10 +268,12 @@ Components under [`clients/entra/src/`](../clients/entra/src/). The CLI contract
 restructuring except the D-Bus names it calls** — which is the point: an application sees a portal,
 not an architecture.
 
-### `cli` — [`src/main.c`](../clients/entra/src/main.c)
+### `cli` — [`src/main.c`](../clients/entra/src/main.c), [`src/acquire.c`](../clients/entra/src/acquire.c)
 
-Argument parsing for the four verbs, option validation, exit-code mapping, plain-vs-JSON output.
-No network, no windows: it builds a request object and prints a response object.
+`main.c` is argument parsing for the four verbs, option validation, exit-code mapping and
+plain-vs-JSON output; it owns no protocol. `acquire.c` is what `login` and `token` actually do:
+the order of cache, refresh and window, the proof-of-possession path and its interactive fallback,
+and the decision about when a human has to be asked.
 
 ### `request schema` — [`ipc/request.h`](../clients/entra/src/ipc/request.h)
 
@@ -299,10 +302,10 @@ The `state`, the PKCE verifier and its S256 challenge, the expected redirect, a 
 single-use flag. Note what it does not contain: a window, a web view, a reference count shared with
 UI callbacks.
 
-### `oauth` — [`callback.h`](../clients/entra/src/oauth/callback.h), [`discovery.h`](../clients/entra/src/oauth/discovery.h), [`clouds.h`](../clients/entra/src/oauth/clouds.h)
+### `oauth` — [`callback.h`](../clients/entra/src/oauth/callback.h), [`discovery.h`](../clients/entra/src/oauth/discovery.h), [`clouds.h`](../clients/entra/src/oauth/clouds.h), [`token.h`](../clients/entra/src/oauth/token.h), [`jwt.h`](../clients/entra/src/oauth/jwt.h)
 
 Classification of the URI the portal returned, the code/refresh/PoP token requests, endpoint
-derivation, and the sovereign-cloud table. The classifier is the security-critical piece on this
+derivation, the sovereign-cloud table, and the one claim read out of an ID token. The classifier is the security-critical piece on this
 side and is modelled on FreeRDP's `freerdp_client_aad_parse_callback` from the `aad/oauth-hardening`
 branch: exact redirect match, no userinfo or fragment, `state` present exactly once and compared in
 constant time, exactly one of `code` or `error` where a bare parameter still counts as an
@@ -317,15 +320,20 @@ valid authorization response to the request I made" — a question about OAuth, 
 nothing in the portal ever saw. Putting the third one in the portal is what would make the portal
 protocol-specific.
 
-Discovery is **optional**: the request always carries a configured authority, and discovered
-endpoints only refine it.
+Discovery is **optional and lazy**: the request always carries a configured authority, the endpoints
+are derived from it before any I/O, and the OpenID configuration is fetched only when an endpoint is
+about to be used. A request answered from the cache therefore touches the network not at all. A
+discovered endpoint is used only if it is `https` and on the same host as the authority that served
+the document — a discovery document is not a licence to move the exchange.
 
 ### `cache` / `keyring` — [`cache/keyring.h`](../clients/entra/src/cache/keyring.h)
 
-Refresh tokens and account records in the Secret Service keyring; access tokens in memory only,
-keyed by `(account, authority, tenant, client id, sorted scopes, token kind, PoP binding)`. An
-explicit "no persistent cache" mode stores nothing — the correct behaviour when no keyring is
-available, not a silent fallback to a file.
+One Secret Service item per account, attributed by `(authority base, client id, account)`, whose
+secret is a JSON record holding the refresh token, the ID token and the access tokens cached under
+the **sorted, de-duplicated scope set**. A proof-of-possession token is never stored at all: it is
+bound to one key, and a cache that ignored the binding would hand back a token the caller cannot
+use. When no keyring is available the client reports unavailable rather than falling back to a
+file.
 
 ### `log` / `redact` — [`log/redact.h`](../clients/entra/src/log/redact.h)
 

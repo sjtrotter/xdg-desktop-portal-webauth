@@ -64,19 +64,23 @@ Or both, through the umbrella:
 $ meson setup build && ninja -C build
 ```
 
-Only GLib and GIO are needed for the stubs. Nothing is implemented: every verb exits `70`.
+The backend needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0. The client needs GLib, GIO,
+libsoup-3, json-glib and libsecret — all required; see [docs/SECURITY.md](docs/SECURITY.md) for why
+the keyring is not optional.
 
 ## Style
 
 C11, tabs, 100 columns, `SPDX` header — see [`.editorconfig`](.editorconfig). Headers carry the doc
-comments; there are no implementations yet, and a header that explains *why* an interface is shaped
-the way it is is worth more here than one that restates its own signatures.
+comments: a header that explains *why* an interface is shaped the way it is is worth more here than
+one that restates its own signatures, and a rule that has a reason should be readable next to the
+code that enforces it.
 
 ## Running the tests
 
-`meson test -C build-backend` is the whole no-display suite; the end-to-end runs, which open a
-window, are `tools/ui-smoke.sh` and `tools/portal-stack.sh`. What each tier can and cannot tell you
-is [docs/TESTING.md](docs/TESTING.md).
+`meson test -C build-backend` and `meson test -C build-entra` are the whole no-display suite, or
+`meson test -C build` for both; the end-to-end runs, which open a window, are `tools/ui-smoke.sh`,
+`tools/portal-stack.sh` and `tools/entra-e2e.sh`. What each tier can and cannot tell you is
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Sign-off and licence
 

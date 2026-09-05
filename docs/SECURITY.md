@@ -601,6 +601,24 @@ is a usage error, not a configuration. This is the one rule that stops a same-UI
 credential-bearing exchange at a server it controls — and it is why the **client**, not its caller,
 chooses the `completion_uri` it hands to the portal.
 
+Two details of how that is enforced, because they are where it would rot:
+
+- `--authority` accepts the `https://<host>/<tenant>` form as well as a bare host, because that is
+  what Microsoft's documentation and an `.rdpw` file call the authority. **Only the host and the
+  first path segment are read.** A query, a fragment, userinfo, a non-`https` scheme or a deeper
+  path is a usage error, so `--authority https://login.microsoftonline.us/t/oauth2/v2.0/token` is
+  refused rather than obeyed.
+- A **discovered** endpoint is subject to the same rule from the other side: it is used only if it
+  is `https` and on the same host (and port) as the authority that served the document. A discovery
+  document is not a licence to move the exchange somewhere else, and a client that took one at face
+  value would have handed the redirect back to whoever answered the well-known URL.
+
+**No environment variable widens anything.** Not the authority allowlist, not the client-id
+allowlist, not certificate trust. `ENTRA_TOKEN_HELPER_CONFIG` and `--config` choose *which* file is
+read and nothing else, and both allowlist additions and the single fixture trust anchor live in
+that file, one entry at a time. A hostile parent process controls the environment and the command
+line; it does not control a file in `$XDG_CONFIG_HOME`.
+
 ## OAuth rules
 
 - **`state` on every authorization request**, cryptographically random, compared in **constant
@@ -626,8 +644,9 @@ chooses the `completion_uri` it hands to the portal.
 | Artifact | Where it lives | Why |
 |---|---|---|
 | **Refresh token** | Secret Service keyring only. Never on stdout, never in the JSON response, never in a log, never in a file, never returned to a caller under any option. | Months of standing access. A caller handed one has been handed the user's identity, not a token for one connection. The keyring is the only store on a Linux desktop with a plausible claim to protect it at rest. |
-| **Access token** | In memory for the process lifetime; printed once on stdout. | Short-lived and scoped, and the caller needs it. Still a bearer credential, so: stdout and nowhere else. |
-| **PoP token** | As above, additionally keyed by the `req_cnf` binding. | A PoP token bound to one `kid` is useless for another; a cache key ignoring the binding would return a token the caller cannot use. |
+| **Access token** | Printed once on stdout, and cached **inside the same keyring secret** as the refresh token, under the sorted scope set. | Short-lived and scoped, and the caller needs it. The CLI is a one-shot process: an in-memory cache would live for the length of one `token` call and every connection would spend a refresh round trip. Caching it beside the refresh token puts it under the same protection at rest and adds nothing to what an attacker with the keyring already has. It is still never written to a file, a log, or the JSON error response. |
+| **PoP token** | Printed once on stdout and **never stored at all**. | A PoP token bound to one `kid` is useless for another; a cache that ignored the binding would return a token the caller cannot use, and one that keyed on it would be a store of per-connection secrets for no benefit — the grant is a single round trip. |
+| **ID token** | Keyring, beside the refresh token. Its `preferred_username`/`upn` claim is displayed. | It names the account so a human can tell two sign-ins apart. **Its signature is not checked and nothing is authorized by it**: it arrived over TLS from an endpoint the client chose, answering a request the client made with a verifier no one else has. That transport is the trust, not a local signature check. The claim is validated for being UTF-8 with no control characters before it is displayed, because a name that reaches a terminal is a place to hide an escape sequence. |
 | **Authorization code** | In memory for the seconds between the completion and the token request. Scrubbed. | Exchangeable for a refresh token by anyone holding it plus the public client id. PKCE is what stops that, and PKCE is not a reason to be careless with the code. |
 | **PKCE verifier, `state`** | In memory for the transaction. Scrubbed. | The verifier binds the code to this process; `state` binds the response to this request. |
 | **PIN** | Never seen by the Entra client. Under the portal backend's `portal` provider, never seen there either — the token declares a protected authentication path and the Certificate portal prompts. Under `pkcs11`, read from a file the operator named, held only until the transaction ends, then overwritten; never in argv, never in a URI, never logged. | A component having no path to a secret is better than a component being careful with one, which is the argument for finishing the `portal` provider. |
@@ -636,13 +655,25 @@ chooses the `completion_uri` it hands to the portal.
 | **Account records** (account id, authority, tenant, client id) | Keyring, beside the refresh token. | Not secret in the same sense, but they name a person and a tenant. |
 
 **No persistent cache mode.** When the Secret Service is unavailable the client does **not** fall
-back to a file. It runs with no persistence, or exits `40` so a dispatcher can fall through. A
-silent downgrade from "keyring" to "file in the home directory" is the kind of thing nobody notices
-until it is in a backup.
+back to a file: it exits `40` so a dispatcher can fall through. A silent downgrade from "keyring"
+to "file in the home directory" is the kind of thing nobody notices until it is in a backup. Note
+what this rule is and is not about: it forbids the *client* inventing a store of its own, not the
+*user* choosing which Secret Service implementation is running. `tools/entra-e2e.sh` runs against
+libsecret's own file backend (`SECRET_BACKEND=file`) because a private bus has no keyring daemon;
+the client neither knows nor chooses that, and asks libsecret the same question either way.
 
-**Logout must be complete.** `logout` removes the refresh token, the account record, *and* asks the
-portal to discard the web session that account established. A logout leaving the Entra session
-cookie behind has not logged anybody out.
+**One item per account, and the authority is part of its name.** The keyring item's attributes are
+the full `https://<host>/<tenant>` authority, the client id and the UPN. Keying on the host alone
+would make the same person in two tenants one item, with the second sign-in overwriting the first.
+
+**Logout must be complete, and today it is not.** `logout` removes the refresh token and the
+account record. It does **not** yet ask the portal to discard the web session that account
+established, and it deliberately does not call the authority's `end_session` endpoint — a logout
+that opened a browser window would be a surprising thing for a `logout` verb to do. A logout
+leaving the Entra session cookie behind has not logged anybody out of Entra; it has only stopped
+*this client* from being able to act as them. The gap is real and is recorded here rather than in a
+comment. Until it is closed, `--session-mode ephemeral` is what stops a session outliving a
+transaction at all.
 
 ## Logging
 
@@ -664,6 +695,15 @@ response code; and phase timings.
 a DEBUG log would let its reader connect as the user, the redaction is wrong. There is no "trace"
 level that relaxes these rules, because a level that relaxes them will be enabled by somebody in
 production.
+
+**Structurally, not textually.** `entra_log_event()` takes `(name, kind, value)` triples and the
+*kind* decides what is printed: an authority host prints, an OAuth error code prints, a tenant id
+prints as a stable hash of itself (so two lines about one tenant can still be seen to be about one
+tenant), and an account, a code, a token or an `error_description` prints as its kind — never its
+value, and for the description not even its length. There is no format string a caller can slip a
+token through and no "log this URL" entry point a later edit could point at a redirect.
+`tools/entra-e2e.sh` greps the client's own stderr for `code=`, `code_verifier`, `refresh_token`
+and anything JWT-shaped after every run.
 
 ---
 

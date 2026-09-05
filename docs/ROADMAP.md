@@ -1,8 +1,8 @@
 # Roadmap
 
-Status: phases 0c and 0d are **done** and 0a/0b were already done upstream; everything from phase 1
-on is untouched, and the Entra client has not started. What "done" means here is
-[TESTING.md](TESTING.md): a fixture, not a tenant and not a card.
+Status: phases 0c, 0d, 0f and 0g are **done** and 0a/0b were already done upstream; everything from
+phase 1 on is untouched. What "done" means here is [TESTING.md](TESTING.md): a fixture, not a
+tenant and not a card.
 
 **What has changed since this document was last honest about its own scope:** the frontend is no
 longer this project's to build. It is an xdg-desktop-portal branch
@@ -120,18 +120,30 @@ screen-reader announcement, contrast and scaling. Budgeted as its own item becau
 polish is how it does not happen, and because this chrome carries a security decision that WebKit's
 own accessibility does not cover.
 
-### 0f. Client: OAuth, clouds, refresh, cache — **2–3 weeks**
+### ~~0f. Client: OAuth, clouds, refresh, cache — 2–3 weeks~~ — **done, here**
 
 Authorization-code exchange with `state` and PKCE S256; the strict response classifier and its
 percent-decoder; the commercial/Government cloud table; ARM bearer acquisition; RDS-AAD PoP
-acquisition using the caller's `req_cnf`; refresh for both token kinds; token-response and
-OAuth-error parsing with redaction; the in-memory access-token cache and its key.
+acquisition using the caller's `req_cnf`, including the interactive fallback Entra's interstitial
+forces; refresh for both token kinds; token-response and OAuth-error parsing with redaction; the
+access-token cache and its key.
 
-### 0g. Client: secret storage, concurrency, cancellation — **1–2 weeks**
+`clients/entra/`, with 68 unit assertions and `tools/entra-e2e.sh`
+([TESTING.md](TESTING.md), tier 2c). One departure from the plan above: the access-token cache is
+**not** in memory. The CLI is a one-shot process, so an in-memory cache would live for the length of
+one call; it is stored inside the same keyring secret as the refresh token instead, under the same
+protection at rest. [SECURITY.md](SECURITY.md) says so in the secrets table.
 
-Secret Service storage for refresh tokens and account records; the explicit "no persistent cache"
-mode; per-account serialization; cancellation and its races; `accounts` and `logout`, including
-asking the portal to discard the account's web session.
+### 0g. Client: secret storage, concurrency, cancellation — **mostly done**
+
+Done: Secret Service storage for refresh tokens and account records, keyed by authority base,
+client id and account; the refusal to fall back to a file; `accounts` and `logout`.
+
+Not done: per-account serialization — two `token` calls for one account can both refresh and the
+second store wins, which costs a wasted round trip rather than correctness, but a rotating authority
+would make it correctness; cancellation and its races beyond the portal's own timeout; and the half
+of `logout` that asks the portal to discard the account's web session, which is recorded as a known
+gap in [SECURITY.md](SECURITY.md) rather than quietly left out.
 
 ### 0h. Integration — **1 week**
 
