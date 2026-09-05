@@ -39,6 +39,20 @@ static int effective_port(GUri* uri)
 	return default_port_for_scheme(g_uri_get_scheme(uri));
 }
 
+/* http and https name a host. A private-use scheme (RFC 8252 section 7.1) has no
+ * authority at all: 'com.example.app:/oauth2redirect'. */
+static gboolean scheme_requires_host(const char* scheme)
+{
+	return g_ascii_strcasecmp(scheme, "https") == 0 || g_ascii_strcasecmp(scheme, "http") == 0;
+}
+
+static gboolean uri_has_host(GUri* uri)
+{
+	const char* host = g_uri_get_host(uri);
+
+	return host != NULL && *host != '\0';
+}
+
 static GUri* parse_uri(const char* uri_string, const char* what, GError** error)
 {
 	g_autoptr(GUri) uri = NULL;
@@ -82,12 +96,6 @@ static GUri* parse_uri(const char* uri_string, const char* what, GError** error)
 		return NULL;
 	}
 
-	if (g_uri_get_host(uri) == NULL || *g_uri_get_host(uri) == '\0')
-	{
-		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "The %s has no host", what);
-		return NULL;
-	}
-
 	if (g_uri_get_userinfo(uri) != NULL)
 	{
 		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "The %s carries userinfo",
@@ -112,6 +120,13 @@ gboolean webauth_completion_start_uri_is_valid(const char* uri_string, GError** 
 		return FALSE;
 	}
 
+	if (!uri_has_host(uri))
+	{
+		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+		                    "The start_uri has no host");
+		return FALSE;
+	}
+
 	return TRUE;
 }
 
@@ -119,7 +134,35 @@ gboolean webauth_completion_uri_is_valid(const char* uri_string, GError** error)
 {
 	g_autoptr(GUri) uri = parse_uri(uri_string, "completion_uri", error);
 
-	return uri != NULL;
+	if (uri == NULL)
+		return FALSE;
+
+	if (scheme_requires_host(g_uri_get_scheme(uri)))
+	{
+		if (!uri_has_host(uri))
+		{
+			g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+			                    "The completion_uri has no host");
+			return FALSE;
+		}
+	}
+	else if (!uri_has_host(uri) && *g_uri_get_path(uri) == '\0')
+	{
+		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+		                    "The completion_uri names neither a host nor a path");
+		return FALSE;
+	}
+
+	/* A wildcard is not a pattern here, and a host that reads like one is refused
+	 * rather than matched literally. */
+	if (uri_has_host(uri) && strchr(g_uri_get_host(uri), '*') != NULL)
+	{
+		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+		                    "The completion_uri host contains a wildcard");
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 gboolean webauth_completion_matches(const char* candidate_string, const char* completion_string)
@@ -139,7 +182,11 @@ gboolean webauth_completion_matches(const char* candidate_string, const char* co
 	if (g_ascii_strcasecmp(g_uri_get_scheme(requested), g_uri_get_scheme(candidate)) != 0)
 		return FALSE;
 
-	if (g_ascii_strcasecmp(g_uri_get_host(requested), g_uri_get_host(candidate)) != 0)
+	if (uri_has_host(requested) != uri_has_host(candidate))
+		return FALSE;
+
+	if (uri_has_host(requested) &&
+	    g_ascii_strcasecmp(g_uri_get_host(requested), g_uri_get_host(candidate)) != 0)
 		return FALSE;
 
 	if (effective_port(requested) != effective_port(candidate))

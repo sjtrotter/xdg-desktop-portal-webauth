@@ -37,10 +37,10 @@
 #   4  the module calls CreateSession/AcquireCredential on
 #      the PUBLIC interface                                   frontend.log
 #   5  the certificate backend shows its chooser, the driver
-#      picks, a grant is created -- ONCE, for the module
-#      instance in this backend's process; the network
-#      process's instance is a DESCENDANT and its grant is
-#      derived from that one with no window                   certificate.log
+#      picks, a grant is created -- ONCE PER MODULE INSTANCE.
+#      The network process is a separate D-Bus peer, so it
+#      gets a chooser of its own: two instances, two grants,
+#      TWO choosers                                           certificate.log
 #   6  GnuTLS C_SignInit/C_Sign -> the module's Sign -> the
 #      PIN prompt -> a signature                              certificate.log
 #   7  the handshake completes and the server sees the CN     server.log

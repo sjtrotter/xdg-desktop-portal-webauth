@@ -25,23 +25,26 @@ remote       upstream → https://github.com/flatpak/xdg-desktop-portal.git
              origin   → https://github.com/sjtrotter/xdg-desktop-portal.git
 branch       experimental/certificate-webauthentication
 base         upstream/main = 86bd3e2  po: Update Russian translation
-commits      02b679a  xdp: Add a gate for experimental portals            ┐ series 1
-             e587d47  session-dex: Add xdp_session_dex_close()            ┘
-             214af63  web-authentication: Add an experimental
-                      WebAuthentication portal                   ← this one ┐
-             d74fab2  doc: List the experimental portals in the             │ series 2
-                      interface reference                                   │
-             8efe3ef  tests: Add WebAuthentication portal tests             ┘
-             0e5c595  request-dex: Let a portal see that a request was    ┐
-                      closed                                              │ series 3
-             1dec352  certificate: Add an experimental Certificate portal │
-             42664d2  tests: Add Certificate portal tests                 ┘
+commits      22818e6  xdp: Add a gate for experimental portals              series 1
+             faf82d4  request-dex: Let a portal close an impl request     ┐
+             a6b06d4  web-authentication: Add an experimental             │
+                      WebAuthentication portal                 ← this one │ series 2
+             ad72af8  doc: List the experimental portals in the           │
+                      interface reference                                 │
+             d21a4dc  tests: Add WebAuthentication portal tests           ┘
+             0bff521  session-dex: Add xdp_session_dex_close()            ┐
+             1385b47  session-dex: Fix the wrapped session store          │
+             2ab8cca  request-dex: Let a portal see that a request was    │ series 3
+                      closed                                              │
+             a4c1f62  certificate: Add an experimental Certificate portal │
+             1aaffaf  tests: Add Certificate portal tests                 ┘
 ```
 
 **Three series, proposed in that order.** This interface is the second of the three, and it
-is the one that stands on its own: one method, no session object, and no change to anything
-shared beyond the gate. `1dec352` is the Certificate portal the `portal` certificate adapter
-calls — on the same branch, in the same frontend process
+is nearly free-standing: one method, no session object, and one small addition to
+`xdp-request-dex.c` — `xdp_request_dex_close_impl()`, which the frontend needs to end the
+backend's call when its own deadline passes. `a4c1f62` is the Certificate portal the
+`portal` certificate adapter calls — on the same branch, in the same frontend process
 ([decisions/0007](decisions/0007-certificate-adapter.md)).
 
 **What this interface lost when the branch was rewritten**: the AVD vocabulary. The generic
@@ -51,12 +54,23 @@ certificate concepts in a portal that has nothing to do with certificates; this 
 identity option is `app_identity_level` with `sandboxed` / `host` / `unidentified`, shared
 with the Certificate interface, which used to have its own three names for the same
 distinction. The completion rule now states the equivalences the URI parser applies, and a
-wildcard host is refused rather than matched literally. The timeout contract says what the
-frontend actually does: it clamps and forwards, and the deadline is the backend's.
+wildcard host is refused rather than matched literally. A private-use scheme redirect URI
+as RFC 8252 section 7.1 describes it — `com.example.app:/oauth2redirect`, with no
+authority at all — is accepted and matched on its scheme and its path, which is the shape
+a native OAuth client registers; this backend's `completion.c` carries the same rule and
+`tests/test-completion.c` runs the frontend's cases against it.
+
+**The deadline is now the frontend's.** It races the backend call against a timeout, and
+when the timeout wins it calls `Close()` on the impl `Request` and answers the application
+`2` with `reason` `timeout`. This backend still owns the window and still ends the flow on
+its own deadline; whichever end reaches it first, the window goes away. **And a sandboxed
+application with no network access can no longer call `Start()` at all**: the frontend
+refuses it with `org.freedesktop.portal.Error.NotAllowed`, because the response to that
+call is an answer fetched from the network.
 
 Test results: `meson test --suite integration --suite unit` green upstream except a
 pre-existing `usb` failure (`umockdev-run` is not installed there),
-`tests/test_webauthentication.py` 54 passed, `tests/test_certificate.py` 84 passed,
+`tests/test_webauthentication.py` 69 passed, `tests/test_certificate.py` 98 passed,
 `gitlint --commits upstream/main..HEAD` passes, `black --check` passes.
 
 ## Why `experimental` is not a claim of acceptance

@@ -92,7 +92,7 @@ returned has nothing left to get wrong.
 |---|---|---|
 | `activation_token` | `s` | Passed through unchanged; the backend decides whether to use it. |
 | `session_mode` | `s` | A **decision**, already validated. Not a request. A backend that cannot honour `ephemeral` must **fail** rather than quietly use the shared store. |
-| `timeout` | `u` | Already clamped to the 900 s ceiling, and always forwarded (default 300). **The frontend runs no timer of its own**: the backend owns the window, so the deadline is the backend's to keep, and a backend that never answers is a request that never ends. |
+| `timeout` | `u` | Already clamped to the 900 s ceiling, and always forwarded (default 300). **The frontend runs this deadline too**: when it passes it calls `Close()` on the `handle` and answers the application itself, so a backend that never answers is no longer a request that never ends. This backend still owns the window and still ends the flow on its own deadline, which starts when the window opens rather than when `Start` arrives, so it is normally the one that is reached first. |
 | `title` | `s` | Untrusted application text, already length-limited. |
 | `app_identity_level` | `s` | `sandboxed`, `host` or `unidentified`. The honesty level of `app_id`, so the chrome can say "an unidentified application" rather than showing an empty name. |
 
@@ -238,11 +238,13 @@ this engine exposes no lever for it beyond
 `webkit_network_session_set_persistent_credential_storage_enabled()`, which this backend sets to
 `FALSE`. [SECURITY.md](SECURITY.md), "What closing a transaction does NOT do", has the whole of it.
 
-**And one thing the interface documentation implies that is not true of the branch:** the frontend
-has **no deadline of its own**. It forwards a clamped `timeout` and then awaits the impl call with a
-D-Bus timeout of `G_MAXINT` (`web-authentication.c`), so a backend that never answers is a request
-that never ends. The deadline in [`../backend/src/transaction.c`](../backend/src/transaction.c) is
-the only one there is, and it starts when the window opens rather than when `Start` arrives.
+**Two deadlines, and they are not the same deadline.** The frontend races the impl call against
+`dex_timeout_new_seconds(timeout)` (`web-authentication.c`) and, when the timeout wins, calls
+`Close()` on the impl `Request` and answers `2` with `reason` `timeout`. The deadline in
+[`../backend/src/transaction.c`](../backend/src/transaction.c) starts when the window opens rather
+than when `Start` arrives, so it is normally reached first and the frontend's is the backstop for a
+backend that never answers at all. Either way the application gets one answer and the window goes
+away.
 
 ## Failure modes the split introduced
 
@@ -258,7 +260,8 @@ Each is a real obligation, and each is the price of
 | The backend returns a URI that was not requested | Frontend | `2`, reason `backend_completion_mismatch` |
 | The backend returns a malformed vardict | Frontend | `2`, reason `backend_protocol_error` |
 | The frontend dies mid-transaction | Nobody — the application's connection sees the name vanish | The backend destroys its window at once |
-| The backend is slow (a user with a card) | Nobody; this is normal | Nothing. The frontend's proxy timeout is `G_MAXINT`; the deadline is the transaction's, not D-Bus's |
+| The backend is slow (a user with a card) | Nobody; this is normal | Nothing, until `timeout`. The frontend's proxy timeout is `G_MAXINT`, so D-Bus never gives up; the deadline is the transaction's, and the frontend's own timer behind it |
+| The backend never answers at all | Frontend, at `timeout` | `2`, reason `timeout`, and the impl `Request` is closed so the window goes away |
 
 ## Versioning
 

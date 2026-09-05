@@ -13,9 +13,10 @@
  *  URI, out of everything a sign-in flow navigates to, is handed back. Matching
  *  is EXACT and is performed on parsed URIs, never on strings, and there is
  *  deliberately no prefix mode in version 1. Scheme compared case-insensitively;
- *  host compared case-insensitively; port normalised so that an explicit 443 and
- *  a default 443 are the same port; path compared exactly; userinfo forbidden;
- *  query and fragment carry the result and take no part in matching.
+ *  host compared case-insensitively, and a URI with a host never matches one
+ *  without; port normalised so that an explicit 443 and a default 443 are the
+ *  same port; path compared exactly; userinfo forbidden; query and fragment
+ *  carry the result and take no part in matching.
  *
  *  So https://example.com/callback matches neither /callback.evil nor
  *  /callbacker nor https://example.com@evil.invalid/ - each of which a string

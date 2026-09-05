@@ -50,9 +50,18 @@ flow, and answers with the URI the flow finished on. There is **no `Session` obj
 ### The URIs
 
 - `start_uri` must be an absolute **`https`** URI with a host.
-- `completion_uri` must be an absolute URI with a host, **no userinfo** and no wildcard.
+- `completion_uri` must be an absolute URI with **no userinfo** and no wildcard. An
+  `http` or `https` one must name a host; a **private-use scheme redirect URI** as
+  RFC 8252 section 7.1 describes it — `com.example.app:/oauth2redirect`, with no
+  authority at all — is accepted with only a path, and is then matched on its scheme and
+  its path. One that names neither a host nor a path is refused: there would be nothing
+  to match on.
 - A malformed request is a **D-Bus error out of `Start()`**, before any backend is asked
   and any window is opened.
+- **A sandboxed application with no network access cannot call `Start()`**: the response
+  is an answer fetched from the network, so a sandbox that is not allowed to reach the
+  network must not reach it through the portal either. The call fails with
+  `org.freedesktop.portal.Error.NotAllowed`.
 
 ### Options
 
@@ -61,7 +70,7 @@ flow, and answers with the URI the flow finished on. There is **no `Session` obj
 | `handle_token` | `s` | last element of the Request path, so the caller can subscribe before calling. Not forwarded to the backend. |
 | `activation_token` | `s` | window activation, passed through. |
 | `session_mode` | `s` | `shared` (default) or `ephemeral`. **An unknown value is an error, never a fallback.** `shared` means shared between flows run by this backend — never with the user's browser; `ephemeral` means a data store made for this flow and destroyed with it. |
-| `timeout` | `u` | seconds; default 300, ceiling 900. A caller can only shorten it. The frontend clamps it and forwards it; **the deadline itself is the backend's**, which is the end that owns the window. |
+| `timeout` | `u` | seconds; default 300, and anything above the 900 s ceiling is clamped to it. **The frontend keeps this deadline**: it races the backend call against a timeout, and when the timeout wins it calls `Close()` on the impl `Request` and answers `2` with `reason` `timeout`. The value is forwarded as well, and this backend still ends the flow on its own deadline; whichever end reaches it first, the window goes away. |
 | `title` | `s` | a short hint about what the sign-in is for. Application-supplied text, shown as such, never as the identity of the window. |
 
 Unknown keys are dropped, not forwarded.
@@ -84,7 +93,8 @@ Response codes are the portal's usual three: `0` completed, `1` cancelled, `2` o
 The rule, from the public XML, is matched against **every navigation the web view is asked
 to make, in any frame**, on the parsed URI:
 
-- scheme and host compared **case insensitively**;
+- scheme and host compared **case insensitively**, and a URI with a host never matches
+  one without — which is what makes a private-use scheme redirect exact;
 - effective ports compared with **default ports normalised** (`:443` equals the default);
 - **paths compared exactly**, on the form the URI parser produces — so `%63allback` equals
   `callback`, `%2f` equals `%2F`, `/a/../callback` equals `/callback`, and an

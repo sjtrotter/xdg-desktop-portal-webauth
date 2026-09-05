@@ -74,8 +74,11 @@ static void test_completion_uri_valid(void)
 	static const char* good[] = {
 		COMPLETION,
 		"https://login.example.com/common/oauth2/nativeclient",
-		/* A custom scheme is matched structurally and never dispatched. */
+		/* A private-use scheme is matched structurally and never dispatched. */
 		"com.example.app://callback.example/done",
+		/* RFC 8252 section 7.1: no authority at all. FRONTEND */
+		"com.example.app:/oauth2redirect",
+		"com.example.app:oauth2redirect",
 		"http://127.0.0.1:1234/cb",
 		NULL,
 	};
@@ -93,6 +96,11 @@ static void test_completion_uri_invalid(void)
 	static const char* bad[] = {
 		"https://user:pw@example.com/callback", /* FRONTEND */
 		"relative/path",                        /* FRONTEND */
+		"https://*.example.com/callback",       /* FRONTEND */
+		"com.example.app://*/callback",         /* FRONTEND */
+		/* A private-use scheme with neither a host nor a path has nothing to
+		 * match on. FRONTEND */
+		"com.example.app:", /* FRONTEND */
 		"",
 		"https:///cb",
 		"https://example.com/c\x7f" "b",
@@ -179,6 +187,29 @@ static void test_matches_custom_scheme(void)
 	g_assert_false(webauth_completion_matches("com.example.app://done:443/here", completion));
 }
 
+/* RFC 8252 section 7.1, the shape a native OAuth client actually registers.
+ * FRONTEND test_private_use_scheme_accepted and
+ * test_private_use_scheme_mismatch_refused. */
+static void test_matches_private_use_scheme(void)
+{
+	const char* completion = "com.example.app:/oauth2redirect";
+
+	g_assert_true(webauth_completion_matches("com.example.app:/oauth2redirect", completion));
+	g_assert_true(
+	    webauth_completion_matches("com.example.app:/oauth2redirect?code=1", completion));
+	/* The scheme is lowercased and the path normalised, as for https. */
+	g_assert_true(
+	    webauth_completion_matches("COM.EXAMPLE.APP:/x/../oauth2%72edirect", completion));
+
+	g_assert_false(webauth_completion_matches("com.example.app:/other", completion));
+	g_assert_false(webauth_completion_matches("com.other.app:/oauth2redirect", completion));
+	/* A URI with a host never matches one without. */
+	g_assert_false(
+	    webauth_completion_matches("com.example.app://host/oauth2redirect", completion));
+	g_assert_false(webauth_completion_matches("com.example.app:/oauth2redirect",
+	                                          "com.example.app://host/oauth2redirect"));
+}
+
 static void test_matches_explicit_port(void)
 {
 	const char* completion = "https://example.com:8443/cb";
@@ -198,6 +229,7 @@ int main(int argc, char** argv)
 	g_test_add_func("/completion/completion-uri-invalid", test_completion_uri_invalid);
 	g_test_add_func("/completion/matches", test_matches);
 	g_test_add_func("/completion/matches-custom-scheme", test_matches_custom_scheme);
+	g_test_add_func("/completion/matches-private-use-scheme", test_matches_private_use_scheme);
 	g_test_add_func("/completion/matches-explicit-port", test_matches_explicit_port);
 
 	return g_test_run();
