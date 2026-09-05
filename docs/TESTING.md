@@ -283,6 +283,19 @@ whatever appears rather than following a script, because *how many* windows appe
 things this run exists to find out. The PIN goes through the environment and into `xdotool`'s stdin,
 never argv.
 
+**The driver races a TLS handshake, and the sleeps are sized for it.** Everything between
+`CLIENT_CERTIFICATE_REQUESTED` and the signature happens inside one handshake, and WebKit abandons
+the connection if it takes too long — the failure is `load-failed detail=Operation_was_cancelled`
+and a response `2` with reason `load_failed`, with every certificate hop before it green. Two
+choosers and an on-screen PIN prompt, each answered by a driver that slept a second before every
+keystroke, measured 11.9 seconds on this machine and lost; the same run with the pacing in
+`driver.sh` today measures 7.9. There is no window manager, so a focus set before the window is
+mapped goes nowhere, which is what the ten-second retry in `handle()` is for and why the sleeps are
+not shorter still. `--pin-prompt=system` does not race anything, because the system prompter
+answers instantly. A machine under enough load to stretch the *portal's* side of it — the network
+process starting up and enumerating the token took 8.5 seconds once, during back-to-back runs —
+can still lose; re-run it on an idle machine before believing a failure of this shape.
+
 ### Prerequisites
 
 ```console

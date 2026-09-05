@@ -363,19 +363,31 @@ cat >"$LOGDIR/driver.sh" <<'DRIVER_EOF'
 set -u
 declare -A driven
 
+# THE PACING IS PART OF THE TEST, not a comfort setting. Everything between
+# WebKit's CLIENT_CERTIFICATE_REQUESTED and the signature happens inside one
+# TLS handshake, and WebKit abandons the connection if it takes too long: two
+# choosers and an on-screen PIN prompt, each answered by a driver that slept a
+# second before every keystroke, took eleven and a half seconds on this machine
+# and the load failed with "Operation was cancelled" a millisecond after the
+# signature came back. --pin-prompt=system did not show it, because the system
+# prompter answers instantly.
+#
+# So the sleeps are as short as they can be while still landing: there is no
+# window manager here, and a focus set before the window is mapped goes
+# nowhere, which is what the retry below is for.
 press() {
 	local wid="$1"
 	shift
 	"$XDOTOOL" windowfocus "$wid" 2>/dev/null
-	sleep 1
+	sleep 0.5
 	for key in "$@"; do
 		case "$key" in
 		# THE PIN IS NOT AN ARGUMENT. xdotool --file - reads what to type from
 		# stdin, so it never appears in /proc/*/cmdline.
-		type:) printf '%s' "$PIN" | "$XDOTOOL" type --delay 60 --file - ;;
+		type:) printf '%s' "$PIN" | "$XDOTOOL" type --delay 30 --file - ;;
 		*) "$XDOTOOL" key "$key" ;;
 		esac
-		sleep 0.8
+		sleep 0.4
 	done
 }
 
@@ -406,7 +418,7 @@ while [ ! -f "$LOGDIR/driver-stop" ]; do
 	for wid in $("$XDOTOOL" search --onlyvisible --name "Unlock Security Token" 2>/dev/null); do
 		handle "$wid" "type:" Return
 	done
-	sleep 1
+	sleep 0.3
 done
 DRIVER_EOF
 chmod +x "$LOGDIR/driver.sh"
