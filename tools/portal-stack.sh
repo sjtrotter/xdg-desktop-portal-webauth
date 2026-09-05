@@ -504,15 +504,22 @@ inner() {
 	# certificate: it is a self-signed leaf, so it is its own anchor, and a
 	# handshake completes only if the certificate the module handed over is that
 	# one. Nothing else on the machine would satisfy it.
+	EXTERNAL_IDP=0
+	for a in "${E2E_ARGS[@]}"; do
+		case "$a" in --entra-authorize|--start-uri|--start-uri=*) EXTERNAL_IDP=1 ;; esac
+	done
+
 	rm -f "$LOGDIR/port" "$LOGDIR/access.log"
-	python3 "$REPO/tools/mtls-server.py" \
+	[ "$EXTERNAL_IDP" = 1 ] || python3 "$REPO/tools/mtls-server.py" \
 		--cert "$LOGDIR/server.pem" --key "$LOGDIR/server.key" \
 		--require-client-cert --ca "$CERT_SOFTHSM_DIR/$CERT_FIXTURE.pem" \
 		--completion-uri "$COMPLETION_URI" \
 		--access-log "$LOGDIR/access.log" --port-file "$LOGDIR/port" \
 		>"$LOGDIR/server.log" 2>&1 &
 	SERVER=$!
+	[ "$EXTERNAL_IDP" = 1 ] && SERVER=""
 	for _ in $(seq 1 40); do
+		[ "$EXTERNAL_IDP" = 1 ] && break
 		[ -s "$LOGDIR/port" ] && break
 		kill -0 "$SERVER" 2>/dev/null || {
 			cat "$LOGDIR/server.log" >&2
@@ -522,7 +529,7 @@ inner() {
 		sleep 0.25
 	done
 	PORT="$(cat "$LOGDIR/port" 2>/dev/null)"
-	[ -n "$PORT" ] || {
+	[ -n "$PORT" ] || [ "$EXTERNAL_IDP" = 1 ] || {
 		echo "${0##*/}: the fixture server never reported a port"
 		return 40
 	}
@@ -530,11 +537,8 @@ inner() {
 	# THIS BACKEND, WITH THE PORTAL PROVIDER NAMED. --cert-adapter portal rather
 	# than auto, so that a run in which the portal provider is unavailable FAILS
 	# instead of quietly falling through to the pkcs11 one and proving nothing.
-	local backend_args=(
-		--verbose
-		--cert-adapter portal
-		--debug-trust-certificate "localhost=$LOGDIR/server.pem"
-	)
+	local backend_args=(--verbose --cert-adapter portal)
+	[ "$EXTERNAL_IDP" = 1 ] || backend_args+=(--debug-trust-certificate "localhost=$LOGDIR/server.pem")
 	[ "$MODE" = live ] && backend_args+=(--replace --allow-replacement)
 
 	"$BACKEND" "${backend_args[@]}" >"$LOGDIR/backend.log" 2>&1 &
@@ -552,11 +556,12 @@ inner() {
 		DRIVER=$!
 	fi
 
-	local e2e=(
-		--start-uri "https://localhost:$PORT$START_PATH"
-		--completion-uri "$COMPLETION_URI"
-		--wait 120000
-	)
+	local e2e=(--wait 120000)
+	if [ "$EXTERNAL_IDP" = 1 ]; then
+		: # the caller names the identity provider and the completion URI
+	else
+		e2e+=(--start-uri "https://localhost:$PORT$START_PATH" --completion-uri "$COMPLETION_URI")
+	fi
 	[ -n "$SESSION_MODE" ] && e2e+=(--session-mode "$SESSION_MODE")
 
 	echo
@@ -591,7 +596,7 @@ inner() {
 	fi
 
 	touch "$LOGDIR/driver-stop"
-	kill ${DRIVER:+"$DRIVER"} "$BE" "$CE" "$FE" "$SERVER" ${PERM:+"$PERM"} \
+	kill ${DRIVER:+"$DRIVER"} "$BE" "$CE" "$FE" ${SERVER:+"$SERVER"} ${PERM:+"$PERM"} \
 		${PROMPTER:+"$PROMPTER"} 2>/dev/null
 	sleep 1
 
@@ -612,6 +617,23 @@ inner() {
 			echo "  FAIL  a certificate was answered after a cancelled chooser"
 			rc=1
 		fi
+	elif [ "$EXTERNAL_IDP" = 1 ]; then
+		expect_log "1 webkit asked for a certificate" "$LOGDIR/backend.log" \
+			'certificate-challenge host=' || rc=1
+		expect_log "2 the portal provider took it" "$LOGDIR/backend.log" \
+			'certificate-challenge provider=portal' || rc=1
+		expect_log "3 the module ran in the network process" "$LOGDIR/backend.log" \
+			'^\(process:[0-9]+\): pkcs11-portal-certificate-DEBUG.*grant acquired' || rc=1
+		expect_log "5 the backend created a grant" "$LOGDIR/certificate.log" \
+			'grant-created' || rc=1
+		expect_log "6 the PIN was accepted" "$LOGDIR/certificate.log" \
+			'login-ok' || rc=1
+		expect_log "6 the signature was produced" "$LOGDIR/certificate.log" \
+			'operation-completed' || rc=1
+		expect_log "2 this backend answered from portal" "$LOGDIR/backend.log" \
+			'certificate-answered provider=portal' || rc=1
+		expect_log "8 the flow completed" "$LOGDIR/e2e.log" '^PASS$' || rc=1
+		echo "  info  certificate host(s): $(grep -oE 'certificate-challenge host=[^ ]+' "$LOGDIR/backend.log" 2>/dev/null | sort -u | sed 's/.*host=//' | tr '\n' ' ')"
 	else
 		expect_log "1 webkit asked for a certificate" "$LOGDIR/backend.log" \
 			'certificate-challenge host=localhost' || rc=1
