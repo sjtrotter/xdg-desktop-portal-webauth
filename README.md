@@ -19,7 +19,7 @@ Last checked 2026-09-06.
 
 | | State |
 |---|---|
-| Impl interface: `Start`, `Close`, exactly one `Response`, same-UID and frontend-owner checks | Implemented (`backend/src/webauthentication-impl.c`) |
+| Impl interface: `Start` returning `(u, a{sv})`, `Close` on the impl Request, same-UID and frontend-owner checks | Implemented (`backend/src/webauthentication-impl.c`) |
 | Hosted WebKitGTK window: security chrome, parenting to `parent_window`, downloads and popups and permissions refused, TLS errors fail closed | Implemented |
 | Completion interception: a match in any frame ends the flow and is never fetched | Implemented (`backend/src/completion.c`, `test-completion.c`) |
 | Storage partitioning: `shared` per app id, `ephemeral` per `Start`, cookie jar included | Implemented |
@@ -32,7 +32,7 @@ Last checked 2026-09-06.
 | Caller attribution in the certificate portal's chooser | Partial. That window names this backend, not the application that asked |
 | Per-transaction isolation of certificate authority | Partial. A grant outlives the transaction, and a connection outlives the grant ([docs/SECURITY.md](docs/SECURITY.md)) |
 | A second consumer, and a second backend for the interface | Not implemented |
-| Proposed upstream | No. No issue, no pull request, no maintainer contact |
+| Proposed upstream | No. No issue and no pull request; two comments announcing the work on 2026-09-05 (flatpak/xdg-desktop-portal#662, FreeRDP/FreeRDP#13328) |
 | Independent security review, a second maintainer | Not done |
 
 Two runs on real hardware, both on 2026-09-05:
@@ -86,8 +86,9 @@ Applications call xdg-desktop-portal and nothing else. They never name a backend
 `.portal` file, and cannot tell which backend served them.
 
 The interface is not exported unless xdg-desktop-portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` (or `all`). That is the default state of
-every machine. With the gate off, `entra-token-helper` exits `40` and names the missing variable.
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` (or `all`). The experimental interface is
+disabled by default. With the gate off, an `entra-token-helper` call that needs the portal exits `40`
+and names the missing variable; cached tokens and account management do not need it.
 
 ## Interface at a glance
 
@@ -99,7 +100,7 @@ Start(s parent_window, s start_uri, s completion_uri, a{sv} options) -> o reques
 ```
 
 One method. `start_uri` must be absolute `https` with a host. `completion_uri` must be absolute, with
-no userinfo and no wildcard. Options are `handle_token`, `activation_token`, `session_mode`
+no userinfo and no wildcard in the host. Options are `handle_token`, `activation_token`, `session_mode`
 (`shared` or `ephemeral`), `timeout` (default 300 s, clamped to 900 s) and `title`. Unknown keys are
 dropped and an unknown `session_mode` is an error. The answer arrives on
 `org.freedesktop.portal.Request`: `Close()` cancels, and `Response(u, a{sv})` fires exactly once with
@@ -176,9 +177,10 @@ $ ./build/subprojects/xdg-desktop-portal-webauth/xdg-desktop-portal-webauth --he
 $ ./build/subprojects/entra-token-client/entra-token-helper --help
 ```
 
-The end-to-end scripts each stand up a private bus with `dbus-run-session` and a headless X server,
-so none of them touches the session bus or the display. They need a build of the frontend branch;
-point at it with `XDP_BUILD`.
+`ui-smoke.sh`, `portal-stack.sh` and `entra-e2e.sh` stand up a private bus with `dbus-run-session`
+and a headless X server, so they touch neither the session bus nor the display; `portal-stack.sh
+--live` and the trigger script use the real desktop. They need a build of the frontend branch; point
+at it with `XDP_BUILD`.
 
 ```console
 $ tools/softhsm-fixture.sh                  # a CA, a server certificate, a token, a PIN file
@@ -192,8 +194,8 @@ $ tools/entra-e2e.sh                        # the client through all four verbs,
 $ tools/trigger-webauthentication.sh all    # the PUBLIC interface with gdbus, as an app would
 ```
 
-Every run also checks, from the fixture server's access log, that the completion URI was never
-fetched. `tools/portal-stack.sh` prints the chooser count at the end; three would be a regression.
+The fixture-backed runs (`ui-smoke.sh`, `portal-stack.sh`) also check, from the fixture server's
+access log, that the completion URI was never fetched. `tools/portal-stack.sh` prints the chooser count at the end; three would be a regression.
 [docs/TESTING.md](docs/TESTING.md) has the rest, including what only a real tenant and a real card
 can answer.
 
@@ -264,7 +266,7 @@ Intune-enrolled devices, which hold a device-bound primary refresh token this pr
   belongs in the shared frontend and is not written.
 - A grant outlives the transaction that provoked it, and an authenticated connection outlives the
   grant. [docs/SECURITY.md](docs/SECURITY.md) says what closing a transaction does not do.
-- Nothing has been proposed upstream, to xdg-desktop-portal or to FreeRDP. There is no second
+- Neither the portals nor the FreeRDP fork branch has been proposed upstream. There is no second
   consumer of the interface and no second backend for it, and both are what would show the interface
   is more than this backend with a bus name.
 - The API is a phishing launcher: any same-UID application can ask for a convincing corporate sign-in
