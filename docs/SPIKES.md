@@ -1,7 +1,9 @@
 # Go / no-go spikes
 
-Status: **S2 has been run and is answered** (see its Result section), and has since been
-confirmed against the certificate portal's real client-side module; S1 and S3 have not.
+Status: **S1, S2 and S3 have all been run and are answered** (see their Result sections). S2 was
+confirmed against the Certificate portal's real client-side module 2026-09-04/05/06; S1 was
+answered by the 2026-09-05 chain (one interactive re-auth needed for the RDS PoP token); S3 by the
+same run (the ARM token came from the keyring cache).
 
 Two questions decide whether this project is worth building as described — one per component. Both are
 answerable in days, with code that already exists, and both must be answered **before** any
@@ -11,7 +13,7 @@ packaging story.
 | | Layer | Question | Decides |
 |---|---|---|---|
 | **S1** | the Entra client | Can a refresh token mint a PoP token for a new key, silently? | The product promise |
-| **S2** | the portal backend | Can WebKit complete mutual TLS with a certificate brokered by the smart card portal? | The support floor, and whether the preferred certificate path exists at all |
+| **S2** | the portal backend | Can WebKit complete mutual TLS with a certificate brokered by the Certificate portal? | The support floor, and whether the preferred certificate path exists at all |
 | **S3** | the Entra client | What happens when there is no keyring? | How much the caching design is worth |
 
 S2 is the one that decides whether the *portal backend* is buildable as described, so it is the
@@ -107,9 +109,9 @@ undocumented one is not.
 ## S2 (backend) — Can WebKit complete a mutual-TLS handshake with a brokered certificate?
 
 **The question.** The preferred certificate path takes the chooser and the PIN out of the backend
-and into the smart card portal. Whether that is *possible* comes down to one unproven step:
+and into the Certificate portal. Whether that is *possible* comes down to one unproven step:
 
-> Can a `GTlsCertificate` built from a credential the smart card portal brokered — a p11-kit
+> Can a `GTlsCertificate` built from a credential the Certificate portal brokered — a p11-kit
 > endpoint obtained at run time, or an external signer — actually satisfy a WebKitGTK client
 > certificate challenge and complete a mutual-TLS handshake?
 
@@ -124,10 +126,12 @@ certificate and a private key named by PKCS#11 URIs, with the key used only late
 - **WebKit's network process may not see a module registered after it started**, and it is not
   settled which process opens the socket, or when.
 
-Until this passes, the backend keeps the in-process adapter and does **not** hard-depend on the
-smart card portal ([decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md)).
+S2 has passed: the backend has no in-process adapter and never did; it depends on the Certificate
+portal's PKCS#11 module as the only client-certificate path, with `pkcs11` (a token named on the
+command line, no chooser) as the non-portal fallback
+([decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md)).
 
-**This is a joint spike** with the smart card portal's repository: that project must be able to
+**This is a joint spike** with the Certificate portal's repository: that project must be able to
 produce an endpoint or signer at all before this one can consume it. Stand in for it with a
 hand-run `p11-kit server` for the first pass — worth doing regardless, because it isolates whether a
 failure is in the producing or the consuming.
@@ -260,18 +264,20 @@ Alongside, and cheap to check here rather than later:
 - Steps 11–13 behave identically at both ends of the matrix, or the differences are small enough to
   describe in a paragraph.
 
-Then the `portal` adapter becomes the preferred implementation, and retiring the in-process fallback
-becomes a scheduled decision rather than an aspiration.
+The `portal` provider is now the preferred implementation, per S2's Result above. There is no
+in-process fallback to retire — only the `pkcs11` non-portal fallback, which is intentional and not
+scheduled for removal.
 
 ### Fail
 
-The backend ships with the **in-process adapter** and works. That is the point of having built the
-adapter, and it is why this failure is survivable rather than fatal.
+**This is now moot — S2 passed 2026-09-04/05/06.** Had it failed, the backend would have had only
+the `pkcs11` fallback (a token named on the command line, no chooser): there was never an
+in-process adapter to fall back to.
 
 Then, in order of plausibility:
 
 - **One permanently registered broker module exposing synthetic grant-bound slots.** Registered once
-  at startup, multiplexing grants behind it. This changes the smart card portal's contract from
+  at startup, multiplexing grants behind it. This changes the Certificate portal's contract from
   "return a new remote module" to "return a URI an already-registered module resolves" — a change to
   the other project's interface, not to this adapter's shape.
 - **A dedicated WebKit network process or environment per transaction**, so registration happens
@@ -283,11 +289,10 @@ Then, in order of plausibility:
 Publishing the Certificate portal's API should wait for one of these to work. An API claiming
 object-scoped modules, service-owned login, broad application compatibility or connection-bound
 lifetime, published before any of it is demonstrated, is a promise that will have to be broken.
-**Note that its own frontend branch has taken exactly that view**: `OpenPkcs11Endpoint` is not on
-the interface at all, deferred for its own review, which means the forwarded-module half of S2 has
-nothing to run against until somebody adds it. What is left of S2 on the portal side is the
-brokered-`Sign` half, and that needs a GnuTLS external-signer path in WebKitGTK/glib-networking
-that is not known to exist.
+**Superseded by the Result above.** S2 settled on the PKCS#11 URI mechanism, not
+`OpenPkcs11Endpoint` and not a brokered `Sign`: WebKit resolves the certificate through a p11-kit
+module the Certificate portal publishes, and that module exists and is tested. There is no
+remaining half of S2 to run.
 
 If instead **interception** is what fails, that is a different problem: the browser-extension
 mechanism from the "Why not X" section stops being a rejected alternative and becomes a second

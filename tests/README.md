@@ -3,16 +3,16 @@
 **The backend's tests are `backend/tests/`, run by `meson test -C build-backend`, and the
 end-to-end runs are `tools/ui-smoke.sh`; what they cover and what they proved is
 [../docs/TESTING.md](../docs/TESTING.md).** This directory holds no tests: it holds the strategy
-they were written from, kept because the strategy outlived the sketch and the Entra client has
-still not started.
+they were written from, kept because the strategy outlived the sketch; the Entra client is
+implemented, in `clients/entra/`.
 
 The fixture tables below are the ones `backend/tests/test-completion.c` now carries, with the
 frontend's own cases marked `FRONTEND` in that file.
 
 **Half of it exists already, in the frontend's repository.** The xdg-desktop-portal branch
 `experimental/certificate-webauthentication` ships `tests/templates/webauthentication.py` (a
-python-dbusmock backend) and `tests/test_webauthentication.py` (38 passing cases, each run once as
-`AppInfoHost` and once as `AppInfoFlatpak`). Everything below that is a frontend obligation is that
+python-dbusmock backend) and `tests/test_webauthentication.py` (16 functions, 35 cases, 70 runs,
+each case run once as `AppInfoHost` and once as `AppInfoFlatpak`). Everything below that is a frontend obligation is that
 suite; what is left for this repository is the backend's half.
 
 ## Principle: the interesting parts are testable offline
@@ -59,8 +59,8 @@ edge is worse than one that is obviously wrong, because it will be trusted.
 ### The impl boundary (upstream's half — `desktop-portal/web-authentication.c`)
 
 Cheap, offline, and **largely written already**: the branch's `tests/test_webauthentication.py` has
-38 passing cases against a python-dbusmock backend, covering the happy path, cancellation from both
-directions, four invalid-option cases and six invalid-URI cases. What follows is the list this
+35 passing cases (70 runs) against a python-dbusmock backend, covering the happy path, cancellation
+from both directions, four invalid-option cases and nine invalid-URI cases. What follows is the list this
 repository wrote in advance; it is kept as the checklist to read that suite against. With a stub
 backend that returns canned replies, assert that:
 

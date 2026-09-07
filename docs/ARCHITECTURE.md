@@ -1,9 +1,10 @@
 # Architecture
 
 Status: the backend and the Entra client are both implemented and have both been run end to end —
-the backend against a fixture identity provider with a card behind it, the client against a mock
-authority through that same backend ([TESTING.md](TESTING.md)). Neither has talked to a real
-identity provider. Where this document says "would", it still means it.
+against a fixture identity provider and a mock authority ([TESTING.md](TESTING.md)), and against a
+real Entra ID tenant: 2026-09-05 10:42 live sign-in, and 2026-09-05 14:21 the full FreeRDP-to-AVD
+chain, with one interactive re-auth for the RDS proof-of-possession token. Where this document says
+"would", it still means it.
 
 Web authentication is **a portal frontend and a portal backend**, plumbed exactly as
 xdg-desktop-portal plumbs every portal it has — because the frontend *is* xdg-desktop-portal.
@@ -13,7 +14,7 @@ interface applications must never reach; the backend owns the window. That shape
 early, and its costs are recorded in
 [decisions/0008-build-to-the-upstream-shape.md](decisions/0008-build-to-the-upstream-shape.md).
 **This repository is the backend and the client, and nothing else** — the frontend is a branch of
-xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `3a32e9b`; see
+xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `a6b06d4`; see
 [decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
 
 ```
@@ -44,8 +45,8 @@ xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `3a32e9
                     │  certificate adapter ───┐               │
                     └─────────────────────────┼───────────────┘
                                               │
-       portal (preferred; needs a module ┴──▶ the Certificate portal's OWN PKCS#11
-        that does not exist yet)              module, named by URI: portal-token.h
+       portal (the only client-cert   ┴──▶ the Certificate portal's OWN PKCS#11
+        path; preferred)                    module, named by URI: portal-token.h
                                               ▲ chooser, consent and PIN stay there
        pkcs11 (--client-cert-uri) ───────────▶ any p11-kit token. No chooser, no
                                               PIN prompt, no card handling here
@@ -55,20 +56,20 @@ xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `3a32e9
 with `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. With the gate off, an application
 sees "no such interface" and this backend is never activated.
 
-The smart card portal knows nothing about the web. The web authentication portal knows nothing
+The Certificate portal knows nothing about the web. The web authentication portal knows nothing
 about OAuth, and knows as little about cards as the chosen adapter allows. The Entra client owns no
 windows. None of them knows anything about RDP.
 
 **The Certificate portal is an external component and is NOT a hard dependency.** Its backend is a
 separate project in its own repository (`xdg-desktop-portal-certificate`), sketched in parallel;
 its frontend is the *same* xdg-desktop-portal branch as ours. It is the *preferred* way to satisfy
-a certificate challenge — but the mechanism connecting it to a WebKit handshake is unproven and has
-a mechanism, which spike [S2](SPIKES.md) has now settled: WebKit carries a certificate to its
-network process as a **PKCS#11 URI** and resolves it there, so the seam between the two projects is
-a p11-kit module the Certificate portal publishes, not a brokered `Sign`. That module does not
-exist yet, so the `portal` provider reports itself unavailable and the `pkcs11` provider — a token
-named on this backend's command line — is what works today. A machine with no certificate portal
-installed still signs in. See
+a certificate challenge, and the mechanism connecting it to a WebKit handshake is what spike
+[S2](SPIKES.md) settled: WebKit carries a certificate to its network process as a **PKCS#11 URI**
+and resolves it there, so the seam between the two projects is a p11-kit module the Certificate
+portal publishes, not a brokered `Sign`. That module exists and is tested (2026-09-06, Firefox and
+this backend), so the `portal` provider is the working, preferred path; the `pkcs11` provider — a
+token named on this backend's command line — remains available for a machine with no certificate
+portal installed. See
 [decisions/0007-certificate-adapter.md](decisions/0007-certificate-adapter.md).
 
 Note what the arrow into the backend **is**: a D-Bus interface, not the in-process vtable version 0
@@ -97,14 +98,14 @@ against `xdg-desktop-portal/desktop-portal/account.c` and
 | **Completion matching** | Re-checks the returned URI against the requested one | **Enforces it against live navigations** and stops before load | see [IMPL-INTERFACE.md](IMPL-INTERFACE.md) |
 | **TLS client certificates, PIN** | Never sees either | Yes, behind the adapter | backend-side |
 | **Backend discovery** | Yes: `.portal` files and `portals.conf` | Declares itself in one `.portal` file | `xdp-portal-config.c`; gtk's `data/gtk.portal` |
-| **Deadline** | **None**: the proxy timeout is `G_MAXINT` and there is no backstop | The only one there is, started when the window opens | a gap against every other portal, noted in [SECURITY.md](SECURITY.md) |
+| **Deadline** | Yes: races `dex_timeout_new_seconds(timeout)` against the impl call and closes the impl request on expiry | Also started when the window opens | see [IMPL-INTERFACE.md](IMPL-INTERFACE.md), noted in [SECURITY.md](SECURITY.md) |
 | **Remembered decisions (permission store)** | None in version 1 — see below | None | `xdp-permissions.c` / `org.freedesktop.impl.portal.PermissionStore` |
 
 **On the permission store.** Upstream frontends remember per-application decisions for portals
 whose consent is repeatable — Location, Camera, Background. Version 1 of this interface stores
 **nothing**, and that is a decision rather than an omission: the two things a user could be asked
 here are "may this application open a sign-in window" and "may it use your card", the second of
-which belongs to the smart card portal's own policy, and remembering the first for an *unverified*
+which belongs to the Certificate portal's own policy, and remembering the first for an *unverified*
 host caller would key a persistent grant on a label that is not a principal. When a permission
 store is added it will be for sandboxed callers only, and it will be a separately reviewed
 decision. There is deliberately no `permission-store.h` in this sketch.
@@ -211,7 +212,7 @@ this is the seam WebKit actually has:
   presents ([`src/tls/portal-token.h`](../backend/src/tls/portal-token.h)). The card, the chooser,
   the consent and the PIN stay in that service; the token declares
   `CKF_PROTECTED_AUTHENTICATION_PATH`, so this backend answers no PIN challenge at all.
-  **Preferred**, and unavailable until that module exists.
+  **Preferred**, and the only client-certificate path; tested 2026-09-04/05/06.
 - **`pkcs11`** — any p11-kit token, named by `--client-cert-uri` on this backend's command line,
   with a PIN read from the file `--client-cert-pin-file` names. No chooser, no prompt, no
   enumeration.
@@ -240,8 +241,9 @@ a capability the frontend issues and later recognises, would satisfy the rule; n
 In-process is the cheapest way to satisfy it, not the only one. See
 [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
 
-**Rules the in-process path must keep** — and it is currently the only path that can run, so these
-are not fallback rules:
+**Rules this path must keep even once in-process app id derivation is built** — today each portal
+derives and grants consent separately, which is why the same WebKitGTK handshake raises two
+choosers and one PIN, not one:
 the chooser names the requesting application, the origin, the certificate identity and the purpose
 *before* any PIN; the PIN is never stored, never logged, never in the DOM, and its buffer is cleared
 on every exit path; a challenge is answered once plus at most one retry the TLS stack itself
@@ -393,18 +395,16 @@ FreeRDP needs two tokens for one connection, in this order.
     the target hostname, and calls `GetCommonAccessToken` with `ACCESS_TOKEN_TYPE_AAD`, the scope,
     and `req_cnf`.
 11. The callback runs the client again with `--req-cnf <value>` and the RDS scope.
-12. **Silent path — the one that decides whether this is worth building.** The client should be able
-    to redeem the refresh token it already holds for a *new* PoP token bound to a *new* key, with no
-    portal call and no second card interaction. Whether that works under Government tenant policy
-    and Conditional Access is spike S1 in [SPIKES.md](SPIKES.md). If it does not, this becomes a
-    second transaction — and this is where the `shared` session store earns its keep: the Entra
-    session cookie from step 6 is still there, so the user should see a window but not a second card
-    prompt.
+12. **Silent path — settled by the 2026-09-05 chain.** Under this Government tenant's Conditional
+    Access policy, redeeming the refresh token for a *new* PoP token bound to a *new* key was not
+    silent: it needed one interactive re-auth through the portal window. The `shared` session store
+    earned its keep as designed — the Entra session cookie from step 6 was still there, so the
+    second window was a click rather than a card. Spike S1 in [SPIKES.md](SPIKES.md) is answered.
 13. The client prints the PoP token. FreeRDP requests the RDS nonce and completes the RDS-AAD
     handshake with the key from step 10.
 
-An interactive window appears at most once per connection if S1 passes; at most twice if it does
-not, and the second should be a click rather than a card.
+On the 2026-09-05 run an interactive window appeared twice: once for the initial sign-in, and once,
+a click rather than a card, for the RDS proof-of-possession token.
 
 ## Process model
 

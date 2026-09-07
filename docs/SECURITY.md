@@ -1,6 +1,7 @@
 # Security model
 
-Status: the backend is implemented; the Entra client is still a sketch. This document states the
+Status: the backend and the Entra client are both implemented, and the client signed in against a
+real Entra ID tenant on 2026-09-05. This document states the
 rules the implementation must satisfy, and — in the table under "What is enforced today" — which of
 them the code in `backend/` actually enforces, which are the frontend's, and which are still only
 written down. A rule with no implementation is marked as such rather than left to be assumed.
@@ -87,7 +88,7 @@ this repository. What the end-to-end runs actually demonstrated is [TESTING.md](
 | Chrome states the frontend-established caller, its honesty level, and the engine's origin | `src/chrome.c` | **Implemented**. Never reviewed by a designer, and never seen by a user who had to make a decision from it |
 | App id derivation, option filtering, the returned-URI re-check, exactly one `Response` | Frontend | **Implemented there** |
 | Rate limiting | Frontend | **Not implemented anywhere** |
-| The `portal` certificate provider | `src/tls/client_cert_portal.c` | **Written, and reports itself unavailable**: the module it needs does not exist |
+| The `portal` certificate provider | `src/tls/client_cert_portal.c` | **Implemented, and is the only client-certificate path**: tested against the Certificate portal's module 2026-09-04/05/06 |
 | Accessibility: AT-SPI labels, keyboard operation, focus return | `src/chrome.c` | **Partly**: labels and Escape are there; nothing has been tested with a screen reader |
 
 ## What is being protected
@@ -391,19 +392,19 @@ Stated plainly, because the empty `portal_release()` used to say it by omission.
 
 **1. The grants are not released, and this backend cannot release them.** A grant belongs to the
 D-Bus peer that acquired it, and the peers are the two PKCS#11 module instances — this process's,
-which imported the certificate, and WebKit's network process's, which owns the handshake, whose
-grant is now *derived* from this process's rather than separately consented to — not this
-adapter. It has no session handle to pass to `ReleaseGrant`; it does not speak to the module, it
-speaks to GnuTLS; and there is no per-module `C_Finalize` it could call that would not also finalize
-every other module GnuTLS loaded through p11-kit's proxy. The network process's module is not even
-in this address space.
+which imported the certificate, and WebKit's network process's, which owns the handshake and
+**separately consents to its own grant**: delegation is out of this proposal, so the two grants are
+two independent consents, not one derived from the other. It has no session handle to pass to
+`ReleaseGrant`; it does not speak to the module, it speaks to GnuTLS; and there is no per-module
+`C_Finalize` it could call that would not also finalize every other module GnuTLS loaded through
+p11-kit's proxy. The network process's module is not even in this address space.
 
 What actually ends those grants: **their own expiry**, which is the portal's default because the
 module requests no lifetime of its own; the portal **invalidating** them (the card leaving the
-reader, the certificate portal restarting, the frontend going away); or the holding process exiting,
-at which point `C_Finalize` calls `ReleaseGrant`. The derived grant has one more end than the
-others: it dies with the grant it came from, with reason `parent_released`, so releasing this
-process's grant releases the network process's too. Measured in
+reader, the certificate portal restarting, the frontend going away — reasons `token_removed`,
+`policy`, `backend_gone` or `error` on the wire); or the holding process exiting, at which point
+`C_Finalize` calls `ReleaseGrant`. Because the two grants are independent, releasing one does not
+release the other. Measured in
 [TESTING.md](TESTING.md): a second `Start` against the same backend process produced **no chooser,
 no PIN prompt and no signature**, because both grants were still alive.
 
@@ -711,7 +712,8 @@ Before either interface is frozen, five things want an independent pair of eyes:
 
 1. The completion matcher and its percent-decoder — **both copies**, against the same fixtures. Two
    implementations of one rule is a cost of the split and this is where it is paid. One copy is
-   written and tested upstream (`completion_uri_matches()`); the other is not written at all.
+   written and tested upstream (`completion_uri_matches()`); the other is `backend/src/completion.c`,
+   tested by `test-completion.c` ([TESTING.md](TESTING.md)).
 2. The frontend's peer check and app-id derivation, and everything downstream that trusts the
    answer — the chrome, the partition choice, the result binding, and what is passed to the
    Certificate portal about the original caller. *(The derivation is upstream's now; what to review
@@ -737,6 +739,6 @@ ill-defined trust model, and this is a real outcome to plan for rather than a fo
 
 ## Reporting
 
-This is a design sketch with no users and no releases. Problems in the *design* belong in an issue.
+This is implemented, with no users and no releases. Problems in the *design* belong in an issue.
 There is nothing deployed to report a vulnerability against yet; when there is, this section will
 name a contact and a disclosure window.

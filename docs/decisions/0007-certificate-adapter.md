@@ -89,6 +89,10 @@ BACKEND per [0008](0008-build-to-the-upstream-shape.md) and calls a different in
 >   delegating across a boundary is not itself forbidden, and authenticated IPC or a
 >   frontend-issued capability would satisfy the rule. Neither is built, and in-process remains the
 >   cheapest way to satisfy it. See [0010](0010-backend-only-frontend-lives-upstream.md).
+> - "So the `inproc` fallback is not merely retained, it is currently the only implementation that
+>   can work at all" — there is no `inproc` provider; there never was one to retain. The module the
+>   `portal` provider needs exists and is tested, so `portal` is the working, preferred path, and
+>   `pkcs11` (a token named on the command line, no chooser) is the fallback.
 >
 > And one thing the amendment above did not anticipate: a finished transaction cannot revoke the
 > grants it caused, because they belong to two PKCS#11 module instances and one of them is in

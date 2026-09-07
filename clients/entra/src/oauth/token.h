@@ -18,7 +18,7 @@
  *  request adds `req_cnf` and `token_type=pop` to an otherwise ordinary grant and
  *  the response comes back with `"token_type":"pop"` and NO refresh token.
  *
- *  Observed on hardware (FreeRDP-plan/test-avd-20260903-080717.log): Entra infers
+ *  Observed on hardware, 2026-09-03: Entra infers
  *  the PoP request from `req_cnf` alone and FreeRDP does not send `token_type=pop`
  *  at all. This client sends both, which is what MSAL does and what the parameter
  *  is for; the response shape was identical either way.

@@ -136,7 +136,7 @@ summary(
   {
     'login, token, accounts, logout': true,
     'proof-of-possession tokens (--req-cnf)': true,
-    'a real identity provider': false,
+    'a real identity provider': true,
   },
   section: 'status',
   bool_yn: true,

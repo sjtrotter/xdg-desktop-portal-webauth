@@ -23,21 +23,23 @@
 #   entra-token-helper            the program under test, as an ordinary
 #                                 application calling the public interface
 #
-# THE FIVE RUNS, and what each one is the only evidence for:
+# THE SEVEN RUNS, and what each one is the only evidence for:
 #
 #   1  login              a window, a code, an exchange, an account stored
-#   2  token              THE MOCK IS NOT CALLED AT ALL: served from cache
-#   3  token --req-cnf    the mock refuses the pop REFRESH with
+#   2  accounts           the stored account is listed
+#   3  token              THE MOCK IS NOT CALLED AT ALL: served from cache
+#   4  token --req-cnf    the mock refuses the pop REFRESH with
 #                         interaction_required -- which is what Entra does,
 #                         because that scope carries the "make sure you trust
 #                         this client" interstitial -- the client opens the
 #                         window again, exchanges a fresh code with req_cnf,
 #                         and the pop token comes back carrying the caller's
 #                         confirmation blob
-#   4  token --req-cnf    again, and the mock sees another grant: A POP TOKEN IS
+#   5  token --req-cnf    again, and the mock sees another grant: A POP TOKEN IS
 #                         NEVER CACHED
-#   5  logout             the account is gone, and a --prompt never request
+#   6  logout             the account is gone, and a --prompt never request
 #                         after it exits 30 rather than opening a window
+#   7  (no portal at all) what the client does with nothing to call
 #
 # THE KEYRING IS libsecret's FILE BACKEND. SECRET_BACKEND=file with
 # SECRET_FILE_TEST_PATH and SECRET_FILE_TEST_PASSWORD needs no daemon, no

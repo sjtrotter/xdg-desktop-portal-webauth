@@ -7,7 +7,8 @@ tenant and not a card.
 **What has changed since this document was last honest about its own scope:** the frontend is no
 longer this project's to build. It is an xdg-desktop-portal branch
 ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md),
-[UPSTREAMING.md](UPSTREAMING.md)), written and passing its own 38-case pytest suite. Anything below
+[UPSTREAMING.md](UPSTREAMING.md)), written and passing its own 16-function, 35-case pytest suite
+(70 runs across the host and Flatpak fixture). Anything below
 that budgets frontend work is work that is *done, elsewhere, by the same author*; the numbers have
 not been re-derived, and where a line is now moot it says so rather than pretending the rest got
 better.
@@ -17,19 +18,15 @@ working Remmina patches**, taken from the Codex estimate in the design review. T
 *credible MVP*, not something ready for general distribution. The largest single uncertainty in
 all of them is S2 (the WebKitGTK client-certificate path across distro versions).
 
-## Before anything: the two spikes
+## Before anything: the two spikes — both answered
 
-Run [S1](SPIKES.md) (refresh token → PoP token for a new key, silently) and [S2](SPIKES.md) (does
-WebKit + GLib TLS accept a certificate on a p11-kit-forwarded module) before committing to the rest.
-S1 decides what the client can promise; S2 decides whether the smart-card delegation works at all
-and where the support floor sits. S3 (keyring availability) can run alongside. **Days, not weeks** —
-and nothing below starts until both have answers.
-
-S2 has an external dependency: the certificate project's own spike, in its own repository, must
-first establish that a scoped forwarded module can be produced — and **that project's frontend
-branch has deferred `OpenPkcs11Endpoint` entirely**, so there is currently no method to ask for one.
-Run its spike first, or stand in for it with a hand-run `p11-kit server` — which is worth doing
-regardless, because it isolates whether a failure is in the forwarding or in the consuming.
+[S1](SPIKES.md) (refresh token → PoP token for a new key, silently) and [S2](SPIKES.md) (does
+WebKit + GLib TLS accept a certificate on a p11-kit-forwarded module) are both answered. S2 was
+settled 2026-09-04: the Certificate portal's own PKCS#11 module works, and the 2026-09-04/05/06
+runs exercised it end to end. S1 was settled by the 2026-09-05 chain: under this Government
+tenant's Conditional Access policy, redeeming the refresh token for a new PoP key was not silent —
+it needed one interactive re-auth. S3 (keyring availability) also ran: the ARM token came from the
+keyring cache on the 2026-09-05 run.
 
 ---
 
@@ -54,9 +51,10 @@ levels. Option filtering and argument validation. Storage-mode policy. The re-ch
 `completion_uri` a backend returns. Exact parsed completion matching and its rejection rules — the
 frontend's copy. Structural redaction discipline.
 
-All of it exists in `desktop-portal/web-authentication.c` on the xdg-desktop-portal branch, with 38
-passing pytest cases. Two caveats: **rate limiting is not implemented** — it is on the branch's own
-open-items list — and nothing has been run against a real web engine.
+All of it exists in `desktop-portal/web-authentication.c` on the xdg-desktop-portal branch, with 35
+passing pytest cases (70 runs across the host and Flatpak fixture). One caveat: **rate limiting is
+not implemented** — it is on the branch's own open-items list. It has been driven by WebKitGTK
+(2026-09-04/05) and by a real Entra ID tenant (2026-09-05).
 
 ### ~~0b. Frontend: backend discovery and lifetime — 0.5–1 week~~ — **done, upstream, and mostly for free**
 
@@ -114,8 +112,9 @@ The wide range is S2's fault and narrows once S2 has run.
 
 The chrome that shows the verified caller and the real origin independently of caller text, and the
 accessibility acceptance criteria from [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) — AT-SPI
-exposure including the in-process chooser and PIN prompt, keyboard-only certificate selection and
-PIN entry, focus order and restoration across any hand-off to another portal's windows,
+exposure for backend-owned controls (the chooser and PIN prompt are the Certificate portal's, not
+in-process here), keyboard-only certificate selection and PIN entry, focus order and restoration
+across any hand-off to another portal's windows,
 screen-reader announcement, contrast and scaling. Budgeted as its own item because treating it as
 polish is how it does not happen, and because this chrome carries a security decision that WebKit's
 own accessibility does not cover.
@@ -162,18 +161,16 @@ named in [SECURITY.md](SECURITY.md), which now includes the impl boundary itself
 general distribution** rather than a controlled-environment build. The gap is distro variance,
 packaging, and the error paths that only appear on machines you do not own.
 
-The estimate has not fallen even though the smart card portal exists, because the in-process
-adapter is still built here — that is the whole point of retaining it. What the smart card portal
-buys is not a smaller phase 0; it is that the card code is eventually written *once*, for every
-application, rather than faster for this one.
+The estimate has not fallen even though the Certificate portal exists as the only client-certificate
+path — that is the whole point of building the backend without an in-process adapter. What the
+Certificate portal buys is not a smaller phase 0; it is that the card code is eventually written
+*once*, for every application, rather than faster for this one.
 
 **And note the coordination cost**, most of which has now been paid in one place. The
 `AcquireCredential` contract, its grant semantics and the lifetime of anything it returns are
 settled — both interfaces are defined by one xdg-desktop-portal branch, so there are no two sketches
-to reconcile and no bus names to negotiate. What is *not* settled is whether either can be
-implemented: neither has ever been answered by anything but a python-dbusmock template, and the
-Certificate interface deliberately ships without `OpenPkcs11Endpoint`, so the module transport S2
-was to test has nothing to test against.
+to reconcile and no bus names to negotiate. Whether either can be implemented is settled too: the
+module transport S2 was to test now exists and was exercised end to end on 2026-09-04/05/06.
 
 ---
 
@@ -182,8 +179,8 @@ was to test has nothing to test against.
 Packaging for the distributions the S2 matrix identified, with **one** D-Bus service file, a
 `.portal` file in `$datadir/xdg-desktop-portal/portals`, a documented `portals.conf`, and a stated
 support floor — plus a patched or branch-built xdg-desktop-portal, which is the hard part. The
-certificate portal is a *recommended*, not a required, dependency: without it the in-process
-adapter runs. Testing on GNOME
+Certificate portal is a *recommended*, not a required, dependency: without it the `pkcs11` provider
+(a token named on the command line; no chooser, no PIN prompt) is what runs instead. Testing on GNOME
 and KDE, on Wayland and X11, including `parent_window` parenting and `activation_token` behaviour.
 
 One packaging question is left, and it is smaller than it was: this repository ships one backend
@@ -219,9 +216,9 @@ is not the same as opening the conversation, and it must not be presented as one
 
 The acceptance path, in order:
 
-1. Implement the prototype and publish the introspection XML. **Partly done, in the wrong order:
-   the frontend and both XML files exist on the branch, with tests; the backend does not exist at
-   all.**
+1. Implement the prototype and publish the introspection XML. **Done, in the wrong order: the
+   frontend and both XML files exist on the branch, with tests, and so does this backend, run
+   against a real Entra ID tenant on 2026-09-05.**
 2. Document the threat model, completion matching, caller identity, cookie/storage model and UI
    security chrome. (Most of that is [SECURITY.md](SECURITY.md) and
    [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) already, but written against a real
@@ -235,11 +232,11 @@ The acceptance path, in order:
    disagree with rather than a blank page.
 7. ~~Move the frontend into xdg-desktop-portal and rename both interfaces.~~ **Already done, on a
    branch, out of order** ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)).
-   What is left of this step is to rewrite the commit trailers as
-   `Assisted-by: Claude:Fable-5.1`, which is what `.gitlint.conf` asks for, and then to have the
-   patch reviewed — which is steps 5 and 6, not this one.
-8. Obtain interest from another desktop, and a second backend. **None exists**: this repository's
-   backend has no implementation.
+   All ten commits already carry `Assisted-by: Claude:claude-fable-5-1`, which is what
+   `.gitlint.conf` asks for. What is left of this step is to have the patch reviewed — which is
+   steps 5 and 6, not this one.
+8. Obtain interest from another desktop, and a second backend. **None yet**: this repository's own
+   backend is implemented and tested, but no second, independent backend exists.
 9. Add conformance tests and documentation before declaring the incubating interface obsolete.
 
 The proposal will have to answer *"what protected host resource is being mediated?"* — portals
@@ -314,11 +311,10 @@ Not "never" — "not yet, and not before something asks for it".
   different matter and is now a straightforward one: implement the impl interface, ship a `.portal`
   file, name it in `portals.conf`. That it became straightforward is most of the point of
   [decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
-- **Retiring the in-process certificate adapter.** The intended end state, once the portal path has
-  completed a real WebKitGTK mutual-TLS handshake across the support matrix. Deliberately *not*
-  scheduled: doing it before then would make the backend depend on an unproven mechanism. If it
-  never becomes possible, [0007](decisions/0007-certificate-adapter.md) should be reopened rather
-  than left to drift.
+- **There is no in-process certificate adapter to retire.** The backend was built directly against
+  the portal path once S2 answered; the `pkcs11` provider is a deliberate non-portal fallback, not a
+  holdover adapter. If the portal path stops working across the support matrix,
+  [0007](decisions/0007-certificate-adapter.md) should be reopened rather than left to drift.
 - **Persisting a certificate choice across transactions.** A distinct, reviewable policy under
   either adapter, and one that never implies persisting a PIN.
 - **Device enrollment and PRT behaviour.** The Microsoft Identity Broker's job; `sso-mib` already
@@ -337,49 +333,20 @@ Not "never" — "not yet, and not before something asks for it".
 
 ## FreeRDP-side follow-ups
 
-Changes wanted in FreeRDP itself. None block phase 0f — the existing callback seam is enough for a
-first integration — but each removes a rough edge that any out-of-tree provider hits.
+Upstream FreeRDP PR #13340 (2026-09-04) externalizes the AAD web view into a helper process that
+speaks newline-delimited JSON-RPC over two pipes: `navigate` takes a URL, a redirect-URI prefix and
+a timeout and returns the redirect URL verbatim; OAuth stays in FreeRDP; the helper is selected
+with `/azure:auth-helper:<path|autodetect>`. A follow-up agreed in review will pass the OAuth
+parameters as JSON so the helper builds the authorize URL itself.
 
-1. **A typed, size-versioned token-provider API in `client/common`.** A request struct carrying
-   `{ token_type, authority, tenant, client_id, decoded scope, req_cnf, parsed kid }`; a provider
-   callback with **userdata**; register/unregister with priority; and an explicit
-   success / declined / cancelled / error result, where `cancelled` stops the chain so cancelling
-   one interactive provider does not immediately open another sign-in window.
-   `instance->GetAccessToken` stays as the final frontend fallback for at least one ABI cycle.
-   Today's mechanism is an interception hook, not a provider interface: the argument convention is
-   undocumented positional varargs, every provider must decode `req_cnf` itself, there is no
-   userdata (`sso-mib` gets a dedicated field in `rdpClientContext` instead), and `BOOL` conflates
-   "not applicable", "temporarily unavailable", "user cancelled" and "hard failure".
+That protocol is the seam this project integrates through:
 
-2. **`freerdp_common_context()` returns `TRUE` without a token** when the frontend has no
-   `GetAccessToken`. It should return `FALSE` (or the new `DECLINED`). A caller currently gets
-   "success" and no credential, turning a missing provider into a confusing downstream failure.
-   Small, independently justified, worth sending on its own.
+1. **A helper binary speaking the #13340 protocol** that forwards `navigate` to the
+   WebAuthentication portal's `Start` and returns the completion URI. No FreeRDP changes.
+2. **Argue, in the JSON follow-up, for a helper being allowed to return a token** rather than only
+   a redirect URL, so `entra-token-helper` (cached refresh tokens, proof-of-possession) can serve
+   as a helper too. `sso-mib` stays the provider for Intune-enrolled devices.
 
-3. **`sso-mib` hard-codes the commercial AVD scope** (`https://www.wvd.microsoft.com/.default`)
-   instead of using the resolved `FreeRDP_GatewayAvdScope`. That breaks sovereign clouds outright:
-   on a Government tenant the broker is asked for the wrong resource. Related: `sso-mib`'s single
-   failure flag permanently stops trying the broker after *any* failure, including a transient one
-   or one specific to only one token type.
+The author's fork branch `client/entra-token-helper` (a `GetAccessToken` shim that runs the CLI) is
+a proof of concept from 2026-09-05 and is not the integration path.
 
-4. **Discovery is fetched before the provider is asked.** Both callers fetch the OpenID
-   configuration before invoking the provider, so a provider perfectly capable of resolving the
-   authority itself is blocked when that fetch fails. The dispatcher should build the request from
-   the *configured* authority and treat discovered endpoints as optional.
-
-5. **Registration order and lifetime.** A provider installed during `ContextNew` ends up *under*
-   `sso-mib` (installed later, in `freerdp_client_start()`); one installed during or after
-   `ClientStart` *overwrites* `sso-mib` unless it manually saves and chains. There is no
-   unregister, no ownership tracking, and no protection against callbacks destroyed in the wrong
-   order. The register/unregister API in item 1 subsumes this.
-
-6. **A single authority resolver.** The same authority is derived in at least three places today
-   (`sso-mib`, RDS-AAD discovery, ARM discovery). One exported resolver returning normalized
-   authority, tenant, client id, decoded scope and any discovered endpoints would stop provider
-   code re-implementing sovereign-cloud and tenant-selection logic.
-
-7. **Provider selection as a setting**, e.g. `/token-provider:auto|mib|helper|frontend|none`,
-   rather than a library-global environment variable — library behaviour driven by process
-   environment is hard for an embedding client to control. A sensible `auto` order is `sso-mib`
-   (enrolled devices) → this client (everything else) → frontend `GetAccessToken` → the CLI paste
-   flow.

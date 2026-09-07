@@ -26,8 +26,7 @@ Every earlier document in this repository said the same thing, and said it well:
 > negotiation, error translation and transaction-lifetime bugs.
 > — [ROADMAP.md](../ROADMAP.md) "Deferred", before this decision
 
-The design review that shaped the sketch
-(`FreeRDP-plan/DESIGN-portal-shape-codex.md`) is more explicit still:
+The design review that shaped the sketch is more explicit still:
 
 > Layer 1 should initially be an independently named, single D-Bus service with an internal backend
 > abstraction — not a freedesktop portal frontend/backend ecosystem.

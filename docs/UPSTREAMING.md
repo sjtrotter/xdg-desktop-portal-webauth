@@ -1,8 +1,10 @@
 # Upstreaming: the frontend is already upstream-shaped, and what is left
 
 Status: **nothing has been proposed to anyone.** No issue has been opened, no pull request
-exists, no maintainer has been contacted, and the branch this document is about is
-local-only — nothing was forked and nothing was pushed. What has changed since the last
+exists, and no maintainer has been contacted beyond two comments the author posted on
+2026-09-05 (flatpak/xdg-desktop-portal#662 and FreeRDP#13328). The branch this document is
+about is pushed to the author's fork, https://github.com/sjtrotter/xdg-desktop-portal.
+What has changed since the last
 version is that the backend is now implemented and has been run against the branch's
 frontend end to end ([TESTING.md](TESTING.md)), so the claim "this shape works" is an
 observation rather than a design argument.
@@ -70,7 +72,7 @@ call is an answer fetched from the network.
 
 Test results: `meson test --suite integration --suite unit` green upstream except a
 pre-existing `usb` failure (`umockdev-run` is not installed there),
-`tests/test_webauthentication.py` 69 passed, `tests/test_certificate.py` 98 passed,
+`tests/test_webauthentication.py` 70 passed, `tests/test_certificate.py` 98 passed,
 `gitlint --commits upstream/main..HEAD` passes, `black --check` passes.
 
 ## Why `experimental` is not a claim of acceptance
@@ -157,12 +159,10 @@ adapter — which matters more here than anything in the paragraph above:
    available answer here: **a trusted system authentication user-agent, persistent
    sign-in state, and client-certificate capability**, and it has to be argued rather than
    assumed. Nothing has been opened.
-2. **Fix the commit trailer.** The branch's commits carry
-   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. `gitlint` passes on that,
-   but `.gitlint.conf/co-authored-by-coding-agent.py` exists precisely to reject AI
-   co-author trailers and asks for `Assisted-by: AGENT_NAME:MODEL_VERSION` instead. A real
-   PR should use `Assisted-by: Claude:Fable-5.1`. This is noted in the branch write-up and
-   is a rewrite-the-commits job, not a code change.
+2. ~~**Fix the commit trailer.**~~ **Done.** All ten commits carry
+   `Assisted-by: Claude:claude-fable-5-1`, which is what
+   `.gitlint.conf/co-authored-by-coding-agent.py` asks for instead of a `Co-Authored-By`
+   AI trailer.
 3. **A second, unrelated consumer.** [ROADMAP.md](ROADMAP.md) makes this a precondition,
    and no amount of correct plumbing substitutes for it. One consumer that is a sibling
    project by the same author is weaker evidence still.
@@ -173,9 +173,10 @@ adapter — which matters more here than anything in the paragraph above:
    [IMPL-INTERFACE.md](IMPL-INTERFACE.md), and precisely the thing this repository took a
    position on early so that there is something concrete to disagree with.
 6. **Conformance tests and documentation** before the interface stops being experimental.
-7. **The branch's own open items**, which are not this repository's: nothing has been run
-   against a real web engine or real hardware, and the python-dbusmock templates are the
-   only implementations that have ever answered these interfaces.
+7. **The branch's own open items**, which are not this repository's: it has been run
+   against a real web engine and real hardware (WebKitGTK 2026-09-04/05, live Entra ID
+   2026-09-05), but only by this repository's backend, not by an independent
+   implementation.
 
 ## Retiring the experimental names
 

@@ -27,7 +27,7 @@ declared in    $datadir/xdg-desktop-portal/portals/webauth.portal
 is a **verbatim copy**, apart from a header comment saying so, of
 
 ```
-xdg-desktop-portal, branch experimental/certificate-webauthentication, commit 3a32e9b
+xdg-desktop-portal, branch experimental/certificate-webauthentication, commit a6b06d4
 data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
 ```
 
@@ -222,9 +222,9 @@ actually detects an injected code and uses a secret no part of this design ever 
 **4. A transaction ends; the certificate authority it caused does not.** The interface has no way
 to say "and revoke what this transaction acquired", and this backend could not act on one if it had.
 The grants belong to two PKCS#11 module instances — this process's and WebKit's network process's,
-the second derived from the first because that process is a child of this one — and the adapter has
-no session handle, no route to the other process, and no per-module `C_Finalize` that would not
-finalize every module GnuTLS loaded through p11-kit's proxy.
+each separately consented to (delegation is out of this proposal) — and the adapter has no session
+handle, no route to the other process, and no per-module `C_Finalize` that would not finalize every
+module GnuTLS loaded through p11-kit's proxy.
 `portal_release()` therefore logs `certificate-released grant=retained_until_expiry` and returns.
 What ends a grant is its own expiry, the portal invalidating it, or the holding process exiting.
 

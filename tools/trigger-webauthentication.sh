@@ -32,7 +32,7 @@
 # Method and argument shapes are taken from
 # data/org.freedesktop.portal.experimental.WebAuthentication.xml on the
 # xdg-desktop-portal branch experimental/certificate-webauthentication (commit
-# 3a32e9b) and from that branch's tests/test_webauthentication.py.
+# a6b06d4) and from that branch's tests/test_webauthentication.py.
 
 set -u
 

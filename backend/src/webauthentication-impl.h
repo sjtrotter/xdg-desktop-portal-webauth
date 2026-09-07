@@ -12,7 +12,7 @@
  *  skeleton and its one handler.
  *
  *  The interface is defined by the xdg-desktop-portal branch
- *  experimental/certificate-webauthentication (commit 3a32e9b), and the copy of
+ *  experimental/certificate-webauthentication (commit a6b06d4), and the copy of
  *  the XML in data/ tracks that branch verbatim. It is not this repository's to
  *  change. See docs/IMPL-INTERFACE.md.
  *

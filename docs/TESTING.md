@@ -10,7 +10,7 @@ Three tiers, and they answer different questions:
 | **2. End to end, headless** | Everything between a D-Bus call and a rendered page: the real frontend, the real backend, a real web engine, a real TLS handshake | Xvfb, a built frontend, a SoftHSM fixture |
 | **2b. Both portals at once** | The primary path: the certificate comes from the **certificate portal**, through its client-side PKCS#11 module, and the card, the chooser and the PIN never enter this process | the above, plus a built `xdg-desktop-portal-certificate` and its fixture |
 | **2c. The Entra client, end to end** | The other side of the interface: `entra-token-helper` signing in through the portal against an Entra-shaped mock authority, then caching, refreshing, minting a proof-of-possession token, and forgetting the account | Xvfb, a built frontend, this backend, this client. **No card and no second service.** |
-| **3. Against a real identity provider** | The only thing that can answer whether this works for the case the project exists for | A tenant, a card, and a person. **Not done.** |
+| **3. Against a real identity provider** | The only thing that can answer whether this works for the case the project exists for | A tenant, a card, and a person. **Done, 2026-09-05.** |
 
 **The portal provider is the primary path and the pkcs11 provider is the fallback.** Tier 2 runs
 the fallback, because it is the one that needs no second service; tier 2b runs the path this
@@ -300,7 +300,7 @@ anything here:
 ```console
 $ cd /path/to/xdg-desktop-portal/tests
 $ BUILDDIR=../build ./run-test.sh ./test_webauthentication.py -q
-38 passed, 34 warnings in 14.78s
+35 passed, 34 warnings in 14.78s
 ```
 
 ---
@@ -401,7 +401,7 @@ The signature is `RSA_PSS`: that is what TLS 1.3 asks for, and it went through `
 in the module, the portal's `Sign` on the public interface, and `C_Sign` on the SoftHSM token
 inside the certificate backend.
 
-### The finding: ONE handshake, TWO grants, ONE chooser
+### The finding: ONE handshake, TWO grants, TWO choosers
 
 `module instances: 2` is not a bug in either service and it is not noise. One TLS handshake needs
 the certificate in **two processes**:
@@ -491,7 +491,7 @@ own interception of the completion URI, so nothing finished the transaction. The
 for 120 seconds until the application's own timeout, and what the application was finally told was
 `request_closed` rather than why.
 
-`credential_unavailable` is the honest answer and not an ideal one: what reaches this backend is
+`credential_unavailable` is the answer, and not an ideal one: what reaches this backend is
 GnuTLS reporting that the object was not available, and it cannot tell "the user refused" from "no
 provider could run". [IMPL-INTERFACE.md](IMPL-INTERFACE.md) says so.
 
@@ -626,9 +626,10 @@ $ tools/entra-e2e.sh --verbose   # the client's own DEBUG breadcrumbs, redacted
 
 ## Tier 3 — against a real identity provider
 
-**Nothing in this repository has ever talked to Entra ID, and no card has ever been in a reader for
-it.** Tier 2 is a rehearsal: a software token in a headless X server has no reader, no PIN retry
-counter to spend, and nothing to pull out mid-handshake.
+**On 2026-09-05, this repository talked to Entra ID with a real card in a real reader**: a 10:42
+live sign-in and, at 14:21, the full FreeRDP-to-AVD chain. Tier 2 is still a rehearsal for that:
+a software token in a headless X server has no reader, no PIN retry counter to spend, and nothing
+to pull out mid-handshake.
 
 ### Live run against Entra
 
@@ -717,10 +718,9 @@ grant of its own. **A third is a regression** — it means a chain verification 
 credential. Each one the user answered is a `grant-created` line in the certificate backend's
 log.
 
-There are still two grants on the card, so the open question about a **second PIN prompt** stands:
-the second grant is a second login on the token, and whether the backend's session is still logged
-in decides it. Delegation removes the second consent, not the second login. **That is the first
-thing to find out.**
+There are two grants on the card but only **one PIN prompt**, per the 2026-09-05 run (see the
+sibling `xdg-desktop-portal-certificate` README): the backend's session stays logged in across the
+second grant. Delegation would remove the second consent, not the second login, and is not built.
 
 #### What only this run can answer
 
@@ -742,7 +742,8 @@ Microsoft-operated page that must never be loaded, which is exactly the case tie
   [`backend/src/webkit-session.h`](../backend/src/webkit-session.h));
 - what the window looks like to somebody who has to decide whether to trust it.
 
-Until that has been done, the correct description of this backend is "it works against a fixture".
+As of the 2026-09-05 run, the correct description of this backend is "it works against a fixture,
+and against a real Entra ID tenant on a US Government cloud."
 
 ---
 
@@ -834,17 +835,26 @@ you trust this client" — and it is answered inside the portal's sign-in window
   the tenant's Conditional Access policy does to it;
 - whether the interstitial appears where this document says it does, and whether answering it
   inside the portal's window is a tolerable experience;
-- whether the PoP token the client gets back is one FreeRDP will actually accept — which is the
-  only question that matters, and which needs the FreeRDP side
-  (`client/entra-token-helper`, `client/common/token_helper.c`) pointed at this binary.
+- whether the PoP token the client gets back is one FreeRDP will actually accept — answered by the
+  2026-09-05 chain, through the author's fork-only proof-of-concept branch `client/entra-token-helper`
+  pointed at this binary. That branch is not proposed upstream; the upstream integration path is
+  FreeRDP/FreeRDP#13340.
 
-Until that has been done, the correct description of this client is "it works against a mock".
+As of the 2026-09-05 run, the correct description of this client is "it works against a mock, and
+against a real Entra ID tenant through a proof-of-concept FreeRDP fork".
 
-#### What FreeRDP will send
+#### What the author's PoC branch sends
 
 For the record, so that a change here can be checked against it without reading the other
-repository. `client_token_helper_acquire()` builds exactly this, with any option whose value is
-empty left out entirely:
+repository. This is the author's fork-only proof-of-concept branch `client/entra-token-helper`, not
+proposed upstream — the upstream integration path is FreeRDP/FreeRDP#13340 (David Fort, 2026-09-04,
+reviewed favourably by akallabeth for 3.32), which externalises the AAD web view into a helper
+process speaking JSON-RPC over pipes: `navigate` takes a url, a redirect_uri prefix and a timeout
+and returns the verbatim redirect URL, OAuth stays in FreeRDP, and the helper is selected by
+`/azure:auth-helper:<path|autodetect>`. The intended integration is a small helper speaking that
+protocol which forwards to the WebAuthentication portal; it does not exist yet. On the PoC branch,
+`client_token_helper_acquire()` builds exactly this, with any option whose value is empty left out
+entirely:
 
 ```
 entra-token-helper token \

@@ -42,14 +42,15 @@ application had any reason to trust.
 repository is an out-of-tree backend plus an application, and nothing else.**
 
 - The frontend is `xdg-desktop-portal`, branch
-  `experimental/certificate-webauthentication`, commits `3f46e3c..661e441`, with
-  `3a32e9b web-authentication: Add an experimental WebAuthentication portal` as the one
+  `experimental/certificate-webauthentication`, 10 commits on upstream `86bd3e2`
+  (`22818e6..1aaffaf`), with
+  `a6b06d4 web-authentication: Add an experimental WebAuthentication portal` as the one
   that matters here. It defines both
   `org.freedesktop.portal.experimental.WebAuthentication` (public) and
   `org.freedesktop.impl.portal.experimental.WebAuthentication` (impl), implements the URI
   validation, the option filter, the completion re-check and the
   `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate, and ships a python-dbusmock backend and
-  a pytest suite (38 cases, passing).
+  a pytest suite (16 functions, 35 cases, 70 runs, passing).
 - `backend/` builds **one binary**, `xdg-desktop-portal-webauth`, owning
   `org.freedesktop.impl.portal.desktop.webauth` and exporting
   `/org/freedesktop/portal/desktop`.
@@ -147,12 +148,12 @@ export the interface in any of them.
   upstream may redesign the interface rather than rename it. Any sentence in this
   repository that reads as though the frontend became somebody else's problem is describing
   the intended end state and not today.
-- **One rule, two implementations, and one of them is now tested.** The completion matcher
+- **One rule, two implementations, and both are now tested.** The completion matcher
   still exists twice — here, against live navigations, and in the frontend, re-checking
   what this backend returns. The frontend's copy has tests
   (`test_completion_mismatch_rejected`, `test_completion_normalisation_accepted`); this
-  one has none, because it has no implementation. The shared fixture table in
-  `tests/README.md` is still the mitigation.
+  one is `backend/src/completion.c`, tested by `test-completion.c`. The shared fixture
+  table in `tests/README.md` is still the mitigation.
 - **The interface changed shape in the move.** `Start`'s signature did not, on either
   side — which is the strongest evidence 0008's shape argument was right. What did change
   is around it: `completion_uri` is specified as "absolute, with a host, no userinfo"

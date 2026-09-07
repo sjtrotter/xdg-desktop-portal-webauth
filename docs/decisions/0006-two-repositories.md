@@ -75,9 +75,9 @@ says exactly which files go where.
   because the frontend that moves upstream cannot bring GTK with it — and it is gone with the
   frontend ([0010](0010-backend-only-frontend-lives-upstream.md)); upstream enforces it now by
   simply not being this repository.
-- The repository name is currently `entra-token-helper`, which is the *old* name and now describes
-  only the smaller half. The backend is `xdg-desktop-portal-webauth`; renaming the repository
-  itself waits, because renaming twice is worse than renaming late.
+- The repository was renamed from `entra-token-helper` to `xdg-desktop-portal-webauth` on
+  2026-09-06; the CLI binary and client are still called `entra-token-helper`, and the meson
+  subproject is `entra-token-client`.
 - A second consumer, which
   [0005](0005-service-shape.md) makes a precondition for pursuing standardisation, is also the
   natural trigger to check the split has actually happened. If a second consumer would find it

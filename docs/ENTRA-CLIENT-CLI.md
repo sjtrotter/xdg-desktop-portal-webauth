@@ -3,9 +3,9 @@
 Status: **implemented**. `entra-token-helper` signs in through the web authentication portal,
 exchanges the code, stores an account in the Secret Service, serves later requests from its cache,
 and mints proof-of-possession tokens bound to a key its caller generated. Everything below has been
-exercised end to end against a mock authority (`tools/entra-e2e.sh`); **no token has yet been
-acquired from a real identity provider by this code**, and that is the one thing the "Current
-capabilities" table in [../README.md](../README.md) will keep saying until it has.
+exercised end to end against a mock authority (`tools/entra-e2e.sh`), and, on 2026-09-05, against a
+real Entra ID tenant: a live sign-in at 10:42 and the full FreeRDP-to-AVD chain at 14:21, with one
+interactive re-auth for the RDS proof-of-possession token.
 
 This is the contract for **layer 3**, the Entra ID / AVD token client — the interface FreeRDP
 frontends and other programs are expected to depend on. Layer 2, the web authentication portal the
@@ -169,9 +169,9 @@ key, and a cache that ignored the binding would hand back a token the caller can
 puts an interstitial in front of it — "you are connecting to a remote desktop", "make sure you
 trust this client". That page appears **inside the portal's sign-in window** at this step, is
 answered there, and is the reason no `prompt` parameter is sent on this request: naming one of ours
-would only fight with it. A run against real hardware
-(`FreeRDP-plan/test-avd-20260903-080717.log`) shows FreeRDP doing exactly this — a second
-authorization for the device-service scope, then `grant_type=authorization_code` with `req_cnf`.
+would only fight with it. A run observed on hardware, 2026-09-03, shows FreeRDP doing exactly
+this — a second authorization for the device-service scope, then `grant_type=authorization_code`
+with `req_cnf`.
 
 ### The callback classifier
 

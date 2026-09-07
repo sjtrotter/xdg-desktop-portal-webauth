@@ -1,7 +1,7 @@
 # Contributing
 
-The portal backend is implemented; the Entra client is a design sketch. For the client, the most
-useful contribution is still an argument rather than a patch; for the backend, see
+The portal backend and the Entra client are both implemented. The client signed in against a real
+Entra ID tenant and ran the full FreeRDP-to-AVD chain on 2026-09-05; see
 [docs/TESTING.md](docs/TESTING.md) before changing anything, because most of its rules have a test.
 
 ## What is most wanted
@@ -12,8 +12,9 @@ useful contribution is still an argument rather than a patch; for the backend, s
 - **A second consumer.** Something that is not AVD and not FreeRDP, that needs an interactive web
   sign-in. Until one exists, the generic layer is a generalisation from one example — see
   [docs/ROADMAP.md](docs/ROADMAP.md) phase 1.
-- **Spike results.** [docs/SPIKES.md](docs/SPIKES.md) has two go/no-go questions and an optional
-  third. Answers change the design; opinions about them do not.
+- **Spike results.** [docs/SPIKES.md](docs/SPIKES.md) tracked two go/no-go questions and an optional
+  third; S2 was answered 2026-09-04 and S1 by the 2026-09-05 chain (the RDS proof-of-possession
+  token needed one interactive re-auth). Answers change the design; opinions about them do not.
 - **Corrections to facts.** The AVD client id, the registered redirect, the sovereign-cloud
   constants and the `AADSTS50011` behaviour were verified by hand. If any of them has changed, that
   matters more than anything else here.
@@ -45,8 +46,8 @@ useful contribution is still an argument rather than a patch; for the backend, s
 - **Documents state reasons, not just decisions.** Every rule in
   [docs/SECURITY.md](docs/SECURITY.md) has the attack it prevents written next to it, and that is
   deliberate: a rule without a reason gets removed by the next person who finds it inconvenient.
-- **Say what is unproven.** Several things here are assumptions — the brokered certificate path most
-  of all. Mark them, do not smooth them over.
+- **Say what is unproven.** The brokered certificate path was proven live on 2026-09-04/05. Mark what
+  is still an assumption, do not smooth it over.
 - **Disclose AI assistance** in commits where it was used, as the existing commits do.
 
 ## Building

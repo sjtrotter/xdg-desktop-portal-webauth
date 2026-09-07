@@ -12,8 +12,8 @@
 # validation, option filtering, policy, the Request object and the guarantee of
 # exactly one Response, and the re-check of the completion URI the backend
 # returns -- is a branch of xdg-desktop-portal itself:
-# experimental/certificate-webauthentication, commits 3f46e3c..661e441. See
-# docs/decisions/0010-backend-only-frontend-lives-upstream.md and
+# experimental/certificate-webauthentication, 10 commits on upstream 86bd3e2
+# (22818e6..1aaffaf). See docs/decisions/0010-backend-only-frontend-lives-upstream.md and
 # docs/UPSTREAMING.md.
 #
 # The certificate portal's backend is a separate project in its own repository
@@ -30,7 +30,7 @@
 # at the first tagged interface release; see docs/decisions/0006-two-repositories.md.
 
 project(
-  'webauth-portal-sketch',
+  'xdg-desktop-portal-webauth',
   'c',
   version: '0.0.0',
   license: 'LGPL-2.1-or-later',
@@ -48,7 +48,7 @@ summary(
     'certificate portal backend': 'separate repository, optional',
     'build-time coupling': 'none, by design',
     'runtime coupling': 'D-Bus only: app -> xdg-desktop-portal -> backend',
-    'status': 'design sketch; nothing is implemented',
+    'status': 'experimental; live-tested 2026-09-05',
   },
   section: 'Repository',
 )

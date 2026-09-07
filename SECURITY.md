@@ -16,11 +16,11 @@ whose portal does not know the interface adds no attack surface: the `.portal` f
 interface nothing matches, and the backend is never activated.
 
 **Nothing is released and there is no deployment to report a vulnerability against.** The portal
-backend is implemented and has been run against a fixture identity provider
-([docs/TESTING.md](docs/TESTING.md)); the Entra client is still a stub. If you find a problem in the
-*design* or in that code — and the interesting parts are the completion matcher (two implementations
-of one rule), the impl boundary and its peer check, everything downstream of the app id the frontend
-derives, the certificate adapter's lifetime handling, and the OAuth response classifier that does
-not exist yet — please open an issue.
+backend and the Entra client are both implemented and have been run against a real Entra ID tenant
+and real hardware ([docs/TESTING.md](docs/TESTING.md)). If you find a problem in the *design* or in
+that code — and the interesting parts are the completion matcher (two implementations of one rule),
+the impl boundary and its peer check, everything downstream of the app id the frontend derives, the
+certificate portal's lifetime handling, and the OAuth response classifier in
+`clients/entra/src/oauth/callback.c` — please open an issue.
 
 When there is something running, this file will name a contact and a disclosure window.

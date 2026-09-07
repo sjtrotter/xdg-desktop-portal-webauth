@@ -8,9 +8,9 @@ is a branch of xdg-desktop-portal, and **the XML on that branch is the specifica
 ## Where it is
 
 ```
-repository   a local checkout of xdg-desktop-portal   (remote: flatpak/xdg-desktop-portal)
+repository   a local checkout of xdg-desktop-portal   (remote: origin, https://github.com/sjtrotter/xdg-desktop-portal)
 branch       experimental/certificate-webauthentication
-commit       3a32e9b  web-authentication: Add an experimental WebAuthentication portal
+commit       a6b06d4  web-authentication: Add an experimental WebAuthentication portal
 public XML   data/org.freedesktop.portal.experimental.WebAuthentication.xml
 impl XML     data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
 frontend     desktop-portal/web-authentication.c
@@ -121,8 +121,8 @@ The frontend's half is implemented and tested upstream —
 `web-authentication.c:completion_uri_matches()`, `test_completion_mismatch_rejected`, and
 `test_completion_normalisation_accepted` / `test_completion_near_miss_refused`, which name
 each equivalence and each near miss one by one. This repository's half is
-[`../backend/src/completion.h`](../backend/src/completion.h) and has no implementation
-yet; [IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains why both exist.
+[`../backend/src/completion.h`](../backend/src/completion.h)/`completion.c`, implemented and
+tested by `test-completion.c`; [IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains why both exist.
 
 ## What version 1 does not support
 
@@ -134,8 +134,9 @@ authorization navigation", not universal protocol-agnostic authentication — se
 ## Accessibility
 
 The chrome carries a security decision, and a user who cannot perceive it cannot make that
-decision. AT-SPI exposure for every backend-owned control including any in-process
-certificate chooser and PIN prompt, keyboard-only operation, meaningful focus order
+decision. AT-SPI exposure for every backend-owned control — there is no in-process
+certificate chooser or PIN prompt; both are the Certificate portal's — keyboard-only
+operation, meaningful focus order
 including across a hand-off to another portal's windows, screen-reader announcement of the
 verified caller and the current origin, no meaning conveyed by colour alone, accessible
 error and cancellation states, and focus restored to the calling application on close.
