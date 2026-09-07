@@ -127,8 +127,8 @@ tested by `test-completion.c`; [IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains w
 ## What version 1 does not support
 
 Navigation (GET) completions only. No `response_mode=form_post`, no SAML HTTP-POST, no
-prefix matching, no wildcards, no external scheme dispatch. Version 1 is honestly "web
-authorization navigation", not universal protocol-agnostic authentication — see
+prefix matching, no wildcards, no external scheme dispatch. Why the remit is that narrow,
+and what version 1 therefore is not, is
 [decisions/0005-service-shape.md](decisions/0005-service-shape.md).
 
 ## Accessibility

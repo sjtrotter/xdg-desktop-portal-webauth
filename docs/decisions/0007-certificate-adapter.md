@@ -127,18 +127,8 @@ So: a separate project (repository `xdg-desktop-portal-certificate`, shipping th
 **But it cannot be a hard dependency for v0, because the mechanism that would connect it to this
 service is unproven at exactly the point that matters.**
 
-The ends of the chain are documented and fine. `g_tls_certificate_new_from_pkcs11_uris()` accepts a
-certificate and a private key named by PKCS#11 URIs, with the key accessed only later during use.
-`webkit_credential_new_for_certificate()` accepts a `GTlsCertificate`. What is *not* established is
-the middle:
-
-- **A PKCS#11 URI cannot name a socket.** The documented p11-kit remoting path needs
-  `p11-kit-client.so`, a `P11_KIT_SERVER_ADDRESS`, and the client module registered in p11-kit
-  *configuration* for GnuTLS and OpenSSL consumers to find it.
-- **GLib's constructor has no module parameter.** GnuTLS can load providers programmatically; GLib's
-  public constructor does not expose that control.
-- **WebKit's network process may not see a module registered after it started**, and it is not even
-  obvious which process opens the socket, or when.
+The ends of the chain are documented and fine; the middle is not. The three unproven steps between
+a brokered credential and a WebKitGTK handshake are stated in [S2](../SPIKES.md).
 
 "Call the service and build a `GTlsCertificate` from a returned URI" is therefore an assumption, not
 a mechanism. Stock `p11-kit server` also scopes to a *token*, not to an object, so the security
@@ -186,9 +176,8 @@ and reason `credential_unavailable`.
 - The two implementations can be compared against each other on the same hardware, which is the only
   honest way to find out whether the portal path is actually equivalent.
 - The smart card service can be published when it is ready and proven, not when this service needs
-  it. That matches the advice not to publish an API claiming object-scoped modules, service-owned
-  login, broad application compatibility or connection-bound lifetime until each has been
-  demonstrated.
+  it. That matches the advice in [SPIKES.md](../SPIKES.md) against publishing an API whose object
+  scoping, login model, application compatibility and grant lifetime have not been demonstrated.
 
 **What it costs.**
 

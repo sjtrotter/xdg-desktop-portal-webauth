@@ -3,17 +3,13 @@
 Status: **nothing has been proposed to anyone.** No issue has been opened, no pull request
 exists, and no maintainer has been contacted beyond two comments the author posted on
 2026-09-05 (flatpak/xdg-desktop-portal#662 and FreeRDP#13328). The branch this document is
-about is pushed to the author's fork, https://github.com/sjtrotter/xdg-desktop-portal.
-What has changed since the last
-version is that the backend is now implemented and has been run against the branch's
-frontend end to end ([TESTING.md](TESTING.md)), so the claim "this shape works" is an
-observation rather than a design argument.
+about is pushed to the author's fork, https://github.com/sjtrotter/xdg-desktop-portal, and
+the backend has been run against it end to end ([TESTING.md](TESTING.md)), so the claim
+"this shape works" is an observation rather than a design argument.
 
-What changed since the previous version of this document is that "the frontend, if
-accepted, would move into xdg-desktop-portal" stopped being a plan with a mapping table
-attached. The frontend **is** in xdg-desktop-portal now, on a branch, in the
-`experimental` namespace upstream set aside for portals in exactly this state. See
-[decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
+The frontend is no longer a plan with a mapping table attached: it **is** in
+xdg-desktop-portal, on a branch, in the `experimental` namespace
+([decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md)).
 
 The point of this document is still that it is **short**. If it ever grows a section called
 "and then restructure X", [decisions/0008](decisions/0008-build-to-the-upstream-shape.md)
@@ -57,15 +53,16 @@ identity option is `app_identity_level` with `sandboxed` / `host` / `unidentifie
 with the Certificate interface, which used to have its own three names for the same
 distinction. The completion rule now states the equivalences the URI parser applies, and a
 wildcard host is refused rather than matched literally. A private-use scheme redirect URI
-as RFC 8252 section 7.1 describes it — `com.example.app:/oauth2redirect`, with no
-authority at all — is accepted and matched on its scheme and its path, which is the shape
-a native OAuth client registers; this backend's `completion.c` carries the same rule and
-`tests/test-completion.c` runs the frontend's cases against it.
+(RFC 8252 section 7.1), the shape a native OAuth client registers, is accepted and matched
+on its scheme and its path, as [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) sets out; this
+backend's `completion.c` carries the same rule and `tests/test-completion.c` runs the
+frontend's cases against it.
 
 **The deadline is now the frontend's.** It races the backend call against a timeout, and
 when the timeout wins it calls `Close()` on the impl `Request` and answers the application
-`2` with `reason` `timeout`. This backend still owns the window and still ends the flow on
-its own deadline; whichever end reaches it first, the window goes away. **And a sandboxed
+`2` with `reason` `timeout`. This backend still owns the window and its own deadline
+([IMPL-INTERFACE.md](IMPL-INTERFACE.md)); whichever end reaches it first, the window goes
+away. **And a sandboxed
 application with no network access can no longer call `Start()` at all**: the frontend
 refuses it with `org.freedesktop.portal.Error.NotAllowed`, because the response to that
 call is an answer fetched from the network.
@@ -78,15 +75,11 @@ pre-existing `usb` failure (`umockdev-run` is not installed there),
 ## Why `experimental` is not a claim of acceptance
 
 [PR #1889](https://github.com/flatpak/xdg-desktop-portal/pull/1889) ("Introduce
-Credentials portal (experimental)") is where the mechanism was settled. Sebastian Wick,
-2026-01-28, verbatim:
-
-> As for the interface name, let's call it something like
-> `org.freedesktop.portal.experimental.Credentials`. It should also not be exposed by
-> default and have a environment variable to turn it on (e.g.
-> `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=credentials`).
-
-and Isaiah Inuwa, minutes later:
+Credentials portal (experimental)") is where the mechanism was settled. Sebastian Wick's
+comment of 2026-01-28, setting the `experimental` infix and the environment-variable gate,
+is quoted in
+[decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
+Isaiah Inuwa, minutes later:
 
 > I noticed the other portals have singular names: should we do that here too?
 > `org.freedesktop.portal.experimental.Credential`

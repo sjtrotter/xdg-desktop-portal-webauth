@@ -1,13 +1,30 @@
 # xdg-desktop-portal-webauth
 
+## Why a portal
+
+An application that needs an interactive web sign-in has two options today. It can embed a web
+engine, which puts a browser inside every application that needs one. From a sandbox that engine
+cannot answer a smart-card certificate challenge, it gives the user no window chrome they have
+reason to trust, and it is one more engine to keep patched. Or it can hand off to the system
+browser, which cannot work when the identity provider registers no local redirect for the result to
+return through.
+
+A portal moves the window into a process the desktop owns. That process shows the real origin,
+returns only the completion URI to the application, and can reach the smart card through the
+Certificate portal.
+
+## What this is
+
 An out-of-tree backend for the experimental
 `org.freedesktop.impl.portal.experimental.WebAuthentication` portal interface. It opens a GTK4 +
 WebKitGTK 6.0 window on a URI an application asked for, watches every navigation, and ends the flow
 on the first one matching the completion URI the application gave, without loading it. It returns
 that URI and never interprets it. It holds no OAuth code and issues no tokens.
 
-There is no frontend here. The public interface is exported by xdg-desktop-portal itself, on a branch
-of that project. TLS client certificates are answered by a second backend,
+There is no frontend here. A portal has two halves: the public interface is what applications call
+on xdg-desktop-portal, and the impl interface is what xdg-desktop-portal calls on a backend such as
+this one. The public interface is exported by xdg-desktop-portal itself, on a branch of that
+project. TLS client certificates are answered by a second backend,
 `xdg-desktop-portal-certificate`, in its own repository. The first consumer, the Entra ID / Azure
 Virtual Desktop token client `entra-token-helper`, is in a third
 ([github.com/sjtrotter/entra-token-helper](https://github.com/sjtrotter/entra-token-helper)).
@@ -41,8 +58,8 @@ Two runs on real hardware, both on 2026-09-05, when the client still shared this
   certificate portal's PKCS#11 module, the shell prompted for the PIN, the card produced an RSA-PSS
   signature, and the completion navigation was intercepted with the authorization code captured.
 - 14:21. The whole chain: an sdl-freerdp fork branch, `entra-token-helper`, both portals, the card,
-  and an Azure Virtual Desktop session. Real tokens were exchanged. The ARM gateway token came from
-  the keyring cache. The RDS proof-of-possession token needed one interactive re-authentication
+  and an Azure Virtual Desktop session, with real tokens exchanged. The ARM gateway token came from
+  the keyring cache; the RDS proof-of-possession token needed one interactive re-authentication
   through the portal window, which the tenant's Conditional Access policy explains.
 
 The hardware evidence is narrow: one PIV card, one reader, OpenSC, GNOME 50 on Wayland, one tenant.
@@ -51,9 +68,9 @@ runtime.
 
 The frontend is on the branch `experimental/certificate-webauthentication` of a personal fork of
 xdg-desktop-portal, 10 commits on upstream `86bd3e2`, with `a6b06d4` defining this interface. Its
-`tests/test_webauthentication.py` has 16 test functions and 35 parametrised cases, run twice over the
-host and Flatpak app-info fixture. The branch is pushed and has been proposed to nobody. The
-`org.freedesktop.portal.experimental.*` namespace is what upstream set aside for unfinished portals,
+`tests/test_webauthentication.py` has 16 test functions and 35 parametrised cases, run once with the
+caller identified as an ordinary host process and once as a Flatpak application. The branch is
+pushed and has been proposed to nobody. The `org.freedesktop.portal.experimental.*` namespace is what upstream set aside for unfinished portals,
 not a sign that this one was accepted.
 
 ## How it works
@@ -85,9 +102,9 @@ Applications call xdg-desktop-portal and nothing else. They never name a backend
 `.portal` file, and cannot tell which backend served them.
 
 The interface is not exported unless xdg-desktop-portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` (or `all`). The experimental interface is
-disabled by default. With the gate off the interface is not on the bus at all, and a caller that
-needs it has to degrade or fail.
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` (or `all`), and it is off by default.
+With the gate off the interface is not on the bus at all, and a caller that needs it has to degrade
+or fail.
 
 ## Interface at a glance
 
@@ -99,8 +116,10 @@ Start(s parent_window, s start_uri, s completion_uri, a{sv} options) -> o reques
 ```
 
 One method. `start_uri` must be absolute `https` with a host. `completion_uri` must be absolute, with
-no userinfo and no wildcard in the host. Options are `handle_token`, `activation_token`, `session_mode`
-(`shared` or `ephemeral`), `timeout` (default 300 s, clamped to 900 s) and `title`. Unknown keys are
+no userinfo and no wildcard in the host. Options are the standard portal request options
+(`handle_token`, which names the Request object the caller will watch, and `activation_token`, which
+carries the caller's window activation so the window can take focus), plus `session_mode` (`shared`
+or `ephemeral`), `timeout` (default 300 s, clamped to 900 s) and `title`. Unknown keys are
 dropped and an unknown `session_mode` is an error. The answer arrives on
 `org.freedesktop.portal.Request`: `Close()` cancels, and `Response(u, a{sv})` fires exactly once with
 `0` completed and `completion_uri` in the results, `1` cancelled, or `2` other with an optional
@@ -128,10 +147,9 @@ $ ./build/src/xdg-desktop-portal-webauth --help
 The unit tests need no display and no bus. There are five suites: `completion`, `options`,
 `storage`, `redact`, `harden`.
 
-`ui-smoke.sh` and `portal-stack.sh` stand up a private bus with `dbus-run-session` and a headless X
-server, so they touch neither the session bus nor the display; `portal-stack.sh --live` and the
-trigger script use the real desktop. They need a build of the frontend branch; point at it with
-`XDP_BUILD`.
+`ui-smoke.sh` and `portal-stack.sh` stand up a private bus and a headless X server, so they touch
+neither the session bus nor the display; `portal-stack.sh --live` and the trigger script use the
+real desktop. All of them need a build of the frontend branch, named by `XDP_BUILD`.
 
 ```console
 $ tools/softhsm-fixture.sh                  # a CA, a server certificate, a token, a PIN file
@@ -144,8 +162,8 @@ $ tools/portal-stack.sh --cancel-chooser
 $ tools/trigger-webauthentication.sh all    # the PUBLIC interface with gdbus, as an app would
 ```
 
-The fixture-backed runs (`ui-smoke.sh`, `portal-stack.sh`) also check, from the fixture server's
-access log, that the completion URI was never fetched. `tools/portal-stack.sh` prints the chooser count at the end; three would be a regression.
+The fixture-backed runs also check, from the server's access log, that the completion URI was never
+fetched, and `portal-stack.sh` prints the chooser count at the end.
 [docs/TESTING.md](docs/TESTING.md) has the rest, including what only a real tenant and a real card
 can answer.
 
@@ -163,22 +181,21 @@ org.freedesktop.impl.portal.experimental.WebAuthentication=webauth
 
 ## How it relates to FreeRDP
 
-Upstream pull request [FreeRDP/FreeRDP#13340](https://github.com/FreeRDP/FreeRDP/pull/13340), opened
-2026-09-04 and reviewed favourably for 3.32, moves FreeRDP's AAD web view out of process. FreeRDP
-speaks JSON-RPC over pipes to a helper it starts; the `navigate` request carries a URL, a redirect
-URI prefix and a timeout, and the helper answers with the redirect URL verbatim. OAuth stays inside
-FreeRDP. The helper is selected with `/azure:auth-helper:<path|autodetect>`, and a follow-up will
-pass the OAuth parameters as JSON so the helper can build the URL itself.
-
-That request is close to what this portal already does. The intended integration is therefore a small
-helper that speaks #13340's protocol and forwards `navigate` to
-`org.freedesktop.portal.experimental.WebAuthentication`, which puts the window, the security chrome
-and the card behind the portal without FreeRDP linking a web engine. Under that split, FreeRDP does
-not need the Entra client's OAuth code, and that client keeps its own callers.
+Upstream pull request [FreeRDP/FreeRDP#13340](https://github.com/FreeRDP/FreeRDP/pull/13340),
+opened 2026-09-04 and reviewed favourably for 3.32, moves FreeRDP's AAD web view out of process:
+FreeRDP speaks JSON-RPC over pipes to a helper it starts, and the helper answers `navigate` with the
+redirect URL verbatim. OAuth stays inside FreeRDP. That request is close to what this portal already
+does, so the intended integration is a small helper that speaks #13340's protocol and forwards
+`navigate` to `org.freedesktop.portal.experimental.WebAuthentication`, putting the window, the
+security chrome and the card behind the portal without FreeRDP linking a web engine. Under that
+split FreeRDP keeps its own OAuth code and the Entra client keeps its own callers.
+[docs/ROADMAP.md](docs/ROADMAP.md) has the protocol and the follow-ups.
 
 The `client/entra-token-helper` branch used in the 2026-09-05 run is a fork-only proof of concept. It
-is not proposed upstream and is not the integration path. `sso-mib` remains the sibling provider for
-Intune-enrolled devices, which hold a device-bound primary refresh token this project cannot mint.
+is not proposed upstream and is not the integration path. `sso-mib`, Siemens' client for the
+Microsoft Identity Broker on Intune-enrolled Linux devices, remains the sibling provider for those
+devices. They hold a device-bound primary refresh token, the long-lived credential the broker
+redeems for further tokens without a fresh sign-in, and this project cannot mint one.
 
 ## Why not
 
@@ -191,15 +208,13 @@ Intune-enrolled devices, which hold a device-bound primary refresh token this pr
   carried on a branch of that project instead.
   [0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)
 
-Three more rejected alternatives belong to the client and are recorded as ADRs 0001 to 0003 in
+Three more rejected alternatives belong to the client and are ADRs 0001 to 0003 in
 [its repository](https://github.com/sjtrotter/entra-token-helper): a loopback redirect with
 `xdg-open`, impersonating the Microsoft Identity Broker's D-Bus name, and keeping the work inside
 one RDP client.
 
 ## Related repositories
 
-- [github.com/sjtrotter/xdg-desktop-portal-webauth](https://github.com/sjtrotter/xdg-desktop-portal-webauth)
-  is this repository.
 - [github.com/sjtrotter/xdg-desktop-portal-certificate](https://github.com/sjtrotter/xdg-desktop-portal-certificate)
   is the certificate portal backend: the chooser, the PIN prompt, and the PKCS#11 module this backend
   loads.
@@ -213,22 +228,19 @@ one RDP client.
 
 - One WebKitGTK handshake raises two certificate choosers and one PIN prompt. The UI process and the
   network process each acquire a grant, and a grant belongs to the D-Bus peer that acquired it. One
-  chooser was only ever reached on the archived `experimental/certificate-webauthentication+delegation`
-  branch, whose process-tree delegation is not part of the proposed interface.
+  chooser was only ever reached on the archived delegation branch,
+  `experimental/certificate-webauthentication+delegation`, whose process-tree delegation is not part
+  of the proposed interface.
 - The certificate portal's chooser names this backend rather than the application that asked. The fix
   belongs in the shared frontend and is not written.
 - A grant outlives the transaction that provoked it, and an authenticated connection outlives the
   grant. [docs/SECURITY.md](docs/SECURITY.md) says what closing a transaction does not do.
-- Neither the portals nor the FreeRDP fork branch has been proposed upstream. There is no second
-  consumer of the interface and no second backend for it, and both are what would show the interface
-  is more than this backend with a bus name.
-- The API is a phishing launcher: any same-UID application can ask for a convincing corporate sign-in
-  page. Portal-controlled chrome showing the real origin and a frontend-derived caller identity is
-  the only defence, and same-UID isolation is weak on an unrestricted desktop.
-- Identity providers may refuse embedded engines. The shared session store is shared only within this
-  backend, never with Firefox or Chrome, so real browser SSO is not reproduced.
-- Version 1 is navigation completions only: no `form_post`, no prefix matching, two session modes. A
-  protocol-agnostic remit could grow without limit if that is not held.
+- There is no second consumer of the interface and no second backend for it. Those two are what
+  would show the interface is more than this backend with a bus name.
+- The interface is a phishing launcher, identity providers may refuse an embedded engine, browser
+  SSO is not reproduced, and version 1 is navigation completions only. Those are four of the nine
+  standing objections in [0005](docs/decisions/0005-service-shape.md);
+  [docs/SECURITY.md](docs/SECURITY.md) says what is done about each.
 
 ## Documents
 
@@ -252,9 +264,8 @@ LGPL-2.1-or-later. This matches xdg-desktop-portal, xdg-desktop-portal-gtk,
 xdg-desktop-portal-gnome, the frontend branch this backend is written against, and the sibling
 `xdg-desktop-portal-certificate`, with which this repository shares
 [`src/tls/portal-token.h`](src/tls/portal-token.h) byte for byte. Files derived from
-xdg-desktop-portal and xdg-desktop-portal-gtk keep their attribution under the same licence. This
-backend is a separate process from FreeRDP (Apache-2.0) and is reached over D-Bus, so no linking
-question arises. The reasoning is in
+xdg-desktop-portal and xdg-desktop-portal-gtk keep their attribution under the same licence. The
+reasoning, including why FreeRDP's Apache-2.0 raises no linking question, is in
 [docs/decisions/0004-license.md](docs/decisions/0004-license.md).
 
 ## AI assistance

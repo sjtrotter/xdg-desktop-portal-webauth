@@ -137,10 +137,9 @@ export the interface in any of them.
   is narrower and more useful: **never believe a caller about a third party's identity**.
   An app id read out of a message from a peer that could have put anything there is
   identity laundering and is not to be built. Delegation across a boundary is not itself
-  forbidden — authenticated IPC, where the frontend derives each peer's identity itself,
-  would satisfy the rule, and so would a capability the frontend issues to a named peer and
-  later recognises. Neither is built. In-process is the cheapest way to satisfy the rule,
-  not the only one.
+  forbidden; [../SECURITY.md](../SECURITY.md) states the rule and what would satisfy it,
+  none of which is built. In-process is the cheapest way to satisfy the rule, not the only
+  one.
 - **The branch is ours until it is accepted.** Moving the frontend into xdg-desktop-portal's
   tree buys review in the right place and the reuse of `Request`, `Session`, app-id
   derivation and `.portal` discovery. It does **not** transfer maintenance: an unmerged

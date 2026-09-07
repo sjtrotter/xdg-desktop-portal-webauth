@@ -5,13 +5,10 @@ phase 1 on is untouched. What "done" means here is [TESTING.md](TESTING.md): a f
 tenant and not a card.
 
 **What has changed since this document was last honest about its own scope:** the frontend is no
-longer this project's to build. It is an xdg-desktop-portal branch
-([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md),
-[UPSTREAMING.md](UPSTREAMING.md)), written and passing its own 16-function, 35-case pytest suite
-(70 runs across the host and Flatpak fixture). Anything below
-that budgets frontend work is work that is *done, elsewhere, by the same author*; the numbers have
-not been re-derived, and where a line is now moot it says so rather than pretending the rest got
-better.
+longer this project's to build ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md),
+[UPSTREAMING.md](UPSTREAMING.md)). Anything below that budgets frontend work is work that is *done,
+elsewhere, by the same author*; the numbers have not been re-derived, and where a line is now moot
+it says so rather than pretending the rest got better.
 
 Effort figures are person-weeks for **one experienced Linux/C developer already familiar with the
 working Remmina patches**, taken from the Codex estimate in the design review. They describe a
@@ -76,12 +73,10 @@ completion matcher, storage partitioning across engine state, disabled downloads
 permissions, no TLS-error bypass, structural redaction. All of it is in `src/`, and
 [TESTING.md](TESTING.md) is what it has been run against.
 
-**Two things came out of building it that the estimate did not have.** WebKitGTK 6.0 exposes no
-frame identity on a navigation policy decision, so "top-level navigations only" could not be
-enforced as written, and the interface was changed to promise what is enforced instead — see
-[IMPL-INTERFACE.md](IMPL-INTERFACE.md); and a `WebKitNetworkSession` with a data directory does not
-persist cookies until its cookie manager is given a file, which is the kind of thing only an
-end-to-end test finds.
+**Two things came out of building it that the estimate did not have**, and both are recorded where
+they are enforced: the missing frame identity on a navigation policy decision, which changed what
+the interface promises ([IMPL-INTERFACE.md](IMPL-INTERFACE.md)), and the cookie manager that has to
+be given a file before a `WebKitNetworkSession` persists anything ([TESTING.md](TESTING.md)).
 
 ### 0d. Backend: certificate adapter — **done for both providers**
 
@@ -113,11 +108,8 @@ The wide range is S2's fault and narrows once S2 has run.
 ### 0e. Backend: security chrome and accessibility — **1–2 weeks**
 
 The chrome that shows the verified caller and the real origin independently of caller text, and the
-accessibility acceptance criteria from [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) — AT-SPI
-exposure for backend-owned controls (the chooser and PIN prompt are the Certificate portal's, not
-in-process here), keyboard-only certificate selection and PIN entry, focus order and restoration
-across any hand-off to another portal's windows,
-screen-reader announcement, contrast and scaling. Budgeted as its own item because treating it as
+accessibility acceptance criteria from [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), plus contrast
+and scaling. Budgeted as its own item because treating it as
 polish is how it does not happen, and because this chrome carries a security decision that WebKit's
 own accessibility does not cover.
 

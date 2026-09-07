@@ -199,8 +199,8 @@ process, the portal's chooser and PIN prompt, `C_Sign`, and a completed mutual-T
 the card's common name in the server's log. The URI seam is what S2 said it was. Two things the
 spike could not have predicted came out of that run and are in [TESTING.md](TESTING.md) tier 2b:
 **one handshake resolves the URI in two processes and therefore puts up two choosers** — the
-process-tree delegation that answered the second from the first is out of the portal interface, so
-this stands — and the contract's URI needed an `object=` attribute before GnuTLS's single-object
+process-tree delegation that would have answered the second from the first is not on the portal
+interface ([SECURITY.md](SECURITY.md)), so this stands — and the contract's URI needed an `object=` attribute before GnuTLS's single-object
 import would accept it at all.
 
 **What it decides.** The `portal` adapter stops being "broker a `Sign`" and becomes "resolve a URI

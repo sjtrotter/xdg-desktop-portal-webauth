@@ -1,10 +1,8 @@
 # Architecture
 
-Status: the backend is implemented and has been run end to end — against a fixture identity provider
-([TESTING.md](TESTING.md)), and against a real Entra ID tenant driven by its first consumer:
-2026-09-05 10:42 live sign-in, and 2026-09-05 14:21 the full FreeRDP-to-AVD chain, with one
-interactive re-auth for the RDS proof-of-possession token. Where this document says "would", it
-still means it.
+Status: the backend is implemented and has been run end to end, against a fixture identity provider
+and against a real Entra ID tenant on 2026-09-05; what was run is in [TESTING.md](TESTING.md).
+Where this document says "would", it still means it.
 
 Web authentication is **a portal frontend and a portal backend**, plumbed exactly as
 xdg-desktop-portal plumbs every portal it has — because the frontend *is* xdg-desktop-portal.
@@ -179,9 +177,8 @@ interface does not have because upstream's does not.
 
 The part of the window nobody outside this process can influence: the app id **the frontend
 established**, the engine's own current origin, and the caller's `title` hint rendered beneath and
-marked as application-supplied. Accessibility lives here as acceptance criteria — AT-SPI exposure
-for every backend-owned control, meaningful focus order, screen-reader announcement of caller and
-origin, no meaning carried by colour alone, focus restored to the calling application on close.
+marked as application-supplied. Accessibility lives here as acceptance criteria, listed in
+[PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md).
 
 ### `external-window` — [`src/external-window.h`](../src/external-window.h)
 
@@ -234,11 +231,8 @@ attestation crossing a bus — which is exactly the "shared frontend" fix both p
 arriving at acceptance. The frontend does not do this yet; it is unwritten work on that branch.
 
 **The caveat is permanent, and it is about trust rather than about processes:** never believe a
-caller about a third party's identity. An app id read out of a message from a peer that could have
-put anything there is the identity-laundering [SECURITY.md](SECURITY.md) forbids, and it is not to
-be built as a stopgap. Delegating across a boundary is not itself forbidden — authenticated IPC, or
-a capability the frontend issues and later recognises, would satisfy the rule; neither is built.
-In-process is the cheapest way to satisfy it, not the only one. See
+caller about a third party's identity. What that forbids, and what would satisfy it, is in
+[SECURITY.md](SECURITY.md) and
 [decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md).
 
 **Rules this path must keep even once in-process app id derivation is built** — today each portal

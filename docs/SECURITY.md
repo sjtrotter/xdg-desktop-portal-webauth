@@ -277,9 +277,9 @@ entire phishing attack in one string.
   much an app id can be believed, which is frontend knowledge that does not survive the hop as
   anything but a label. A backend may refuse a mode it cannot honour; it may never downgrade one.
 - **Shared state amplifies a malicious caller.** A hostile application can start a flow riding a
-  session the user already established. OAuth `state` protects transaction correlation; it does
-  nothing for the user's understanding of *which native application* asked. The mitigation is the
-  chrome, not the protocol.
+  session the user already established, and no protocol field tells the user *which native
+  application* asked ([decisions/0005](decisions/0005-service-shape.md), objection 3). The
+  mitigation is the chrome, not the protocol.
 - Stores live under `$XDG_DATA_HOME/xdg-desktop-portal-webauth/<app id>/`, mode `0700`, with the
   cookie jar at `data/cookies.sqlite` and the HTTP cache under `cache/`. They are treated as
   sensitive: a session cookie is a credential. The `<app id>` component is sanitised to
@@ -544,14 +544,10 @@ reporting *what*; phase timings; and loader or TLS error text **cut before any e
 
 ## Accessibility as a security property
 
-Listed here as well as in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) because it belongs in both:
-the chrome carries a security decision, and a user who cannot perceive it cannot make that decision.
-AT-SPI exposure for every backend-owned control, meaningful focus order including across any
-hand-off to another portal's windows, screen-reader announcement of the verified caller and the
-current origin, no meaning conveyed by colour alone, accessible error and cancellation states, and
-focus restored to the calling application on close. There is no chooser and no PIN prompt here any
-more; under the `portal` provider those windows are the Certificate portal's and carry the same
-obligation on that project's side.
+The chrome carries a security decision, and a user who cannot perceive it cannot make that
+decision. The acceptance criteria are in [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md). There is no
+chooser and no PIN prompt here any more; under the `portal` provider those windows are the
+Certificate portal's and carry the same obligation on that project's side.
 
 **What is actually done:** the window and its controls carry accessible labels and descriptions, the
 lock indicator is a label as well as an icon, and Escape cancels. **Nothing has been tested with a
@@ -584,10 +580,10 @@ Those are the places where a subtle mistake is not visible in testing.
 
 ## The exit criterion
 
-Recorded here as well as in [decisions/0005-service-shape.md](decisions/0005-service-shape.md),
-because it is a security judgement: **if caller identity, displayed origin and storage partitioning cannot be made convincing,
-collapse the browser layer back into the Entra client.** A narrowly scoped Entra/AVD helper is better than a generic authentication portal with an
-ill-defined trust model, and this is a real outcome to plan for rather than a formality.
+It is a security judgement, so it is named here and argued in
+[decisions/0005-service-shape.md](decisions/0005-service-shape.md): **if caller identity, displayed
+origin and storage partitioning cannot be made convincing, collapse the browser layer back into the
+Entra client.** It is a real outcome to plan for rather than a formality.
 
 ## Reporting
 

@@ -380,10 +380,9 @@ cannot be handed the UI process's grant: a grant belongs to the D-Bus peer that 
 is the point of the design.
 
 The process-tree delegation that did answer the second question instead of asking it is **out of
-the portal interface**: it could never fire for a Flatpak caller, whose app-info pidfd is the
-sandbox instance's rather than the calling process's, and ancestry alone crosses application
-boundaries. It is archived on the frontend's
-`experimental/certificate-webauthentication+delegation` branch.
+the portal interface**, and is archived on the frontend's
+`experimental/certificate-webauthentication+delegation` branch. Why it could not be kept is in
+[SECURITY.md](SECURITY.md).
 
 `choosers granted: 2` counts `grant-created`. **The number to watch is two, and a third is a
 regression** — it means a chain verification acquired a credential, which tier 2b's phase 0 is
