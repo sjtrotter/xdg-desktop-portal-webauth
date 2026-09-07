@@ -9,9 +9,10 @@ Status: accepted (for the sketch); overrides the "premature" advice in
 > **Amendment (0010).** The split argued for here is preserved exactly; what changed is that the
 > frontend half is no longer in this repository. It is a branch of xdg-desktop-portal
 > (`experimental/certificate-webauthentication`), which is how upstream asks new portals to be
-> developed, so `service/frontend/` was deleted, `service/backends/gtk/` became `backend/`, and
-> this repository is now an out-of-tree backend plus its client. Every directory and interface name
-> below is therefore historical.
+> developed, so `service/frontend/` was deleted and `service/backends/gtk/` became `backend/`,
+> which in turn became this repository's root at the split of 2026-09-07
+> ([0006](0006-two-repositories.md)). Every directory and interface name below is therefore
+> historical.
 
 ## Context
 

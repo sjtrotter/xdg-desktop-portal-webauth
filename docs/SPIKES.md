@@ -92,7 +92,7 @@ rejects the resulting token, then:
   load-bearing, and its lifetime must itself be measured: how long does the Entra session cookie
   survive, and does Conditional Access shorten it?
 - Caching remains worth building (it still saves the *first* interaction on reconnect), but the
-  README and [ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md) must not promise silent PoP acquisition.
+  README and the client's own CLI contract must not promise silent PoP acquisition.
 - The backend's persistent shared data store moves from "nice to have" to "required", and
   `session_mode: shared` stops being a convenient default and becomes something the client
   depends on — which in turn raises the stakes on everything in
@@ -206,7 +206,7 @@ import would accept it at all.
 **What it decides.** The `portal` adapter stops being "broker a `Sign`" and becomes "resolve a URI
 through the certificate portal's own PKCS#11 module": there is no external-signer seam in WebKit or
 glib-networking to plug a brokered `Sign` into, and there is a working URI seam.
-`backend/src/tls/portal-token.h` is that agreement, and
+`src/tls/portal-token.h` is that agreement, and
 [decisions/0007](decisions/0007-certificate-adapter.md) records the decision.
 
 Steps 11 (`nativeclient` interception against the `.us` authority) and 13 (the in-process adapter)
@@ -299,8 +299,8 @@ mechanism from the "Why not X" section stops being a rejected alternative and be
 **backend** — a separate process implementing
 `org.freedesktop.impl.portal.experimental.WebAuthentication`, declared in its own `.portal` file in
 `$datadir/xdg-desktop-portal/portals` and selected in `portals.conf` — and neither
-[PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), nor [IMPL-INTERFACE.md](IMPL-INTERFACE.md), nor
-[ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md), nor the FreeRDP integration changes. That an
+[PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), nor [IMPL-INTERFACE.md](IMPL-INTERFACE.md), nor the
+client's CLI contract, nor the FreeRDP integration changes. That an
 alternative mechanism is a package rather than a patch is the clearest practical dividend of
 [decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
 

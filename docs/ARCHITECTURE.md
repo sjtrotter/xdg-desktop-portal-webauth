@@ -1,10 +1,10 @@
 # Architecture
 
-Status: the backend and the Entra client are both implemented and have both been run end to end —
-against a fixture identity provider and a mock authority ([TESTING.md](TESTING.md)), and against a
-real Entra ID tenant: 2026-09-05 10:42 live sign-in, and 2026-09-05 14:21 the full FreeRDP-to-AVD
-chain, with one interactive re-auth for the RDS proof-of-possession token. Where this document says
-"would", it still means it.
+Status: the backend is implemented and has been run end to end — against a fixture identity provider
+([TESTING.md](TESTING.md)), and against a real Entra ID tenant driven by its first consumer:
+2026-09-05 10:42 live sign-in, and 2026-09-05 14:21 the full FreeRDP-to-AVD chain, with one
+interactive re-auth for the RDS proof-of-possession token. Where this document says "would", it
+still means it.
 
 Web authentication is **a portal frontend and a portal backend**, plumbed exactly as
 xdg-desktop-portal plumbs every portal it has — because the frontend *is* xdg-desktop-portal.
@@ -13,12 +13,12 @@ it was given, finds a backend through a `.portal` file, and forwards the call ov
 interface applications must never reach; the backend owns the window. That shape is deliberate and
 early, and its costs are recorded in
 [decisions/0008-build-to-the-upstream-shape.md](decisions/0008-build-to-the-upstream-shape.md).
-**This repository is the backend and the client, and nothing else** — the frontend is a branch of
+**This repository is the backend and nothing else** — the frontend is a branch of
 xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `a6b06d4`; see
 [decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
 
 ```
-  FreeRDP ──GetCommonAccessToken──▶ entra-token-helper           clients/entra/
+  FreeRDP ──GetCommonAccessToken──▶ entra-token-helper           SEPARATE REPOSITORY
                                       │  OAuth, PKCE, cache, sovereign clouds
                                       │
                                       │  D-Bus: org.freedesktop.portal.Desktop
@@ -38,7 +38,7 @@ xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `a6b06d
                                       │         (backend interface; NOT for applications)
                                       ▼
                     ┌─────────────────────────────────────────┐
-                    │  xdg-desktop-portal-webauth             │  backend/
+                    │  xdg-desktop-portal-webauth             │  THIS REPOSITORY
                     │  GTK4 + WebKitGTK 6.0 web view          │
                     │  security chrome · storage partition    │
                     │  navigation interception                │
@@ -82,7 +82,7 @@ This is the table the rest of the document explains. Every row is upstream's own
 against `xdg-desktop-portal/desktop-portal/account.c` and
 `xdg-desktop-portal-gtk/src/account.c` — the smallest complete example of a UI-dialog portal pair.
 
-| Concern | Frontend (xdg-desktop-portal, branch) | Backend (`backend/`) | Upstream this mirrors |
+| Concern | Frontend (xdg-desktop-portal, branch) | Backend (this repository) | Upstream this mirrors |
 |---|---|---|---|
 | **Owns the bus name applications call** | Yes: `org.freedesktop.portal.Desktop` | No; owns `org.freedesktop.impl.portal.desktop.webauth`, which applications must not call | it *is* `org.freedesktop.portal.Desktop` vs `org.freedesktop.impl.portal.desktop.<backend>` |
 | **App id derivation** | **Only here.** `xdp_invocation_get_app_info()`: Flatpak/Snap mediation (`sandboxed`), a cgroup label (`host`), or nothing (`unidentified`) | Never. Its D-Bus peer is the portal, not the application; it is *told* `app_id` and `app_identity_level` | `shared/xdp-app-info*.c`; `app_id` is an impl argument |
@@ -134,20 +134,20 @@ The files this repository used to hold for all of that — `request.h`, `session
 `portal-impl.h`, `webauthentication.h`, `main.c` — are **deleted**, not moved: upstream has an
 equivalent of every one. See [UPSTREAMING.md](UPSTREAMING.md).
 
-## The backend — `backend/`
+## The backend — this repository
 
 An out-of-tree backend project, laid out like every other one: `data/` holds the `.portal` file,
 the D-Bus service file and the interface XML, `src/` holds one file per portal interface
 implemented.
 
-### `webauthentication-impl` — [`src/webauthentication-impl.h`](../backend/src/webauthentication-impl.h)
+### `webauthentication-impl` — [`src/webauthentication-impl.h`](../src/webauthentication-impl.h)
 
 The impl skeleton and its one handler. What it must *not* do is the interesting half: never resolve
 its own peer to identify the application, never accept a call from anything but its frontend, never
 re-decide policy the frontend decided — and never trust the frontend's validation instead of doing
 its own.
 
-### `transaction` — [`src/transaction.h`](../backend/src/transaction.h)
+### `transaction` — [`src/transaction.h`](../src/transaction.h)
 
 One transaction and the only object allowed to complete it: the URIs, the deadline, the partition,
 the window, whatever the certificate adapter holds, and exactly one terminal result. The races are
@@ -155,7 +155,7 @@ specified rather than discovered, and two of them are new: the frontend can vani
 a window belonging to no request is the leaked-window failure the interface promises not to have),
 and this process can vanish (the frontend owes the answer).
 
-### `webkit-session` — [`src/webkit-session.h`](../backend/src/webkit-session.h)
+### `webkit-session` — [`src/webkit-session.h`](../src/webkit-session.h)
 
 The GTK4 + WebKitGTK 6.0 web view. It tests every navigation and finishes the transaction
 *before the navigation is loaded*, because the completion URI carries the credential the flow was
@@ -175,7 +175,7 @@ or a card requires it, which is the AVD/PIV case; paste as the headless fallback
 as an experimental integration). What is lost is per-request capability negotiation, which the impl
 interface does not have because upstream's does not.
 
-### `chrome` — [`src/chrome.h`](../backend/src/chrome.h)
+### `chrome` — [`src/chrome.h`](../src/chrome.h)
 
 The part of the window nobody outside this process can influence: the app id **the frontend
 established**, the engine's own current origin, and the caller's `title` hint rendered beneath and
@@ -183,18 +183,18 @@ marked as application-supplied. Accessibility lives here as acceptance criteria 
 for every backend-owned control, meaningful focus order, screen-reader announcement of caller and
 origin, no meaning carried by colour alone, focus restored to the calling application on close.
 
-### `external-window` — [`src/external-window.h`](../backend/src/external-window.h)
+### `external-window` — [`src/external-window.h`](../src/external-window.h)
 
 Parsing `x11:<xid>` and `wayland:<handle>` and parenting the window. Backend work, because the
 frontend has no display connection. An invalid identifier degrades to an unparented window and
 never aborts authentication; parenting is not activation.
 
-### `completion` — [`src/completion.h`](../backend/src/completion.h)
+### `completion` — [`src/completion.h`](../src/completion.h)
 
 Exact matching on parsed URIs, with no prefix mode. One rule, two enforcement points, and they must
 agree — see [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
 
-### `storage` — [`src/storage.h`](../backend/src/storage.h)
+### `storage` — [`src/storage.h`](../src/storage.h)
 
 Which website data store a transaction runs in, and what a store covers — every piece of engine
 state, not just cookies. Two modes: `shared` (all of this backend's transactions, and emphatically
@@ -202,14 +202,14 @@ state, not just cookies. Two modes: `shared` (all of this backend's transactions
 The mode arrives as a decision; this process may refuse a mode it cannot honour, and may not
 silently downgrade one.
 
-### `tls/client_cert` — [`src/tls/`](../backend/src/tls/)
+### `tls/client_cert` — [`src/tls/`](../src/tls/)
 
 Answering a TLS client-certificate challenge, behind an adapter with two providers. Both end in the
 same call — `g_tls_certificate_new_from_pkcs11_uris()` — because [S2](SPIKES.md) established that
 this is the seam WebKit actually has:
 
 - **`portal`** — a URI naming the token that the Certificate portal's own client-side PKCS#11 module
-  presents ([`src/tls/portal-token.h`](../backend/src/tls/portal-token.h)). The card, the chooser,
+  presents ([`src/tls/portal-token.h`](../src/tls/portal-token.h)). The card, the chooser,
   the consent and the PIN stay in that service; the token declares
   `CKF_PROTECTED_AUTHENTICATION_PATH`, so this backend answers no PIN challenge at all.
   **Preferred**, and the only client-certificate path; tested 2026-09-04/05/06.
@@ -256,95 +256,47 @@ displaying the origin that raised it, refusing challenges from hosts unrelated t
 shown, binding it to one cancellable transaction, and releasing whatever the adapter held on every
 exit path. That last one is small in code and disproportionate in risk.
 
-### `redact` — [`src/redact.h`](../backend/src/redact.h)
+### `redact` — [`src/redact.h`](../src/redact.h)
 
 Structural, not textual: the logging interface takes typed fields and the kind decides what may be
 printed. There is deliberately no "log this URI" entry point, and URI and response sizes are capped
 so a hostile page cannot make the log the problem instead. The frontend is under the same obligation
 and has no copy of the file; at acceptance both belong in shared code.
 
-## The consumer — `clients/entra/`
+## The consumer — a separate repository
 
-Components under [`clients/entra/src/`](../clients/entra/src/). The CLI contract is
-[ENTRA-CLIENT-CLI.md](ENTRA-CLIENT-CLI.md). **Nothing about this component changed in the
-restructuring except the D-Bus names it calls** — which is the point: an application sees a portal,
-not an architecture.
+The first consumer is the Entra ID / Azure Virtual Desktop token client `entra-token-helper`, in
+[github.com/sjtrotter/entra-token-helper](https://github.com/sjtrotter/entra-token-helper). It owns
+the OAuth half — PKCE, code exchange, refresh, the proof-of-possession grant, the sovereign-cloud
+table and a Secret Service account store — and its CLI contract is `docs/CLI.md` there. It moved out
+of this repository on 2026-09-07
+([decisions/0006-two-repositories.md](decisions/0006-two-repositories.md)); nothing here depends on
+it, and nothing there is built from here.
 
-### `cli` — [`src/main.c`](../clients/entra/src/main.c), [`src/acquire.c`](../clients/entra/src/acquire.c)
-
-`main.c` is argument parsing for the four verbs, option validation, exit-code mapping and
-plain-vs-JSON output; it owns no protocol. `acquire.c` is what `login` and `token` actually do:
-the order of cache, refresh and window, the proof-of-possession path and its interactive fallback,
-and the decision about when a human has to be asked.
-
-### `request schema` — [`ipc/request.h`](../clients/entra/src/ipc/request.h)
-
-The versioned request/response objects (`"schema": 1`). Built from `argv` today, shaped as messages
-from the start so that putting the client behind a socket later is a transport change rather than a
-redesign — and so the same shape can become a typed FreeRDP provider request.
-
-### `webauth client` — [`webauth_client.h`](../clients/entra/src/webauth_client.h)
-
-The client's only interactive dependency: one `Start`, one `Response`, on
-`org.freedesktop.portal.Desktop`. It subscribes to `Response` on the handle derived from its own
-`handle_token` *before* calling `Start`, so a fast completion cannot race the subscription. It never
-names a backend, never reads a `.portal` file, and cannot tell which backend served it.
-
-If the interface is not exported, this reports *unavailable* rather than failing, so a dispatcher
-can fall through to another provider. **That is now the common case**, not the exotic one: the
-interface is experimental and absent unless the portal was started with
+What matters on this side is the shape of the call it makes, which is the shape any consumer makes:
+one `Start` and one `Response` on `org.freedesktop.portal.Desktop`, with the `Response` subscription
+taken on the handle derived from its own `handle_token` *before* `Start` is called, so a fast
+completion cannot race it. It never names a backend, never reads a `.portal` file, and cannot tell
+which backend served it. When the interface is not exported it reports *unavailable* rather than
+failing, so a dispatcher can fall through to another provider. **That is the common case**, not the
+exotic one: the interface is experimental and absent unless the portal was started with
 `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. Three causes — the gate off, no backend
 configured, no portal at all — are indistinguishable by design, because the frontend exports nothing
-in any of them; the exit-40 diagnostic names the environment variable, because that is almost always
-what is wrong.
+in any of them.
 
-### `transaction` — [`oauth/transaction.h`](../clients/entra/src/oauth/transaction.h)
-
-The `state`, the PKCE verifier and its S256 challenge, the expected redirect, a deadline, and a
-single-use flag. Note what it does not contain: a window, a web view, a reference count shared with
-UI callbacks.
-
-### `oauth` — [`callback.h`](../clients/entra/src/oauth/callback.h), [`discovery.h`](../clients/entra/src/oauth/discovery.h), [`clouds.h`](../clients/entra/src/oauth/clouds.h), [`token.h`](../clients/entra/src/oauth/token.h), [`jwt.h`](../clients/entra/src/oauth/jwt.h)
-
-Classification of the URI the portal returned, the code/refresh/PoP token requests, endpoint
-derivation, the sovereign-cloud table, and the one claim read out of an ID token. The classifier is the security-critical piece on this
-side and is modelled on FreeRDP's `freerdp_client_aad_parse_callback` from the `aad/oauth-hardening`
-branch: exact redirect match, no userinfo or fragment, `state` present exactly once and compared in
-constant time, exactly one of `code` or `error` where a bare parameter still counts as an
-occurrence, strict percent-decoding with `%00` rejected.
-
-**There are three checks, and none is redundant.** The backend answers "is this navigation the URI
-the request named" — a question about URIs, asked against a live browser. The frontend answers "is
-what the backend handed me the URI the application asked for" — a question about whether a backend
-behaved, and it is implemented and tested upstream
-(`completion_uri_matches()`, `test_completion_mismatch_rejected`). The client answers "is this a
-valid authorization response to the request I made" — a question about OAuth, involving a secret
-nothing in the portal ever saw. Putting the third one in the portal is what would make the portal
-protocol-specific.
-
-Discovery is **optional and lazy**: the request always carries a configured authority, the endpoints
-are derived from it before any I/O, and the OpenID configuration is fetched only when an endpoint is
-about to be used. A request answered from the cache therefore touches the network not at all. A
-discovered endpoint is used only if it is `https` and on the same host as the authority that served
-the document — a discovery document is not a licence to move the exchange.
-
-### `cache` / `keyring` — [`cache/keyring.h`](../clients/entra/src/cache/keyring.h)
-
-One Secret Service item per account, attributed by `(authority base, client id, account)`, whose
-secret is a JSON record holding the refresh token, the ID token and the access tokens cached under
-the **sorted, de-duplicated scope set**. A proof-of-possession token is never stored at all: it is
-bound to one key, and a cache that ignored the binding would hand back a token the caller cannot
-use. When no keyring is available the client reports unavailable rather than falling back to a
-file.
-
-### `log` / `redact` — [`log/redact.h`](../clients/entra/src/log/redact.h)
-
-The same structural principle as the backend's, over the artifacts the portal never sees:
-authorization codes, tokens, verifiers, `state`, and the authorization server's `error_description`.
+**There are three completion checks in the chain, and none is redundant.** The backend answers "is
+this navigation the URI the request named" — a question about URIs, asked against a live browser.
+The frontend answers "is what the backend handed me the URI the application asked for" — a question
+about whether a backend behaved, implemented and tested upstream (`completion_uri_matches()`,
+`test_completion_mismatch_rejected`). The consumer answers "is this a valid authorization response
+to the request I made" — a question about OAuth, involving a secret nothing in the portal ever saw.
+Putting the third one in the portal is what would make the portal protocol-specific.
 
 ## One AVD connection, end to end
 
-FreeRDP needs two tokens for one connection, in this order.
+FreeRDP needs two tokens for one connection, in this order. The steps below that belong to the
+client belong to its repository; they are kept here because they are the only end-to-end use of
+this portal that has run against a real tenant.
 
 ### 1. ARM gateway bearer token
 
@@ -418,7 +370,7 @@ application (entra-token-helper, or anything else)
 xdg-desktop-portal           already running; the branch adds two portals to it
     │ org.freedesktop.impl.portal.experimental.WebAuthentication
     ▼
-xdg-desktop-portal-webauth   D-Bus activated, GTK4 + WebKitGTK      backend/
+xdg-desktop-portal-webauth   D-Bus activated, GTK4 + WebKitGTK      THIS REPOSITORY
     │ org.freedesktop.portal.experimental.Certificate   (as a client, preferred adapter)
     ▼                         ...which is the SAME xdg-desktop-portal, which routes to
 xdg-desktop-portal-certificate   separate repository (xdg-desktop-portal-certificate), optional

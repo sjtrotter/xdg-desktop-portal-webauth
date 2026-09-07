@@ -53,7 +53,7 @@
 #                must contain desktop-portal/xdg-desktop-portal and
 #                document-portal/xdg-permission-store.
 #   $BACKEND     this repository's backend binary. Default:
-#                ./build-backend/src/xdg-desktop-portal-webauth
+#                ./build/src/xdg-desktop-portal-webauth
 #   $XDP_ENV     a file to source first, for a frontend built against a scratch
 #                prefix -- LD_LIBRARY_PATH for libdex, PKG_CONFIG_PATH.
 #                Default: .xdp-env in this repository if it exists.
@@ -88,7 +88,7 @@ here() { cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd; }
 REPO="$(here)"
 
 XDP_BUILD="${XDP_BUILD:-$REPO/../xdg-desktop-portal/build}"
-BACKEND="${BACKEND:-$REPO/build-backend/src/xdg-desktop-portal-webauth}"
+BACKEND="${BACKEND:-$REPO/build/src/xdg-desktop-portal-webauth}"
 XDP_ENV="${XDP_ENV:-$REPO/.xdp-env}"
 SOFTHSM_DIR="${SOFTHSM_DIR:-${TMPDIR:-/tmp}/xdp-webauth-softhsm}"
 
@@ -168,7 +168,7 @@ preflight() {
 	python3 -c 'import gi' 2>/dev/null || die "python3-gobject not found (the e2e client needs it)"
 
 	[ -x "$FRONTEND_BIN" ] || die "no frontend at $FRONTEND_BIN; set XDP_BUILD"
-	[ -x "$BACKEND" ] || die "no backend at $BACKEND; run 'meson setup build-backend backend && ninja -C build-backend' or set BACKEND"
+	[ -x "$BACKEND" ] || die "no backend at $BACKEND; run 'meson setup build && ninja -C build' or set BACKEND"
 
 	fixture_check "$SOFTHSM_DIR" softhsm
 	[ -f "$SOFTHSM_DIR/server.pem" ] ||

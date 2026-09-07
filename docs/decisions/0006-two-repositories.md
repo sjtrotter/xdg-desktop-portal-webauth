@@ -3,6 +3,9 @@
 Date: 2026-09-03
 Status: accepted (for the sketch); the split is now **three** components, per
 [0008](0008-build-to-the-upstream-shape.md)
+Done: 2026-09-07. The split happened. The Entra client moved, with its history, to
+https://github.com/sjtrotter/entra-token-helper, and this repository is the backend alone, at its
+root. Everything below describes the single-repository layout as it stood before that date.
 
 > **Amendment (0008).** `service/` is now two independent meson projects rather than one — a portal
 > frontend and a reference backend — so this repository holds three separately buildable

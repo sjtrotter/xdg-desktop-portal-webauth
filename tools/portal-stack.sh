@@ -105,7 +105,7 @@ here() { cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd; }
 REPO="$(here)"
 
 XDP_BUILD="${XDP_BUILD:-$REPO/../xdg-desktop-portal/build}"
-BACKEND="${BACKEND:-$REPO/build-backend/src/xdg-desktop-portal-webauth}"
+BACKEND="${BACKEND:-$REPO/build/src/xdg-desktop-portal-webauth}"
 XDP_ENV="${XDP_ENV:-$REPO/.xdp-env}"
 CERTIFICATE_REPO="${CERTIFICATE_REPO:-$REPO/../xdg-desktop-portal-certificate}"
 CERT_BUILD="${CERT_BUILD:-$CERTIFICATE_REPO/build}"

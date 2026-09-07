@@ -19,7 +19,7 @@ tests        tests/test_webauthentication.py
 ```
 
 The impl half is also here, as a verbatim tracking copy:
-[`../backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml).
+[`../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml).
 The public half is deliberately **not** copied: this repository has no reason to hold a
 second copy of an interface it does not implement, and a stale one would be worse than
 none.
@@ -121,7 +121,7 @@ The frontend's half is implemented and tested upstream —
 `web-authentication.c:completion_uri_matches()`, `test_completion_mismatch_rejected`, and
 `test_completion_normalisation_accepted` / `test_completion_near_miss_refused`, which name
 each equivalence and each near miss one by one. This repository's half is
-[`../backend/src/completion.h`](../backend/src/completion.h)/`completion.c`, implemented and
+[`../src/completion.h`](../src/completion.h)/`completion.c`, implemented and
 tested by `test-completion.c`; [IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains why both exist.
 
 ## What version 1 does not support

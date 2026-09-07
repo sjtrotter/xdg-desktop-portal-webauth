@@ -446,7 +446,7 @@ xdp_write_portal_dir() {
 	# The comments are stripped so the file is readable in the log; the
 	# installed one keeps them.
 	rm -f -- "$dir/webauth.portal"
-	sed -e '/^#/d' -e '/^$/d' "$repo/backend/data/webauth.portal.in" >"$dir/webauth.portal"
+	sed -e '/^#/d' -e '/^$/d' "$repo/data/webauth.portal.in" >"$dir/webauth.portal"
 
 	# Written as plain portals.conf rather than <desktop>-portals.conf because
 	# that name is the frontend's fallback and is read whatever

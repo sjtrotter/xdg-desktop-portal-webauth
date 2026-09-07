@@ -1,32 +1,31 @@
 # xdg-desktop-portal-webauth
 
-This repository holds two independent programs. `backend/` is an out-of-tree backend for the
-experimental `org.freedesktop.impl.portal.experimental.WebAuthentication` portal interface: it opens
-a GTK4 + WebKitGTK 6.0 window on a URI an application asked for, watches every navigation, and ends
-the flow on the first one matching the completion URI the application gave, without loading it. It
-returns that URI and never interprets it. `clients/entra/` is the Entra ID / Azure Virtual Desktop
-token client that uses the portal and owns the OAuth half: PKCE, code exchange, refresh, the
-proof-of-possession grant, and a Secret Service account store. Its meson project is
-`entra-token-client` and its binary is `entra-token-helper`.
+An out-of-tree backend for the experimental
+`org.freedesktop.impl.portal.experimental.WebAuthentication` portal interface. It opens a GTK4 +
+WebKitGTK 6.0 window on a URI an application asked for, watches every navigation, and ends the flow
+on the first one matching the completion URI the application gave, without loading it. It returns
+that URI and never interprets it. It holds no OAuth code and issues no tokens.
 
 There is no frontend here. The public interface is exported by xdg-desktop-portal itself, on a branch
 of that project. TLS client certificates are answered by a second backend,
-`xdg-desktop-portal-certificate`, in its own repository.
+`xdg-desktop-portal-certificate`, in its own repository. The first consumer, the Entra ID / Azure
+Virtual Desktop token client `entra-token-helper`, is in a third
+([github.com/sjtrotter/entra-token-helper](https://github.com/sjtrotter/entra-token-helper)).
 
 ## Status
 
-Last checked 2026-09-06.
+Last checked 2026-09-07.
 
 | | State |
 |---|---|
-| Impl interface: `Start` returning `(u, a{sv})`, `Close` on the impl Request, same-UID and frontend-owner checks | Implemented (`backend/src/webauthentication-impl.c`) |
+| Impl interface: `Start` returning `(u, a{sv})`, `Close` on the impl Request, same-UID and frontend-owner checks | Implemented (`src/webauthentication-impl.c`) |
 | Hosted WebKitGTK window: security chrome, parenting to `parent_window`, downloads and popups and permissions refused, TLS errors fail closed | Implemented |
-| Completion interception: a match in any frame ends the flow and is never fetched | Implemented (`backend/src/completion.c`, `test-completion.c`) |
+| Completion interception: a match in any frame ends the flow and is never fetched | Implemented (`src/completion.c`, `tests/test-completion.c`) |
 | Storage partitioning: `shared` per app id, `ephemeral` per `Start`, cookie jar included | Implemented |
 | Client certificates through the `portal` provider (the certificate portal's client-side PKCS#11 module) | Implemented, and the primary path |
 | Client certificates through the `pkcs11` provider (any p11-kit token named on the command line) | Implemented, as the fallback |
 | In-process certificate chooser or PIN prompt | Not implemented, by decision ([0007](docs/decisions/0007-certificate-adapter.md)) |
-| Entra client: `login`, `token`, `accounts`, `logout`, bearer and proof-of-possession, keyring cache | Implemented |
+| First consumer: `entra-token-helper`, in a [separate repository](https://github.com/sjtrotter/entra-token-helper) | Working against this backend |
 | Live sign-in against a real identity provider | Proven 2026-09-05 (see below) |
 | One certificate chooser per handshake | Not implemented. A WebKitGTK handshake raises two, and one PIN prompt |
 | Caller attribution in the certificate portal's chooser | Partial. That window names this backend, not the application that asked |
@@ -35,7 +34,7 @@ Last checked 2026-09-06.
 | Proposed upstream | No. No issue and no pull request; two comments announcing the work on 2026-09-05 (flatpak/xdg-desktop-portal#662, FreeRDP/FreeRDP#13328) |
 | Independent security review, a second maintainer | Not done |
 
-Two runs on real hardware, both on 2026-09-05:
+Two runs on real hardware, both on 2026-09-05, when the client still shared this repository:
 
 - 10:42. A live Entra ID sign-in against a US Government tenant. The portal window reached Entra,
   `certauth` challenged for a client certificate, WebKit's network process resolved it through the
@@ -72,7 +71,7 @@ not a sign that this one was accepted.
        |
        |  org.freedesktop.impl.portal.experimental.WebAuthentication
        v  NOT an interface applications may call
-  xdg-desktop-portal-webauth                    backend/, THIS REPOSITORY
+  xdg-desktop-portal-webauth                    THIS REPOSITORY
        GTK4 + WebKitGTK 6.0: the window, the security chrome, the storage
        partition, the navigation interception, the TLS client certificate.
        |
@@ -87,8 +86,8 @@ Applications call xdg-desktop-portal and nothing else. They never name a backend
 
 The interface is not exported unless xdg-desktop-portal was started with
 `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` (or `all`). The experimental interface is
-disabled by default. With the gate off, an `entra-token-helper` call that needs the portal exits `40`
-and names the missing variable; cached tokens and account management do not need it.
+disabled by default. With the gate off the interface is not on the bus at all, and a caller that
+needs it has to degrade or fail.
 
 ## Interface at a glance
 
@@ -110,77 +109,29 @@ dropped and an unknown `session_mode` is an error. The answer arrives on
 Impl, for backends only. It follows the shape of the other impl portals, with the frontend-derived
 `app_id` passed as an argument. See
 [docs/IMPL-INTERFACE.md](docs/IMPL-INTERFACE.md) and the verbatim tracking copy at
-[`backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml).
+[`data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml).
 
 ```
 Start(o handle, s app_id, s parent_window, s start_uri, s completion_uri, a{sv} options)
     -> (u response, a{sv} results)
 ```
 
-## The Entra client CLI
-
-`entra-token-helper` has four verbs. The full contract, including the exit codes, is
-[docs/ENTRA-CLIENT-CLI.md](docs/ENTRA-CLIENT-CLI.md).
-
-| Verb | Purpose |
-|---|---|
-| `login` | Sign in through the portal and store the account and its refresh token. Always interactive. |
-| `token` | Acquire an access token, bearer or proof-of-possession. Silent when the cache allows it. |
-| `accounts` | List stored accounts. |
-| `logout` | Remove one account or all of them. |
-
-stdout carries only the result; everything else goes to stderr. Exit codes are contractual: `10`
-interaction required, `20` cancelled, `30` no such account, `40` provider unavailable, `50`
-authorization server error, `64` usage, `70` internal. A dispatcher should treat `40` as a decline
-and fall through.
-
-```console
-$ entra-token-helper login --cloud usgov --tenant <tenant-id>
-Signed in as <user>@<tenant-domain>
-
-$ entra-token-helper token --cloud usgov --tenant <tenant-id> \
-    --account <user>@<tenant-domain> --req-cnf eyJraWQiOiI8a2V5LWlkPiJ9 --json
-{
-  "schema": 1,
-  "status": "ok",
-  "token": "eyJ0eXAiOiJhdCtqd3Qi...",
-  "token_type": "pop",
-  "expires_in": 3599,
-  "account": "<user>@<tenant-domain>"
-}
-```
-
-A proof-of-possession token is never cached, so each one is a fresh grant. On the tested tenant the
-RDS scope required one interactive re-authentication, answered inside the portal window.
-
 ## Try it
 
-The two components are separate meson projects with no build-time dependency in either direction.
-The backend needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0. The client needs GLib, GIO,
-libsoup-3, json-glib and libsecret. All are required.
+One meson project. It needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0. All are required.
 
 ```console
-$ meson setup build-backend backend       && ninja -C build-backend && meson test -C build-backend
-$ meson setup build-entra   clients/entra && ninja -C build-entra   && meson test -C build-entra
+$ meson setup build && ninja -C build && meson test -C build
+$ ./build/src/xdg-desktop-portal-webauth --help
 ```
 
-The unit tests need no display and no bus. The backend has five suites (`completion`, `options`,
-`storage`, `redact`, `harden`); the client has six (`pkce`, `callback`, `jwt`, `discovery`, `cache`,
-`redact`).
+The unit tests need no display and no bus. There are five suites: `completion`, `options`,
+`storage`, `redact`, `harden`.
 
-The top-level `meson.build` is a convenience umbrella that includes both through `subprojects/` while
-they share a repository ([0006](docs/decisions/0006-two-repositories.md)):
-
-```console
-$ meson setup build && ninja -C build
-$ ./build/subprojects/xdg-desktop-portal-webauth/xdg-desktop-portal-webauth --help
-$ ./build/subprojects/entra-token-client/entra-token-helper --help
-```
-
-`ui-smoke.sh`, `portal-stack.sh` and `entra-e2e.sh` stand up a private bus with `dbus-run-session`
-and a headless X server, so they touch neither the session bus nor the display; `portal-stack.sh
---live` and the trigger script use the real desktop. They need a build of the frontend branch; point
-at it with `XDP_BUILD`.
+`ui-smoke.sh` and `portal-stack.sh` stand up a private bus with `dbus-run-session` and a headless X
+server, so they touch neither the session bus nor the display; `portal-stack.sh --live` and the
+trigger script use the real desktop. They need a build of the frontend branch; point at it with
+`XDP_BUILD`.
 
 ```console
 $ tools/softhsm-fixture.sh                  # a CA, a server certificate, a token, a PIN file
@@ -190,7 +141,6 @@ $ tools/ui-smoke.sh --cancel                # Escape, expecting response 1
 $ tools/portal-stack.sh                     # BOTH portals, one bus, one Xvfb, a real handshake
 $ tools/portal-stack.sh --second-start
 $ tools/portal-stack.sh --cancel-chooser
-$ tools/entra-e2e.sh                        # the client through all four verbs, mock authority
 $ tools/trigger-webauthentication.sh all    # the PUBLIC interface with gdbus, as an app would
 ```
 
@@ -224,7 +174,7 @@ That request is close to what this portal already does. The intended integration
 helper that speaks #13340's protocol and forwards `navigate` to
 `org.freedesktop.portal.experimental.WebAuthentication`, which puts the window, the security chrome
 and the card behind the portal without FreeRDP linking a web engine. Under that split, FreeRDP does
-not need the Entra client's OAuth code, and the client keeps its own callers.
+not need the Entra client's OAuth code, and that client keeps its own callers.
 
 The `client/entra-token-helper` branch used in the 2026-09-05 run is a fork-only proof of concept. It
 is not proposed upstream and is not the integration path. `sso-mib` remains the sibling provider for
@@ -232,19 +182,19 @@ Intune-enrolled devices, which hold a device-bound primary refresh token this pr
 
 ## Why not
 
-- A loopback redirect with `xdg-open`: the only redirect URI registered for the AVD public client is
-  a remote HTTPS one, so nothing local can receive the completion.
-  [0002](docs/decisions/0002-no-loopback-redirect.md)
 - A browser extension and a native messaging host: per-browser packaging, broad URL-observation
   permissions, and failure under private browsing or enterprise policy. Experimental at best.
   [0005](docs/decisions/0005-service-shape.md)
-- Impersonating the Microsoft Identity Broker's D-Bus name: no stable contract to implement, and the
-  name asserts enrollment semantics a browser flow cannot honour.
-  [0003](docs/decisions/0003-no-broker-impersonation.md)
 - A service that returns tokens instead of completions: that is an identity broker, with client
   registration, consent, rotation and policy attached. [0005](docs/decisions/0005-service-shape.md)
-- Keeping it inside one RDP client: it buries a desktop identity capability in one plugin and strands
-  every other client. [0001](docs/decisions/0001-standalone-helper.md)
+- A frontend in this repository: the public interface belongs to xdg-desktop-portal, so it is
+  carried on a branch of that project instead.
+  [0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)
+
+Three more rejected alternatives belong to the client and are recorded as ADRs 0001 to 0003 in
+[its repository](https://github.com/sjtrotter/entra-token-helper): a loopback redirect with
+`xdg-open`, impersonating the Microsoft Identity Broker's D-Bus name, and keeping the work inside
+one RDP client.
 
 ## Related repositories
 
@@ -253,6 +203,9 @@ Intune-enrolled devices, which hold a device-bound primary refresh token this pr
 - [github.com/sjtrotter/xdg-desktop-portal-certificate](https://github.com/sjtrotter/xdg-desktop-portal-certificate)
   is the certificate portal backend: the chooser, the PIN prompt, and the PKCS#11 module this backend
   loads.
+- [github.com/sjtrotter/entra-token-helper](https://github.com/sjtrotter/entra-token-helper) is the
+  Entra ID / Azure Virtual Desktop token client, the first consumer of this portal. Its CLI contract
+  is `docs/CLI.md` there.
 - [github.com/sjtrotter/xdg-desktop-portal, branch `experimental/certificate-webauthentication`](https://github.com/sjtrotter/xdg-desktop-portal/tree/experimental/certificate-webauthentication)
   is the frontend for both portals.
 
@@ -281,10 +234,9 @@ Intune-enrolled devices, which hold a device-bound primary refresh token this pr
 
 | | |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The two components, the process split, and what each owns |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The process split, and what each part owns |
 | [docs/PUBLIC-INTERFACE.md](docs/PUBLIC-INTERFACE.md) | The interface applications call, and where its XML lives |
 | [docs/IMPL-INTERFACE.md](docs/IMPL-INTERFACE.md) | The backend contract |
-| [docs/ENTRA-CLIENT-CLI.md](docs/ENTRA-CLIENT-CLI.md) | The CLI contract: verbs, options, JSON, exit codes |
 | [docs/TESTING.md](docs/TESTING.md) | The tiers, the commands, and what each run proved |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, boundaries, and the known gaps |
 | [docs/SPIKES.md](docs/SPIKES.md) | The feasibility questions and their answers |
@@ -299,15 +251,14 @@ Intune-enrolled devices, which hold a device-bound primary refresh token this pr
 LGPL-2.1-or-later. This matches xdg-desktop-portal, xdg-desktop-portal-gtk,
 xdg-desktop-portal-gnome, the frontend branch this backend is written against, and the sibling
 `xdg-desktop-portal-certificate`, with which this repository shares
-[`backend/src/tls/portal-token.h`](backend/src/tls/portal-token.h) byte for byte. Files derived from
-xdg-desktop-portal and xdg-desktop-portal-gtk keep their attribution under the same licence. Both
-binaries are separate processes from FreeRDP (Apache-2.0) and are reached over D-Bus and a CLI, so no
-linking question arises. The reasoning is in
+[`src/tls/portal-token.h`](src/tls/portal-token.h) byte for byte. Files derived from
+xdg-desktop-portal and xdg-desktop-portal-gtk keep their attribution under the same licence. This
+backend is a separate process from FreeRDP (Apache-2.0) and is reached over D-Bus, so no linking
+question arises. The reasoning is in
 [docs/decisions/0004-license.md](docs/decisions/0004-license.md).
 
 ## AI assistance
 
 The code and documents in this repository were drafted with the assistance of Anthropic Claude and
-OpenAI Codex, under direction and review. The architectural decisions, the verified facts about the
-AVD application registration and the sovereign-cloud constants, and the judgement about what to build
-are the author's.
+OpenAI Codex, under direction and review. The architectural decisions and the judgement about what
+to build are the author's.

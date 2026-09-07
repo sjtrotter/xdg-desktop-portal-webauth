@@ -100,19 +100,18 @@ the naming note above did not force a change here.
 
 ## What this repository is now
 
-An out-of-tree backend, plus an application:
+An out-of-tree backend, and nothing else:
 
 | Here | What it is |
 |---|---|
-| `backend/src/main.c` | the D-Bus activated executable |
-| `backend/src/webauthentication-impl.h`, `request-impl.h` | the impl skeleton, one file per portal interface |
-| `backend/src/transaction.c`, `webkit-session.c`, `chrome.c`, `external-window.c`, `storage.c`, `completion.c`, `options.c`, `redact.c` | the window, the engine, the chrome, the partition, the matcher, the logging rules |
-| `backend/src/tls/` | the certificate adapter and its two providers, `portal` and `pkcs11` |
-| `backend/tests/` | the rules, tested with no display and no bus |
-| `backend/data/webauth.portal.in` | `DBusName`, `Interfaces`, `UseIn`; installed into `$datadir/xdg-desktop-portal/portals` |
-| `backend/data/org.freedesktop.impl.portal.desktop.webauth.service.in` | D-Bus activation |
-| `backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` | a **verbatim tracking copy** of the branch's file; deleted the day the branch lands and the file ships in xdg-desktop-portal's interfaces directory |
-| `clients/entra/` | the Entra ID / AVD token client. **Never moves.** It is a consumer. |
+| `src/main.c` | the D-Bus activated executable |
+| `src/webauthentication-impl.h`, `request-impl.h` | the impl skeleton, one file per portal interface |
+| `src/transaction.c`, `webkit-session.c`, `chrome.c`, `external-window.c`, `storage.c`, `completion.c`, `options.c`, `redact.c` | the window, the engine, the chrome, the partition, the matcher, the logging rules |
+| `src/tls/` | the certificate adapter and its two providers, `portal` and `pkcs11` |
+| `tests/` | the rules, tested with no display and no bus |
+| `data/webauth.portal.in` | `DBusName`, `Interfaces`, `UseIn`; installed into `$datadir/xdg-desktop-portal/portals` |
+| `data/org.freedesktop.impl.portal.desktop.webauth.service.in` | D-Bus activation |
+| `data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` | a **verbatim tracking copy** of the branch's file; deleted the day the branch lands and the file ships in xdg-desktop-portal's interfaces directory |
 | `tools/` | the fixture, the fixture identity provider, the private-bus stack, the Xvfb smoke test, the public-interface client |
 | `spikes/` | `webkit-client-cert.c`, S2's answer |
 
@@ -146,7 +145,7 @@ adapter — which matters more here than anything in the paragraph above:
 | `client_cert_portal.h` said | The branch says | Consequence |
 |---|---|---|
 | `CreateSession(a{sv}) → o session_handle` | `CreateSession(a{sv}) → o handle`, a **Request**; the session handle arrives in its `Response` | The adapter must subscribe before calling, and must not treat the return value as a session |
-| `OpenPkcs11Endpoint(o session, a{sv}) → h fd, s, s, u` | **not on the interface at all** | The compatibility transport does not exist — and after [S2](SPIKES.md) it is not what was needed. WebKit resolves a client certificate from a **PKCS#11 URI** in its network process, so the seam is a permanently registered module the Certificate portal publishes, not an fd handed over per grant. `backend/src/tls/portal-token.h` is the resulting contract, and it is now the thing that needs agreeing between the two repositories |
+| `OpenPkcs11Endpoint(o session, a{sv}) → h fd, s, s, u` | **not on the interface at all** | The compatibility transport does not exist — and after [S2](SPIKES.md) it is not what was needed. WebKit resolves a client certificate from a **PKCS#11 URI** in its network process, so the seam is a permanently registered module the Certificate portal publishes, not an fd handed over per grant. `src/tls/portal-token.h` is the resulting contract, and it is now the thing that needs agreeing between the two repositories |
 | `context` carrying the challenging origin | **no such option** | The origin can only travel in `reason`, as application-supplied text |
 | a `pkcs11_endpoint` capability bit | `GetCapabilities` has no such key | Gone from the adapter, along with the capability mask itself: a provider is available or it is not |
 | brokered `Sign` would satisfy the handshake | the interface is unchanged, but WebKit has no seam for it | S2: there is no external-signer path and no `GTlsInteraction` on a `WebKitNetworkSession`. This is the one place where the branch's interface is *not* the constraint — the engine is |

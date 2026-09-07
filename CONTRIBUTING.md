@@ -1,7 +1,8 @@
 # Contributing
 
-The portal backend and the Entra client are both implemented. The client signed in against a real
-Entra ID tenant and ran the full FreeRDP-to-AVD chain on 2026-09-05; see
+This backend is implemented. Its first consumer, the Entra ID / AVD token client
+[entra-token-helper](https://github.com/sjtrotter/entra-token-helper), signed in against a real
+Entra ID tenant and ran the full FreeRDP-to-AVD chain through it on 2026-09-05; see
 [docs/TESTING.md](docs/TESTING.md) before changing anything, because most of its rules have a test.
 
 ## What is most wanted
@@ -25,13 +26,14 @@ Entra ID tenant and ran the full FreeRDP-to-AVD chain on 2026-09-05; see
   `<user>@<tenant-domain>` and similar placeholders. The only real identifiers in this repository are
   the AVD public client id, Microsoft's authority/scope/redirect constants, and the error code
   `AADSTS50011`.
-- **Keep the layers apart.** `backend/` must contain no Entra, Azure, OAuth or RDP identifier — that
-  is what makes "the portal is protocol-independent" a testable claim rather than a slogan. There is
-  no build-time dependency between `backend/` and `clients/entra/` in either direction, and there must
-  never be one. See [docs/decisions/0006-two-repositories.md](docs/decisions/0006-two-repositories.md).
+- **Keep the layers apart.** This repository must contain no Entra, Azure, OAuth or RDP identifier —
+  that is what makes "the portal is protocol-independent" a testable claim rather than a slogan. The
+  client lives in its own repository and there is no build-time dependency in either direction,
+  which is the point of
+  [docs/decisions/0006-two-repositories.md](docs/decisions/0006-two-repositories.md).
 - **The frontend is not here, and the interface is not ours.** The frontend is a branch of
   xdg-desktop-portal ([docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)),
-  and `backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a verbatim
+  and `data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a verbatim
   copy of that branch's file. A change to the interface is a change to that branch, followed by
   re-copying the file; a hand-edit here produces a backend that no longer implements what it claims.
   Anything about who is calling, what may be asked, or what a caller is told belongs upstream;
@@ -52,22 +54,13 @@ Entra ID tenant and ran the full FreeRDP-to-AVD chain on 2026-09-05; see
 
 ## Building
 
-Each of the two components is a standalone meson project:
-
-```console
-$ meson setup build-backend backend       && ninja -C build-backend
-$ meson setup build-entra   clients/entra && ninja -C build-entra
-```
-
-Or both, through the umbrella:
+One standalone meson project:
 
 ```console
 $ meson setup build && ninja -C build
 ```
 
-The backend needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0. The client needs GLib, GIO,
-libsoup-3, json-glib and libsecret — all required; see [docs/SECURITY.md](docs/SECURITY.md) for why
-the keyring is not optional.
+It needs GLib, GIO, GTK 4, libadwaita and WebKitGTK 6.0, all required.
 
 ## Style
 
@@ -78,9 +71,8 @@ code that enforces it.
 
 ## Running the tests
 
-`meson test -C build-backend` and `meson test -C build-entra` are the whole no-display suite, or
-`meson test -C build` for both; the end-to-end runs, which open a window, are `tools/ui-smoke.sh`,
-`tools/portal-stack.sh` and `tools/entra-e2e.sh`. What each tier can and cannot tell you is
+`meson test -C build` is the whole no-display suite; the end-to-end runs, which open a window, are
+`tools/ui-smoke.sh` and `tools/portal-stack.sh`. What each tier can and cannot tell you is
 [docs/TESTING.md](docs/TESTING.md).
 
 ## Sign-off and licence

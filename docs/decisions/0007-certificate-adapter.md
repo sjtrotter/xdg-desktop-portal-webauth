@@ -24,7 +24,7 @@ BACKEND per [0008](0008-build-to-the-upstream-shape.md) and calls a different in
 > 1. **The `portal` provider becomes module-based.** It resolves a URI naming a token the
 >    certificate portal's own client-side PKCS#11 module presents. The card, the chooser, the
 >    consent and the PIN all stay in that service; what crosses into this process is a URI. The
->    agreement is [`backend/src/tls/portal-token.h`](../../backend/src/tls/portal-token.h), and it is
+>    agreement is [`src/tls/portal-token.h`](../../src/tls/portal-token.h), and it is
 >    a contract with another repository: the token's label, manufacturer and model, its
 >    `CKF_PROTECTED_AUTHENTICATION_PATH`, and the name of its p11-kit module file. That module does
 >    not exist yet, so the provider reports itself unavailable and `auto` falls through.
@@ -148,7 +148,7 @@ needs a restricted facade that does not exist yet.
 ## Decision
 
 Model the certificate path as an **internal adapter interface**
-([`backend/src/tls/client_cert.h`](../../backend/src/tls/client_cert.h)):
+([`src/tls/client_cert.h`](../../src/tls/client_cert.h)):
 
 ```c
 select_and_present(challenge) → GTlsCertificate*

@@ -33,7 +33,9 @@ keyring cache on the 2026-09-05 run.
 ## Phase 0 — Reference backend and Entra client — **10–17 person-weeks**
 
 One backend and one token client, working against the frontend on the xdg-desktop-portal branch, on
-the machines the author controls. Not packaged for the world, not proposed to anyone.
+the machines the author controls. Not packaged for the world, not proposed to anyone. The client
+half is tracked here for continuity; since 2026-09-07 it is built and tested in
+[its own repository](https://github.com/sjtrotter/entra-token-helper).
 
 The frontend line in the estimates below is **done** — it is upstream's code on a branch, with
 tests — which is a real saving, and the figures have not been reworked to reflect it. Read them as
@@ -71,7 +73,7 @@ measure of what
 The GTK4/WebKitGTK 6.0 backend: the impl skeleton and its Request object, `parent_window` parsing
 and parenting, window, navigation policy, interception before load, the backend's copy of the
 completion matcher, storage partitioning across engine state, disabled downloads, popups and
-permissions, no TLS-error bypass, structural redaction. All of it is in `backend/src/`, and
+permissions, no TLS-error bypass, structural redaction. All of it is in `src/`, and
 [TESTING.md](TESTING.md) is what it has been run against.
 
 **Two things came out of building it that the estimate did not have.** WebKitGTK 6.0 exposes no
@@ -94,7 +96,7 @@ handshake that completes against a server requiring a client certificate.
 
 **`portal` is done too, since 2026-09-04.** What it needed was not in this repository — a
 client-side PKCS#11 module from the Certificate portal, presenting the token named in
-`backend/src/tls/portal-token.h` — and that module now exists and is installed by name.
+`src/tls/portal-token.h` — and that module now exists and is installed by name.
 `tools/portal-stack.sh` runs both portals on one private bus and completes a real WebKitGTK
 mutual-TLS handshake with the card's key. It reports itself unavailable only where the portal is not
 running or its module is not in p11-kit's configuration, and `auto` then falls through to `pkcs11`.
@@ -119,7 +121,7 @@ screen-reader announcement, contrast and scaling. Budgeted as its own item becau
 polish is how it does not happen, and because this chrome carries a security decision that WebKit's
 own accessibility does not cover.
 
-### ~~0f. Client: OAuth, clouds, refresh, cache — 2–3 weeks~~ — **done, here**
+### ~~0f. Client: OAuth, clouds, refresh, cache — 2–3 weeks~~ — **done, in the client repository**
 
 Authorization-code exchange with `state` and PKCE S256; the strict response classifier and its
 percent-decoder; the commercial/Government cloud table; ARM bearer acquisition; RDS-AAD PoP
@@ -127,13 +129,14 @@ acquisition using the caller's `req_cnf`, including the interactive fallback Ent
 forces; refresh for both token kinds; token-response and OAuth-error parsing with redaction; the
 access-token cache and its key.
 
-`clients/entra/`, with 68 unit assertions and `tools/entra-e2e.sh`
-([TESTING.md](TESTING.md), tier 2c). One departure from the plan above: the access-token cache is
+In the client repository, [entra-token-helper](https://github.com/sjtrotter/entra-token-helper),
+with 68 unit assertions and its own `tools/entra-e2e.sh` ([TESTING.md](TESTING.md), tier 2c). One
+departure from the plan above: the access-token cache is
 **not** in memory. The CLI is a one-shot process, so an in-memory cache would live for the length of
 one call; it is stored inside the same keyring secret as the refresh token instead, under the same
 protection at rest. [SECURITY.md](SECURITY.md) says so in the secrets table.
 
-### 0g. Client: secret storage, concurrency, cancellation — **mostly done**
+### 0g. Client: secret storage, concurrency, cancellation — **mostly done, in the client repo**
 
 Done: Secret Service storage for refresh tokens and account records, keyed by authority base,
 client id and account; the refusal to fall back to a file; `accounts` and `logout`.

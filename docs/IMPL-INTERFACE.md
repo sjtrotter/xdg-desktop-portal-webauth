@@ -1,9 +1,9 @@
 # The backend (impl) interface
 
-Status: **experimental, version 1, implemented.** The backend in `backend/` answers `Start`, opens
-the window, intercepts the completion navigation and answers a client-certificate challenge; what it
-has been run against is [TESTING.md](TESTING.md). This document explains what the interface means,
-and — more importantly — **which side of the boundary each rule is enforced on and why**.
+Status: **experimental, version 1, implemented.** The backend in this repository answers `Start`,
+opens the window, intercepts the completion navigation and answers a client-certificate challenge;
+what it has been run against is [TESTING.md](TESTING.md). This document explains what the interface
+means, and — more importantly — **which side of the boundary each rule is enforced on and why**.
 
 The public half is [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), which is itself a pointer to the
 branch. Applications should read that one and stop there.
@@ -23,7 +23,7 @@ declared in    $datadir/xdg-desktop-portal/portals/webauth.portal
 
 ## The XML this repository ships is a copy, and it must track its source
 
-[`../backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml)
+[`../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml)
 is a **verbatim copy**, apart from a header comment saying so, of
 
 ```
@@ -33,7 +33,7 @@ data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
 
 The interface belongs to the frontend. This repository does not get to change it, and a divergence
 between the two files is not a difference of opinion — it is a backend that no longer implements
-the interface it claims in `backend/data/webauth.portal`. To update: copy the branch's file again
+the interface it claims in `data/webauth.portal`. To update: copy the branch's file again
 and change the commit id in the header.
 
 Upstream keeps `org.freedesktop.impl.portal.*.xml` in xdg-desktop-portal itself and backends
@@ -145,8 +145,8 @@ be promised, so that is where it is promised.
 **The cost, stated plainly:** one rule has two implementations, and they can drift. Both are now
 written and both are tested: `web-authentication.c:completion_uri_matches()` by
 `test_completion_mismatch_rejected` and its negative control, and this repository's
-[`../backend/src/completion.c`](../backend/src/completion.c) by
-[`../backend/tests/test-completion.c`](../backend/tests/test-completion.c), whose table carries the
+[`../src/completion.c`](../src/completion.c) by
+[`../tests/test-completion.c`](../tests/test-completion.c), whose table carries the
 frontend's own cases marked `FRONTEND`. The mitigation for drift is that table, not good intentions.
 
 One shared behaviour worth writing down because neither implementation asked for it: **GLib
@@ -167,7 +167,7 @@ comment nobody reads:
 **1. The reason vocabulary is extended.** The XML names `timeout`, `no_display`, `no_engine`,
 `user_cancelled`, `session_terminated` and `credential_unavailable`, introduced with "for
 instance" — an open list. This backend emits those and six more, defined in
-[`../backend/src/transaction.h`](../backend/src/transaction.h). `unrelated_certificate_challenge`
+[`../src/transaction.h`](../src/transaction.h). `unrelated_certificate_challenge`
 is one of them: it names a certificate concept, which is this backend's business and not a generic
 web sign-in portal's, so it is an addition here rather than a word in the interface.
 
@@ -241,7 +241,7 @@ this engine exposes no lever for it beyond
 **Two deadlines, and they are not the same deadline.** The frontend races the impl call against
 `dex_timeout_new_seconds(timeout)` (`web-authentication.c`) and, when the timeout wins, calls
 `Close()` on the impl `Request` and answers `2` with `reason` `timeout`. The deadline in
-[`../backend/src/transaction.c`](../backend/src/transaction.c) starts when the window opens rather
+[`../src/transaction.c`](../src/transaction.c) starts when the window opens rather
 than when `Start` arrives, so it is normally reached first and the frontend's is the backstop for a
 backend that never answers at all. Either way the application gets one answer and the window goes
 away.

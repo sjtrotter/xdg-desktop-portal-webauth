@@ -9,7 +9,7 @@ Three tiers, and they answer different questions:
 | **1. Unit** | The rules: the completion match, the options, the storage partition's name, the redaction | Nothing. No display, no bus, no network. `meson test` |
 | **2. End to end, headless** | Everything between a D-Bus call and a rendered page: the real frontend, the real backend, a real web engine, a real TLS handshake | Xvfb, a built frontend, a SoftHSM fixture |
 | **2b. Both portals at once** | The primary path: the certificate comes from the **certificate portal**, through its client-side PKCS#11 module, and the card, the chooser and the PIN never enter this process | the above, plus a built `xdg-desktop-portal-certificate` and its fixture |
-| **2c. The Entra client, end to end** | The other side of the interface: `entra-token-helper` signing in through the portal against an Entra-shaped mock authority, then caching, refreshing, minting a proof-of-possession token, and forgetting the account | Xvfb, a built frontend, this backend, this client. **No card and no second service.** |
+| **2c. A consumer, end to end** | The other side of the interface: `entra-token-helper`, from its own repository, signing in through the portal against an Entra-shaped mock authority | Xvfb, a built frontend, this backend, and a checkout of the client repository. **No card and no second service.** |
 | **3. Against a real identity provider** | The only thing that can answer whether this works for the case the project exists for | A tenant, a card, and a person. **Done, 2026-09-05.** |
 
 **The portal provider is the primary path and the pkcs11 provider is the fallback.** Tier 2 runs
@@ -17,17 +17,17 @@ the fallback, because it is the one that needs no second service; tier 2b runs t
 project exists for. A change that passes tier 2 and not tier 2b has not been tested.
 
 Tiers 2 and 2b are about the **backend**: a window, an engine, a handshake, a card. Tier 2c is
-about the **client**, and deliberately shares nothing with them but the portal itself — no
-certificate adapter, no SoftHSM, no `xdg-desktop-portal-certificate`. If the two halves ever need
-each other's fixtures to pass, the split this project claims has stopped being real.
+driven from the client's repository, and deliberately shares nothing with them but the portal
+itself — no certificate adapter, no SoftHSM, no `xdg-desktop-portal-certificate`. If the two halves
+ever need each other's fixtures to pass, the split between them has stopped being real.
 
 ---
 
 ## Tier 1 — the unit tests
 
 ```console
-$ meson setup build-backend backend && ninja -C build-backend
-$ meson test -C build-backend
+$ meson setup build && ninja -C build
+$ meson test -C build
 ```
 
 ```
@@ -41,69 +41,27 @@ Ok:                5
 Fail:              0
 ```
 
-The client's, which need no bus and no network either:
-
-```console
-$ meson setup build-entra clients/entra && ninja -C build-entra
-$ meson test -C build-entra
-```
-
-```
-1/6 unit - entra-token-client:pkce      OK    5 subtests passed
-2/6 unit - entra-token-client:callback  OK   17 subtests passed
-3/6 unit - entra-token-client:jwt       OK    8 subtests passed
-4/6 unit - entra-token-client:discovery OK   17 subtests passed
-5/6 unit - entra-token-client:redact    OK    8 subtests passed
-6/6 unit - entra-token-client:cache     OK   13 subtests passed
-
-Ok:                6
-Fail:              0
-```
-
-`test-pkce.c` checks the S256 challenge against RFC 7636's own vector rather than against itself.
-`test-callback.c` is the classifier, exhaustively: another host, a path prefix, userinfo, a
-fragment, a wrong `state`, no `state`, two `state`s, a bare second `code`, both `code` and `error`,
-neither, `%00`, a malformed escape, and a second answer to a transaction that already gave one.
-`test-cache.c` is the cache key — order, duplicates, whitespace, the five-minute margin — because
-anything missing from that key is a token returned to the wrong requester. `test-redact.c` is the
-negative test: a token, a code, an account name and an `error_description` must not survive a trip
-through the logging interface.
-
-Both projects at once, through the umbrella:
-
-```console
-$ meson setup build && meson test -C build       # 11 tests, 0 failures
-```
+The client's six suites moved with the client and run from
+[its own repository](https://github.com/sjtrotter/entra-token-helper).
 
 `test-harden.c` covers the counting of the window in which `PR_SET_DUMPABLE(0)` yields so that
 xdg-desktop-portal can identify this process — an unbalanced pair would leave it open for the life
 of the process, which is exactly the exposure the window exists to bound. It deliberately does not
 harden the test binary.
 
-`backend/tests/test-completion.c` carries the frontend's own fixtures, marked `FRONTEND`, so that
+`tests/test-completion.c` carries the frontend's own fixtures, marked `FRONTEND`, so that
 the two implementations of the completion rule can be seen to agree
 ([IMPL-INTERFACE.md](IMPL-INTERFACE.md)).
 
 ### With the sanitizers
 
 ```console
-$ meson setup build-asan backend -Db_sanitize=address,undefined -Db_lundef=false
+$ meson setup build-asan -Db_sanitize=address,undefined -Db_lundef=false
 $ ninja -C build-asan && meson test -C build-asan
 ```
 
 All five pass with LeakSanitizer on. If `libasan` is not installed system wide, unpack it into a
 scratch directory and set `LIBRARY_PATH` (to link) and `LD_LIBRARY_PATH` (to run).
-
-The client takes the same options:
-
-```console
-$ meson setup build-entra-asan clients/entra -Db_sanitize=address,undefined -Db_lundef=false
-$ ninja -C build-entra-asan && meson test -C build-entra-asan
-```
-
-**This has not been run.** `libasan` and `libubsan` are not installed on the machine the client was
-written on, and `meson setup` refuses the option rather than producing a build that only looks
-sanitized. It is the first thing to run on a machine that has them.
 
 ---
 
@@ -240,7 +198,7 @@ carrying one from a previous run. Four runs share one `--data-home`, as an appli
 portal would share a store between sign-ins.
 
 `--as-app` is needed here and nowhere else: an **unidentified** caller is narrowed to ephemeral by
-the backend on purpose ([`backend/src/storage.h`](../backend/src/storage.h)), so reaching the shared
+the backend on purpose ([`src/storage.h`](../src/storage.h)), so reaching the shared
 mode at all needs a caller the frontend can name. The flag puts the client in an
 `app-<id>-<n>.scope` cgroup with a matching `.desktop` file, which is what a desktop environment does
 when it launches an application and what `shared/xdp-app-info-host.c` reads.
@@ -508,119 +466,37 @@ that path needs no display of the certificate backend's own.
 
 ---
 
-## Tier 2c — the Entra client, end to end
+## Tier 2c — a consumer, end to end
 
-```console
-$ meson setup build-entra clients/entra && ninja -C build-entra
-$ tools/entra-e2e.sh
-```
-
-`tools/entra-e2e.sh` puts a headless X server and a private bus around the whole layer-2 stack —
+This tier lives in the client's repository,
+[entra-token-helper](https://github.com/sjtrotter/entra-token-helper), and is run from a checkout of
+it. `tools/entra-e2e.sh` there puts a headless X server and a private bus around the whole stack —
 `xdg-permission-store`, the development frontend with
 `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`, this backend with **no certificate
-adapter** — plus `tools/mock-token-endpoint.py`, an Entra-shaped authority, and runs
-`entra-token-helper` against it as an ordinary application calling the public interface.
+adapter** — plus an Entra-shaped mock authority, and runs `entra-token-helper` against it as an
+ordinary application calling the public interface. It finds this backend through `WEBAUTH_REPO`
+(default `../xdg-desktop-portal-webauth`) and `BACKEND` (default
+`$WEBAUTH_REPO/build/src/xdg-desktop-portal-webauth`), and the frontend through `XDP_BUILD`.
 
-### What the mock is, and is not
+Three of its thirty assertions are about this backend rather than the client:
 
-`tools/mock-token-endpoint.py` serves the three things a tenant serves at the shapes a tenant
-serves them: the OpenID configuration at `/<tenant>/v2.0/.well-known/openid-configuration`, an
-`/authorize` that records the `code_challenge` against a fresh code and redirects to the
-`redirect_uri`, and a `/token` that verifies **S256 against the challenge it recorded** and handles
-`authorization_code` and `refresh_token`, with and without `req_cnf`. It authenticates nobody and
-the tokens it mints are strings. What it is for is that every branch of the client — including the
-ones a happy path never reaches — can be provoked on demand:
+**A cached answer touches nothing.** Asked for the same token again with `--prompt never`, the
+mock's event log does not change at all. No portal call, no window, no discovery fetch. The portal
+is only on the interactive path, which is what makes it affordable to put a web engine behind it.
 
-| Flag | What it forces |
-|---|---|
-| `--fail-pop-refresh N` | the first N proof-of-possession **refresh** grants answer `interaction_required`, which is what Entra does for the RDS-AAD scope |
-| `--fail-refresh N` | the first N ordinary refresh grants answer `invalid_grant`, which is how an expired or revoked refresh token arrives |
-| `--event-log FILE` | one line per request: method, path, grant type, whether it was a PoP request. **Never** a code, a verifier, a token or a challenge |
+**The `shared` session store earns its keep.** The mock refuses the first proof-of-possession
+refresh with `interaction_required`, the client opens the portal window a second time for the
+RDS-AAD scope, and the sign-in is a click rather than a fresh authentication because the identity
+provider's session cookie is still in this backend's `shared` partition. That is the behaviour
+`session_mode: shared` exists for, provoked deterministically.
 
-The event log is what the run asserts on. "A PoP grant reached the authority" is a line the
-**server** wrote, not an inference from the client's exit code — and "the cache was used" is the
-**absence** of one.
+**The gate is the default state of a machine.** Asked with no session bus at all, the client exits
+40 and names `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. The gate off, no backend
+configured, and no portal at all are indistinguishable to a caller by design, and the diagnostic
+names the one that is almost always the cause.
 
-### The keyring
-
-`SECRET_BACKEND=file`, with `SECRET_FILE_TEST_PATH` and `SECRET_FILE_TEST_PASSWORD` pointing at a
-throwaway keyring in the run's own directory. libsecret 0.21 implements this backend itself: no
-daemon, no bus name, no unlock prompt, which on a private bus is three fewer things to go wrong
-than starting `gnome-keyring-daemon --start --components=secrets` with a temporary control
-directory would be. The client does not know which backend it is talking to and does not choose
-one; [SECURITY.md](SECURITY.md)'s "no persistent cache mode" is about the client never inventing a
-store of its own, not about which Secret Service is running.
-
-### The seven runs
-
-```
-=== 1. login ===
-  ok    login exited 0
-  ok    login named the account                        Signed in as fixture@mock.invalid
-  ok    the authorization request used PKCE S256       GET authorize ... pkce=S256
-  ok    the authorization request asked to choose an account   ... prompt=select_account
-  ok    the code was exchanged                         POST token outcome=code_ok pop=no
-  ok    the window opened and completed                completed
-=== 2. accounts ===
-  ok    the account is listed
-=== 3. token, from cache ===
-  ok    token --prompt never exited 0
-  ok    the token is a JWT shaped string
-  ok    the authority was not called at all
-  ok    one line on stdout and nothing else
-=== 4. token --req-cnf: the interstitial, then a pop grant ===
-  ok    token --req-cnf exited 0
-  ok    the pop refresh was refused, needing the human  POST token outcome=pop_refresh_interaction_required
-  ok    the window opened again for that scope         GET authorize ... prompt=-
-  ok    the code was exchanged with a confirmation blob POST token outcome=code_ok pop=yes
-  ok    the request declared token_type=pop
-  ok    the pop token carries the caller's req_cnf
-=== 5. token --req-cnf again: a pop token is never cached ===
-  ok    the second token --req-cnf exited 0
-  ok    the authority was called again
-  ok    the json form names the token type             "token_type" : "pop"
-  ok    no refresh token is anywhere in the response
-  ok    the second one came from a refresh grant
-=== 6. logout, and what a request after it does ===
-  ok    logout exited 0
-  ok    logout named what it removed
-  ok    nothing is listed any more
-  ok    a silent request with no account exits 30
-  ok    and stdout is empty
-=== 7. no portal at all ===
-  ok    no bus exits 40
-  ok    and the message names the gate                 XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication
-=== what nobody was allowed to write down ===
-  ok    no code, verifier or token in the client's stderr
-
-runs: 30  ok: 30  failed: 0
-entra-e2e: PASS
-```
-
-Three of those are the ones worth knowing about:
-
-**Run 3 is a negative.** The client is asked for the same token again with `--prompt never`, and
-the assertion is that the mock's event log did not change **at all** — not even a discovery fetch.
-Discovery is lazy for exactly this reason: an authority that is down must not stop a cached token
-being handed back, and FreeRDP's own coupling (fetch the OpenID configuration, then ask a provider)
-is the mistake being avoided.
-
-**Run 4 is the interstitial.** The mock refuses the first PoP refresh with `interaction_required`,
-the client opens the portal window again for the RDS-AAD scope with **no** `prompt` parameter, and
-exchanges the resulting code with `token_type=pop` and `req_cnf`. The token that comes back is
-decoded and its `cnf.req_cnf` is compared with the blob the caller passed in — because a PoP token
-that is not bound to the caller's key has proved nothing.
-
-**Run 7 is the default state of a machine.** Asked with no session bus at all, the client exits 40
-and names the environment variable, which is what a dispatcher needs in order to fall through to
-another provider rather than to report a failure.
-
-### Driving it by hand
-
-```console
-$ tools/entra-e2e.sh --keep      # the stack stays up; the config file and authority are printed
-$ tools/entra-e2e.sh --verbose   # the client's own DEBUG breadcrumbs, redacted
-```
+Nothing in this repository is needed to run it except a build of this backend, and nothing in this
+repository depends on it.
 
 ---
 
@@ -726,8 +602,9 @@ second grant. Delegation would remove the second consent, not the second login, 
 
 The completion URI is the **commercial** `nativeclient` URL even against the US Government
 authority, because there is no `.us` variant
-([decisions/0002](decisions/0002-no-loopback-redirect.md)) — so the flow ends on a navigation to a
-Microsoft-operated page that must never be loaded, which is exactly the case tier 2 rehearses with
+([0002](https://github.com/sjtrotter/entra-token-helper/blob/main/docs/decisions/0002-no-loopback-redirect.md),
+in the client repository) — so the flow ends on a navigation to a Microsoft-operated page that must
+never be loaded, which is exactly the case tier 2 rehearses with
 `https://example.invalid/cb`. That much is already proven. What is not:
 
 - whether the authority's `certauth.<authority>` redirect raises the client-certificate challenge on
@@ -739,7 +616,7 @@ Microsoft-operated page that must never be loaded, which is exactly the case tie
   two-chooser finding above is an annoyance or a blocker;
 - whether the identity provider accepts a portal-owned WebKitGTK engine at all, or classifies it as
   an embedded user-agent and refuses (see the honest caveat in
-  [`backend/src/webkit-session.h`](../backend/src/webkit-session.h));
+  [`src/webkit-session.h`](../src/webkit-session.h));
 - what the window looks like to somebody who has to decide whether to trust it.
 
 As of the 2026-09-05 run, the correct description of this backend is "it works against a fixture,
@@ -750,8 +627,10 @@ and against a real Entra ID tenant on a US Government cloud."
 ### Live token exchange
 
 The run above proves the **backend** against a real tenant: a window, a card, a challenge, a code.
-This one proves the **client**: the same sign-in, driven by `entra-token-helper`, ending in an
-access token this repository fetched itself rather than a code somebody read off a URL.
+This one drives it from a consumer: the same sign-in, run by `entra-token-helper` from
+[its own repository](https://github.com/sjtrotter/entra-token-helper), ending in an access token
+rather than a code somebody read off a URL. It is recorded here because the 2026-09-05 chain is the
+only end-to-end evidence this backend has.
 
 **Same warnings.** Real session bus, real card, real reader, real tenant, a real PIN retry counter
 to spend. Do not run it from a script and do not run it unattended.
@@ -773,8 +652,9 @@ the real card with no `--module`, and the PIN goes to the desktop's own prompter
 ```console
 $ export TENANT=<directory-tenant-id>
 $ export DBUS_SESSION_BUS_ADDRESS=<the address the script printed>
+$ export PATH=<the client repository>/build:$PATH
 
-$ ./build-entra/entra-token-helper --verbose login \
+$ entra-token-helper --verbose login \
     --cloud usgov \
     --authority "https://login.microsoftonline.us/$TENANT" \
     --client-id a85cf173-4192-42f8-81fa-777a763e6e2c \
@@ -789,7 +669,7 @@ print one.
 The ARM gateway bearer token, which should be silent the second time:
 
 ```console
-$ ./build-entra/entra-token-helper --verbose token \
+$ entra-token-helper --verbose token \
     --authority login.microsoftonline.us --tenant "$TENANT" \
     --client-id a85cf173-4192-42f8-81fa-777a763e6e2c \
     --scope 'https://www.wvd.azure.us/.default openid profile offline_access' \
@@ -801,7 +681,7 @@ generated. `<blob>` is base64url of `{"kid":"<thumbprint>"}`; any well-formed on
 first run, and the `<host>` in the scope is the session host name from the connection:
 
 ```console
-$ ./build-entra/entra-token-helper --verbose token \
+$ entra-token-helper --verbose token \
     --authority login.microsoftonline.us --tenant "$TENANT" \
     --client-id a85cf173-4192-42f8-81fa-777a763e6e2c \
     --scope 'ms-device-service://termsrv.wvd.microsoft.com/name/<host>/user_impersonation' \
@@ -812,7 +692,8 @@ $ ./build-entra/entra-token-helper --verbose token \
 **Expect a second window here**, even though an account is already stored. Entra puts an
 interstitial in front of the RDS-AAD scope — "you are connecting to a remote desktop", "make sure
 you trust this client" — and it is answered inside the portal's sign-in window. That is the
-`interaction_required` path tier 2c forces with `--fail-pop-refresh 1`, happening for real.
+`interaction_required` path tier 2c forces with the mock's `--fail-pop-refresh 1`, happening for
+real.
 
 #### What to watch
 

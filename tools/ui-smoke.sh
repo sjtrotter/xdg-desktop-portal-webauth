@@ -14,7 +14,7 @@
 # keyboard is CANCELLING, and --cancel is that: it waits for the window and
 # sends Escape.
 #
-# THIS IS THE ONLY AUTOMATED TEST THAT OPENS THE WINDOW. backend/tests covers the
+# THIS IS THE ONLY AUTOMATED TEST THAT OPENS THE WINDOW. tests/ covers the
 # rules with no display; this covers everything between a D-Bus call and a
 # rendered page, which is where the interesting mistakes live.
 #

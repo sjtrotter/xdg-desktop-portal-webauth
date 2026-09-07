@@ -14,17 +14,17 @@ LGPL-2.1-or-later` plus `SPDX-FileCopyrightText: 2026 Stephen J. Trotter
 
 **No Remmina code was ever copied.** The decision below chose GPL-2.0-or-later in anticipation of
 lifting roughly 900 lines of certificate chooser and PIN-prompt code out of Remmina's RDP plugin
-into `backend/src/tls/`. That lift never happened, and it now never will: there is no chooser and
+into `src/tls/`. That lift never happened, and it now never will: there is no chooser and
 no PIN prompt in this repository at all. [0007](0007-certificate-adapter.md) put both in the
-certificate portal, and `backend/src/tls/` is two providers that build a `GTlsCertificate` from a
+certificate portal, and `src/tls/` is two providers that build a `GTlsCertificate` from a
 PKCS#11 URI and nothing else — a hundred lines with no card handling in them. The reason the
 original decision gave no longer has a component to apply to.
 
 **It matches the code's actual destination.** `xdg-desktop-portal`,
 `xdg-desktop-portal-gtk` and `xdg-desktop-portal-gnome` are all LGPL-2.1-or-later, and so is the
 frontend branch this backend is written against. This repository already carries files derived
-from those projects under that licence — `backend/src/request-impl.c`,
-`backend/src/external-window.c`, `backend/src/completion.c`'s rule, the two verbatim XML copies —
+from those projects under that licence — `src/request-impl.c`,
+`src/external-window.c`, `src/completion.c`'s rule, the two verbatim XML copies —
 and [UPSTREAMING.md](../UPSTREAMING.md) describes this backend's own eventual path alongside them.
 Matching their licence removes the relicensing step the superseded decision below called out as a
 cost.
@@ -37,7 +37,7 @@ project's process.
 **The sibling made the same choice, for the same reasons.**
 `xdg-desktop-portal-certificate` relicensed from GPL-2.0-or-later to LGPL-2.1-or-later on
 2026-09-04 (its `docs/decisions/0004-license.md`). The two repositories share a header —
-`backend/src/tls/portal-token.h` and that project's `src/module/portal-token.h` — which had to
+`src/tls/portal-token.h` and that project's `src/module/portal-token.h` — which had to
 carry two different licence lines while the licences differed, and which is now byte-identical.
 [0006](0006-two-repositories.md) said the two halves need not stay on the same licence forever;
 they did not have to, and they chose to.
@@ -78,8 +78,8 @@ problem.
 
 That combination is only a problem if both bodies of code end up linked into one binary. They do
 not: both components are separate processes, spoken to over CLI and D-Bus boundaries, per
-[0001](0001-standalone-helper.md). Nothing links FreeRDP into either of them and neither is linked
-into FreeRDP.
+[0001](https://github.com/sjtrotter/entra-token-helper/blob/main/docs/decisions/0001-standalone-helper.md).
+Nothing links FreeRDP into either of them and neither is linked into FreeRDP.
 
 ## Decision
 
@@ -87,7 +87,7 @@ License this project **GPL-2.0-or-later**. Ship the full GPLv2 text as `LICENSE`
 `SPDX-License-Identifier: GPL-2.0-or-later` headers in every source file.
 
 The Remmina-derived chooser and PIN code, when lifted, keeps its Remmina copyright attribution
-alongside the SPDX header. Note where it lands: `backend/src/tls/`, the in-process certificate
+alongside the SPDX header. Note where it lands: `src/tls/`, the in-process certificate
 adapter ([0007](0007-certificate-adapter.md)). So the licence question travels with the components
 at the repository split ([0006](0006-two-repositories.md)), the two halves need not stay on the same
 licence forever, and if the portal adapter is ever proven and the in-process one retired, this

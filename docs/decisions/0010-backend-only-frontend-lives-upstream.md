@@ -51,23 +51,23 @@ repository is an out-of-tree backend plus an application, and nothing else.**
   validation, the option filter, the completion re-check and the
   `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate, and ships a python-dbusmock backend and
   a pytest suite (16 functions, 35 cases, 70 runs, passing).
-- `backend/` builds **one binary**, `xdg-desktop-portal-webauth`, owning
+- This repository builds **one binary**, `xdg-desktop-portal-webauth`, owning
   `org.freedesktop.impl.portal.desktop.webauth` and exporting
   `/org/freedesktop/portal/desktop`.
-- `clients/entra/` is unchanged in substance. It calls
+- The Entra client, which shared this repository at the time, is unchanged in substance. It calls
   `org.freedesktop.portal.experimental.WebAuthentication` on
   `org.freedesktop.portal.Desktop` instead of a project-controlled name, and it now has to
   say something specific when that interface is absent — see "The gate is a normal
   outcome" below.
-- `backend/data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a
+- `data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a
   **verbatim copy** of the branch's file and must track it. The interface is not this
   repository's to change.
-- `backend/data/webauth.portal` installs into the **real**
+- `data/webauth.portal` installs into the **real**
   `${datadir}/xdg-desktop-portal/portals`, because that is where the frontend looks and
   there is nowhere else it could find it.
 - `service/frontend/` is deleted; `service/backends/gtk/` becomes `backend/`, mirroring
   the sibling repository's top-level `src/` + `data/` as closely as a second component
-  allows.
+  allows. (At the 2026-09-07 split it became the repository root, and the mirroring is exact.)
 
 ## What this changes about the old "never advertise" rule
 
@@ -152,7 +152,7 @@ export the interface in any of them.
   still exists twice — here, against live navigations, and in the frontend, re-checking
   what this backend returns. The frontend's copy has tests
   (`test_completion_mismatch_rejected`, `test_completion_normalisation_accepted`); this
-  one is `backend/src/completion.c`, tested by `test-completion.c`. The shared fixture
+  one is `src/completion.c`, tested by `test-completion.c`. The shared fixture
   table in `tests/README.md` is still the mitigation.
 - **The interface changed shape in the move.** `Start`'s signature did not, on either
   side — which is the strongest evidence 0008's shape argument was right. What did change

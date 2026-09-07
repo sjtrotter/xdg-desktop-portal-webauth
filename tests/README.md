@@ -1,13 +1,12 @@
 # Tests
 
-**The backend's tests are `backend/tests/`, run by `meson test -C build-backend`, and the
-end-to-end runs are `tools/ui-smoke.sh`; what they cover and what they proved is
-[../docs/TESTING.md](../docs/TESTING.md).** This directory holds no tests: it holds the strategy
-they were written from, kept because the strategy outlived the sketch; the Entra client is
-implemented, in `clients/entra/`.
+**The tests in this directory are run by `meson test -C build`, and the end-to-end runs are
+`tools/ui-smoke.sh` and `tools/portal-stack.sh`; what they cover and what they proved is
+[../docs/TESTING.md](../docs/TESTING.md).** The rest of this file is the strategy they were written
+from, kept because the strategy outlived the sketch.
 
-The fixture tables below are the ones `backend/tests/test-completion.c` now carries, with the
-frontend's own cases marked `FRONTEND` in that file.
+The fixture tables below are the ones `test-completion.c` now carries, with the frontend's own cases
+marked `FRONTEND` in that file.
 
 **Half of it exists already, in the frontend's repository.** The xdg-desktop-portal branch
 `experimental/certificate-webauthentication` ships `tests/templates/webauthentication.py` (a
@@ -17,9 +16,9 @@ suite; what is left for this repository is the backend's half.
 
 ## Principle: the interesting parts are testable offline
 
-Almost everything security-critical in both components is a pure function over strings: does this
-URI match that one, is this a valid authorization response, may this field be logged, does this JSON
-parse into that request. None of it needs a network, a card, a browser or a tenant. That is
+Almost everything security-critical in this backend is a pure function over strings: does this URI
+match that one, may this field be logged, is this option value acceptable. None of it needs a
+network, a card, a browser or a tenant. That is
 deliberate — the parts that *do* need those are the parts a test cannot cover, so the boundary
 between them should be sharp and the pure side should be large.
 
@@ -28,7 +27,7 @@ Anything requiring a real tenant, a real card or a real browser is a **spike**
 
 ## Fixtures
 
-### Completion matching (`backend/src/completion.h` **and the frontend's re-check**)
+### Completion matching (`src/completion.h` **and the frontend's re-check**)
 
 The single most valuable fixture set in the project: a table of
 `(completion_uri, candidate, expected)` triples, each with a comment saying what it is testing.
@@ -36,8 +35,8 @@ The single most valuable fixture set in the project: a table of
 **This table must be run against both implementations.** One rule is enforced in two places — the
 backend, against live navigations, and the frontend, against the URI a backend returns
 ([../docs/IMPL-INTERFACE.md](../docs/IMPL-INTERFACE.md)) — and two implementations of one rule can
-drift. **Both are now written and tested.** This repository's is `backend/src/completion.c`, covered by
-`backend/tests/test-completion.c`; the frontend's is in another repository:
+drift. **Both are now written and tested.** This repository's is `src/completion.c`, covered by
+`tests/test-completion.c`; the frontend's is in another repository:
 `desktop-portal/web-authentication.c:completion_uri_matches()` on the xdg-desktop-portal branch,
 covered by `test_completion_mismatch_rejected` and `test_completion_normalisation_accepted`. The
 fixtures have been ported one way, from the frontend to here; porting the additions back is
@@ -81,51 +80,20 @@ backend that returns canned replies, assert that:
 And on the backend side, with a stub frontend: that a `Start` from any sender other than the
 frontend is refused, and that dropping the frontend's connection destroys the window.
 
-### Redaction (`backend/src/redact.h`, `clients/entra/src/log/redact.h`)
+### Redaction (`src/redact.h`)
 
-For each field kind, assert what `webauth_redact_field()` / `entra_redact_field()` renders. The
-loggable kinds render their value; the non-loggable kinds render kind and length and **never** any
-part of the value.
+For each field kind, assert what `webauth_redact_field()` renders. The loggable kinds render their
+value; the non-loggable kinds render kind and length and **never** any part of the value.
 
-The test that matters most is the inverse one: take a realistic completion URI, a token, an
-authorization code and a server `error_description`, push them through every logging entry point at
-every level, capture the output, and assert that no substring of any of them appears anywhere. That
-is a regression test against the failure mode this project actually fears — not a check that one
-function works.
+The test that matters most is the inverse one: take a realistic completion URI and an authorization
+code carried in one, push them through every logging entry point at every level, capture the output,
+and assert that no substring of either appears anywhere. That is a regression test against the
+failure mode this project actually fears — not a check that one function works.
 
 Also: `webauth_redact_error_text()` cuts before an embedded URI, on error strings taken from real
 GnuTLS and WebKit failures.
 
-### Request and response schema (`clients/entra/src/ipc/request.h`)
-
-Round-trip every field. Then the rejections: an unknown `schema`; a request carrying a token
-endpoint, an authorization endpoint or a redirect URI (forbidden in any transport, so a usage error
-rather than a configuration); `"token_kind": "pop"` without `req_cnf`; a scope list that is not an
-array; unknown keys (ignored, per the compatibility promise).
-
-Assert the exit-code mapping for every `EntraStatus`, against the table in
-[docs/ENTRA-CLIENT-CLI.md](../docs/ENTRA-CLIENT-CLI.md) — the code and the document disagreeing is
-exactly the kind of drift a test should catch.
-
-### OAuth response classification (`clients/entra/src/oauth/callback.h`)
-
-A transaction with a known `state` and redirect, and a table of candidate URIs: valid `code`; valid
-`error`; both present; neither; `code` twice; `code` present with no value (still an occurrence, so
-a second one is a duplicate); wrong `state`; missing `state`; `state` twice; fragment present;
-userinfo present; a different host; malformed escapes; `%00`. Expected outcomes are `CODE`, `ERROR`,
-`UNRELATED` or `INVALID`, and the second call on a consumed transaction is always `INVALID`.
-
-Constant-time comparison is asserted structurally — that the comparison function is the one used —
-rather than by timing, which is not reproducible in CI.
-
-### Cache keys (`clients/entra/src/cache/keyring.h`)
-
-Two requests differing in exactly one field must produce different keys. One field per test, and one
-test per field, including scope *order* (which must **not** matter, since the key uses the sorted
-set) and the PoP binding (which must, since a token bound to one `kid` is useless for another). A
-missing field here means a token returned to the wrong requester.
-
-### Transaction races (`backend/src/transaction.h`, and upstream's `xdp-request-dex.c`)
+### Transaction races (`src/transaction.h`, and upstream's `xdp-request-dex.c`)
 
 Not a fixture set but a deterministic-scheduler test: exactly one terminal result and exactly one
 `Response`, under a committed completion racing a `Close()`, a timeout firing after a close, a
@@ -151,14 +119,13 @@ Likewise the refresh-to-PoP question is [S1](../docs/SPIKES.md), against a real 
 
 ## Running
 
-There is nothing to run **here**. The frontend's half runs in another repository:
+`meson test -C build` runs the five suites here: `completion`, `options`, `storage`, `redact`,
+`harden`. The frontend's half runs in another repository:
 `cd xdg-desktop-portal/tests && BUILDDIR=../build ./run-test.sh ./test_webauthentication.py`, on the
-branch. When there is something to run in this one, tests belong in each component's own meson
-project — `backend/tests/` and `clients/entra/tests/` — and not in this directory, which will be
-deleted at the repository split
-([docs/decisions/0006-two-repositories.md](../docs/decisions/0006-two-repositories.md)).
+branch. The client's suites moved with the client
+([../docs/decisions/0006-two-repositories.md](../docs/decisions/0006-two-repositories.md)).
 
-The completion fixture table is the exception that proves the rule: it is one table consumed by two
-projects, which is exactly the duplication upstream removes by putting the matcher in shared code
-([docs/UPSTREAMING.md](../docs/UPSTREAMING.md)). Until then it is copied, and a CI check that the
+The completion fixture table is one table consumed by two projects, which is exactly the
+duplication upstream removes by putting the matcher in shared code
+([../docs/UPSTREAMING.md](../docs/UPSTREAMING.md)). Until then it is copied, and a CI check that the
 two copies are byte-identical is worth more than either copy.
