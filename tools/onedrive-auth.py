@@ -274,6 +274,9 @@ def main():
     if not uri:
         note("error the portal completed without a completion URI")
         return 2
+    parsed = urllib.parse.urlsplit(uri)
+    keys = ",".join(sorted(urllib.parse.parse_qs(parsed.query, keep_blank_values=True)))
+    note(f"result query keys={keys or '(none)'} fragment={'yes' if parsed.fragment else 'no'}")
 
     try:
         write_response(response_path, uri)
