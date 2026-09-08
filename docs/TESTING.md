@@ -748,3 +748,65 @@ It reads the **plain** stdout form — the token and a newline — and never pas
 authority is a **host**, from `FreeRDP_GatewayAzureActiveDirectory`, whose default is
 `login.microsoftonline.com`; the tenant is separate. `--prompt` is not passed today, so the
 default `auto` applies.
+
+---
+
+### OneDrive client through the portal
+
+The abraunegg OneDrive client (Fedora package `onedrive`, tested at v2.5.11) is an existing
+application that needs no patch to use this portal. `--auth-files <authUrlFile>:<responseUrlFile>`
+makes it write the Microsoft authorize URL to the first file and poll until the second exists,
+expecting the whole redirect URI a user would otherwise have copied out of a browser.
+[`../tools/onedrive-auth.py`](../tools/onedrive-auth.py) sits between those two files and
+`Start()`: it reads the authorize URL, takes the completion URI from that URL's `redirect_uri`
+(the nativeclient path on the same host if there is none), and writes the URI the portal returns.
+It deletes neither file; the client deletes both itself once the response file appears.
+
+Exit status is 0 completed, 1 cancelled, 2 anything else. It logs one line per state change to
+stderr, with scheme, host and path only.
+
+#### Live, on the desktop
+
+In one terminal:
+
+```console
+$ tools/portal-stack.sh --live --no-e2e --keep
+```
+
+In another. `--live` runs on the real session bus, so nothing is exported. A confdir of its
+own keeps an existing `~/.config/onedrive` untouched:
+
+```console
+$ export A=$XDG_RUNTIME_DIR/onedrive-auth-url B=$XDG_RUNTIME_DIR/onedrive-response-url
+
+$ onedrive --confdir ~/.config/onedrive-portal --reauth --auth-files "$A:$B" &
+$ tools/onedrive-auth.py "$A:$B"
+```
+
+`onedrive` prints `Client requires authentication before proceeding. Waiting for --auth-files
+elements to be available.` and the wrapper prints `authorize`, `completion`, `request` and then
+`completed, response written to $B`. A sign-in window opens on the desktop against
+`login.microsoftonline.com`; the flow ends on
+`https://login.microsoftonline.com/common/oauth2/nativeclient`, which is never fetched. `onedrive`
+then reports the account and removes both files. Nothing prints the authorization code.
+
+#### Headless
+
+The wrapper is exercised against the fixture identity provider rather than Microsoft. With
+`tools/portal-stack.sh --pin-prompt=system --keep` holding the stack up, an authorize URL naming
+the fixture's `/start` with `redirect_uri=https://example.invalid/cb` is written to the first file
+by hand, and the wrapper is run on the same bus:
+
+```
+onedrive-auth: authorize scheme=https host=localhost:33159 path=/start
+onedrive-auth: completion scheme=https host=example.invalid path=/cb
+onedrive-auth: request /org/freedesktop/portal/desktop/request/1_25/onedriveauth51ab5ec22dcc4878
+onedrive-auth: completed, response written to .../fb
+```
+
+The response file is mode 0600 and holds the completion URI with its `code` and `state`, and
+`/cb` is absent from the fixture's access log. Run for real under the same stack, `onedrive` writes
+a `login.microsoftonline.com` authorize URL, the wrapper derives
+`/common/oauth2/nativeclient` from its `redirect_uri` and opens the window; the fixture cannot
+answer for Microsoft, so that run ends at `the portal answered 2, reason timeout` and exit 2, which
+is as far as it is taken.
