@@ -297,7 +297,7 @@ remaining half of S2 to run.
 If instead **interception** is what fails, that is a different problem: the browser-extension
 mechanism from the "Why not X" section stops being a rejected alternative and becomes a second
 **backend** — a separate process implementing
-`org.freedesktop.impl.portal.experimental.WebAuthentication`, declared in its own `.portal` file in
+`org.freedesktop.impl.portal.WebAuthentication.X1`, declared in its own `.portal` file in
 `$datadir/xdg-desktop-portal/portals` and selected in `portals.conf` — and neither
 [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), nor [IMPL-INTERFACE.md](IMPL-INTERFACE.md), nor the
 client's CLI contract, nor the FreeRDP integration changes. That an

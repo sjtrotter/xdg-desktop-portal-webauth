@@ -13,7 +13,7 @@
 # a packaging decision here rather than a code change anywhere.
 #
 # xdg-desktop-portal activates this name when portals.conf (or UseIn) selects
-# webauth.portal for org.freedesktop.impl.portal.experimental.WebAuthentication.
+# webauth.portal for org.freedesktop.impl.portal.WebAuthentication.X1.
 # APPLICATIONS HAVE NO REASON TO HOLD THIS NAME; see docs/SECURITY.md, "The impl
 # interface is not for applications".
 

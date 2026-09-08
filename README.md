@@ -16,7 +16,7 @@ Certificate portal.
 ## What this is
 
 An out-of-tree backend for the experimental
-`org.freedesktop.impl.portal.experimental.WebAuthentication` portal interface. It opens a GTK4 +
+`org.freedesktop.impl.portal.WebAuthentication.X1` portal interface. It opens a GTK4 +
 WebKitGTK 6.0 window on a URI an application asked for, watches every navigation, and ends the flow
 on the first one matching the completion URI the application gave, without loading it. It returns
 that URI and never interprets it. It holds no OAuth code and issues no tokens.
@@ -66,27 +66,28 @@ The hardware evidence is narrow: one PIV card, one reader, OpenSC, GNOME 50 on W
 Not exercised at all: a second card, a PIN-pad reader, card removal mid-operation, KDE, a Flatpak
 runtime.
 
-The frontend is on the branch `experimental/certificate-webauthentication` of a personal fork of
-xdg-desktop-portal, 10 commits on upstream `86bd3e2`, with `a6b06d4` defining this interface. Its
+The frontend is on the branch `experimental/integration` of a personal fork of
+xdg-desktop-portal, with `357e4d7` defining this interface. Its
 `tests/test_webauthentication.py` has 16 test functions and 35 parametrised cases, run once with the
-caller identified as an ordinary host process and once as a Flatpak application. The branch is
-pushed and has been proposed to nobody. The `org.freedesktop.portal.experimental.*` namespace is what upstream set aside for unfinished portals,
-not a sign that this one was accepted.
+caller identified as an ordinary host process and once as a Flatpak application. The branch has been
+proposed to nobody. The `.X1` suffix and the `/org/freedesktop/portal/desktop/experimental` object
+path are what upstream set aside for unfinished portals, not a sign that this one was accepted.
 
 ## How it works
 
 ```
   an application: entra-token-helper, or anything else
        |
-       |  org.freedesktop.portal.experimental.WebAuthentication      [gated]
-       v  on org.freedesktop.portal.Desktop
+       |  org.freedesktop.portal.WebAuthentication.X1
+       v  on org.freedesktop.portal.Desktop,
+       |  at /org/freedesktop/portal/desktop/experimental
   xdg-desktop-portal                            a branch of ANOTHER project
        derives the app id, validates both URIs, filters the options, applies
        policy, mints the Request, keeps the deadline, guarantees one Response,
        re-checks the completion URI before the application sees it.
        No window, no web engine, no toolkit, no card.
        |
-       |  org.freedesktop.impl.portal.experimental.WebAuthentication
+       |  org.freedesktop.impl.portal.WebAuthentication.X1
        v  NOT an interface applications may call
   xdg-desktop-portal-webauth                    THIS REPOSITORY
        GTK4 + WebKitGTK 6.0: the window, the security chrome, the storage
@@ -101,14 +102,15 @@ not a sign that this one was accepted.
 Applications call xdg-desktop-portal and nothing else. They never name a backend, never read a
 `.portal` file, and cannot tell which backend served them.
 
-The interface is not exported unless xdg-desktop-portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` (or `all`), and it is off by default.
-With the gate off the interface is not on the bus at all, and a caller that needs it has to degrade
-or fail.
+The interface is not exported unless xdg-desktop-portal found a backend for it, and it lives on
+`/org/freedesktop/portal/desktop/experimental` rather than the standard object path. With no
+backend configured the interface is not on the bus at all, and a caller that needs it has to
+degrade or fail.
 
 ## Interface at a glance
 
-Public, on `org.freedesktop.portal.Desktop`. The XML on the frontend branch is the specification;
+Public, on `org.freedesktop.portal.Desktop` at `/org/freedesktop/portal/desktop/experimental`. The
+XML on the frontend branch is the specification;
 [docs/PUBLIC-INTERFACE.md](docs/PUBLIC-INTERFACE.md) summarises it.
 
 ```
@@ -128,7 +130,7 @@ dropped and an unknown `session_mode` is an error. The answer arrives on
 Impl, for backends only. It follows the shape of the other impl portals, with the frontend-derived
 `app_id` passed as an argument. See
 [docs/IMPL-INTERFACE.md](docs/IMPL-INTERFACE.md) and the verbatim tracking copy at
-[`data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml).
+[`data/org.freedesktop.impl.portal.WebAuthentication.X1.xml`](data/org.freedesktop.impl.portal.WebAuthentication.X1.xml).
 
 ```
 Start(o handle, s app_id, s parent_window, s start_uri, s completion_uri, a{sv} options)
@@ -176,7 +178,7 @@ in `$datadir/dbus-1/interfaces`. To select it explicitly, in `portals.conf`:
 
 ```ini
 [preferred]
-org.freedesktop.impl.portal.experimental.WebAuthentication=webauth
+org.freedesktop.impl.portal.WebAuthentication.X1=webauth
 ```
 
 ## How it relates to FreeRDP
@@ -186,7 +188,7 @@ opened 2026-09-04 and reviewed favourably for 3.32, moves FreeRDP's AAD web view
 FreeRDP speaks JSON-RPC over pipes to a helper it starts, and the helper answers `navigate` with the
 redirect URL verbatim. OAuth stays inside FreeRDP. That request is close to what this portal already
 does, so the intended integration is a small helper that speaks #13340's protocol and forwards
-`navigate` to `org.freedesktop.portal.experimental.WebAuthentication`, putting the window, the
+`navigate` to `org.freedesktop.portal.WebAuthentication.X1`, putting the window, the
 security chrome and the card behind the portal without FreeRDP linking a web engine. Under that
 split FreeRDP keeps its own OAuth code and the Entra client keeps its own callers.
 [docs/ROADMAP.md](docs/ROADMAP.md) has the protocol and the follow-ups.
@@ -221,7 +223,7 @@ one RDP client.
 - [github.com/sjtrotter/entra-token-helper](https://github.com/sjtrotter/entra-token-helper) is the
   Entra ID / Azure Virtual Desktop token client, the first consumer of this portal. Its CLI contract
   is `docs/CLI.md` there.
-- [github.com/sjtrotter/xdg-desktop-portal, branch `experimental/certificate-webauthentication`](https://github.com/sjtrotter/xdg-desktop-portal/tree/experimental/certificate-webauthentication)
+- [github.com/sjtrotter/xdg-desktop-portal, branch `experimental/integration`](https://github.com/sjtrotter/xdg-desktop-portal/tree/experimental/integration)
   is the frontend for both portals.
 
 ## Known problems and open questions

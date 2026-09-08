@@ -29,7 +29,7 @@
  *  completes BEFORE the matched navigation loads. It is enforced AGAIN in the frontend --
  *  xdg-desktop-portal, desktop-portal/web-authentication.c,
  *  completion_uri_matches(), on the branch
- *  experimental/certificate-webauthentication -- which re-parses the
+ *  experimental/integration -- which re-parses the
  *  "completion_uri" this backend returns and refuses to hand the application a
  *  URI that is not the one it asked for: on a mismatch the response becomes 2
  *  with reason "backend_completion_mismatch" and the URI is discarded. Neither

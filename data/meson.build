@@ -9,7 +9,7 @@
 # the day the branch lands. See docs/IMPL-INTERFACE.md.
 install_data(
   [
-    'org.freedesktop.impl.portal.experimental.WebAuthentication.xml',
+    'org.freedesktop.impl.portal.WebAuthentication.X1.xml',
     'org.freedesktop.impl.portal.Request.xml',
   ],
   install_dir: dbus_interfaces_dir,

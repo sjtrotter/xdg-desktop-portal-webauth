@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 
 # xdg-desktop-portal-webauth: an out-of-tree BACKEND for the experimental
-# org.freedesktop.impl.portal.experimental.WebAuthentication portal interface.
+# org.freedesktop.impl.portal.WebAuthentication.X1 portal interface.
 #
 # This is a COMPLETE, STANDALONE meson project. It can be built on its own:
 #
 #     meson setup build && ninja -C build
 #
 # The frontend is xdg-desktop-portal itself (branch
-# experimental/certificate-webauthentication) and the two speak D-Bus. Consumers
+# experimental/integration) and the two speak D-Bus. Consumers
 # such as entra-token-helper (its own repository) are ordinary applications that
 # call the portal.
 #
@@ -65,7 +65,7 @@ dbus_interfaces_dir = datadir / 'dbus-1' / 'interfaces'
 # ${datadir}/xdg-desktop-portal/portals -- that is where the frontend looks
 # (desktop-portal/xdp-portal-config.c:364) and there is nowhere else it would
 # find it. See data/webauth.portal.in for why that is safe while the interface
-# is experimental and gated.
+# is experimental.
 portal_dir = datadir / 'xdg-desktop-portal' / 'portals'
 
 glib_dep = dependency('glib-2.0', version: '>= 2.66')
@@ -136,12 +136,12 @@ summary(
 summary(
   {
     'backend bus name': 'org.freedesktop.impl.portal.desktop.webauth',
-    'impl interface': 'org.freedesktop.impl.portal.experimental.WebAuthentication',
+    'impl interface': 'org.freedesktop.impl.portal.WebAuthentication.X1',
     'object path': '/org/freedesktop/portal/desktop',
     'portal file': portal_dir / 'webauth.portal',
-    'frontend': 'xdg-desktop-portal, branch experimental/certificate-webauthentication',
-    'public interface (frontend)': 'org.freedesktop.portal.experimental.WebAuthentication',
-    'frontend gate': 'XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication',
+    'frontend': 'xdg-desktop-portal, branch experimental/integration',
+    'public interface (frontend)': 'org.freedesktop.portal.WebAuthentication.X1',
+    'public object path (frontend)': '/org/freedesktop/portal/desktop/experimental',
     'called by': 'xdg-desktop-portal only, never by applications',
     'client certificates': 'providers: portal (primary) and pkcs11 (fallback)',
     'p11-kit module configuration read from': p11kit_module_configs,

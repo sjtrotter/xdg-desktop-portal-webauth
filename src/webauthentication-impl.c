@@ -21,7 +21,7 @@
 struct WebAuthBackend
 {
 	GDBusConnection* connection;
-	XdpImplExperimentalWebAuthentication* skeleton;
+	XdpImplWebAuthenticationX1* skeleton;
 
 	/* The frontend's unique name, cached for refusals only; see
 	 * webauth_backend_sender_is_frontend(). */
@@ -192,7 +192,7 @@ static void fail(GDBusMethodInvocation* invocation, WebAuthResponse response, co
 	    g_variant_new("(u@a{sv})", (guint32) response, g_variant_builder_end(&results)));
 }
 
-static gboolean handle_start(XdpImplExperimentalWebAuthentication* object,
+static gboolean handle_start(XdpImplWebAuthenticationX1* object,
                              GDBusMethodInvocation* invocation, const char* arg_handle,
                              const char* arg_app_id, const char* arg_parent_window,
                              const char* arg_start_uri, const char* arg_completion_uri,
@@ -283,10 +283,9 @@ WebAuthBackend* webauth_backend_new(GDBusConnection* bus, GError** error)
 	self->connection = g_object_ref(bus);
 	self->transactions =
 	    g_ptr_array_new_with_free_func((GDestroyNotify) webauth_transaction_unref);
-	self->skeleton = xdp_impl_experimental_web_authentication_skeleton_new();
+	self->skeleton = xdp_impl_web_authentication_x1_skeleton_new();
 
-	xdp_impl_experimental_web_authentication_set_version(self->skeleton,
-	                                                     WEBAUTH_IMPL_INTERFACE_VERSION);
+	xdp_impl_web_authentication_x1_set_version(self->skeleton, WEBAUTH_IMPL_INTERFACE_VERSION);
 
 	g_signal_connect(self->skeleton, "handle-start", G_CALLBACK(handle_start), self);
 

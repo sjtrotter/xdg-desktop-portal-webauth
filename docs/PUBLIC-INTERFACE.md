@@ -9,17 +9,17 @@ is a branch of xdg-desktop-portal, and **the XML on that branch is the specifica
 
 ```
 repository   a local checkout of xdg-desktop-portal   (remote: origin, https://github.com/sjtrotter/xdg-desktop-portal)
-branch       experimental/certificate-webauthentication
-commit       a6b06d4  web-authentication: Add an experimental WebAuthentication portal
-public XML   data/org.freedesktop.portal.experimental.WebAuthentication.xml
-impl XML     data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
+branch       experimental/integration
+commit       357e4d7  web-authentication: Add an experimental WebAuthentication portal
+public XML   data/org.freedesktop.portal.WebAuthentication.X1.xml
+impl XML     data/org.freedesktop.impl.portal.WebAuthentication.X1.xml
 frontend     desktop-portal/web-authentication.c
 mock backend tests/templates/webauthentication.py
 tests        tests/test_webauthentication.py
 ```
 
 The impl half is also here, as a verbatim tracking copy:
-[`../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml).
+[`../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml`](../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml).
 The public half is deliberately **not** copied: this repository has no reason to hold a
 second copy of an interface it does not implement, and a stale one would be worse than
 none.
@@ -29,15 +29,15 @@ right.
 
 ## Summary
 
-Interface `org.freedesktop.portal.experimental.WebAuthentication`, on bus name
-`org.freedesktop.portal.Desktop`, object path `/org/freedesktop/portal/desktop`,
-`version` property `1`.
+Interface `org.freedesktop.portal.WebAuthentication.X1`, on bus name
+`org.freedesktop.portal.Desktop`, object path
+`/org/freedesktop/portal/desktop/experimental` — experimental portals are exported on
+their own object path, not the standard one — `version` property `1`.
 
-**It is not exported unless xdg-desktop-portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` containing `web-authentication`** (or `all`).
-With the gate off it is absent from introspection and `Properties.Get` fails; a client
-must treat that as *unavailable* and fall through, not as an error. It is experimental and
-can change or be removed without a version bump.
+**It is not exported unless xdg-desktop-portal found a backend for it.** With none
+configured it is absent from introspection and `Properties.Get` fails; a client must treat
+that as *unavailable* and fall through, not as an error. It is experimental and can change
+or be removed without a version bump.
 
 ```
 Start (s parent_window, s start_uri, s completion_uri, a{sv} options) → o handle  [Request]

@@ -8,11 +8,11 @@
 
   Apart from this comment block, this file is copied byte for byte from
 
-      data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
+      data/org.freedesktop.impl.portal.WebAuthentication.X1.xml
 
-  on the xdg-desktop-portal branch experimental/certificate-webauthentication,
-  at commit a6b06d4 "web-authentication: Add an experimental WebAuthentication
-  portal". (The branch is rebased on upstream, so that id moves.)
+  on the xdg-desktop-portal branch experimental/integration, at commit 357e4d7
+  "web-authentication: Add an experimental WebAuthentication portal". (The
+  branch is rebased on upstream, so that id moves.)
 
   IT MUST TRACK THAT FILE. The interface is defined by the portal frontend, not
   by this backend; a divergence here is a backend that no longer implements the
@@ -28,7 +28,7 @@
 
 <node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
   <!--
-      org.freedesktop.impl.portal.experimental.WebAuthentication:
+      org.freedesktop.impl.portal.WebAuthentication.X1:
       @short_description: Backend for the web sign-in portal
 
       This backend interface owns the web view: it opens the window, watches
@@ -44,9 +44,9 @@
       rather than quietly use the shared store.
 
       This is an **experimental** interface and can change or get removed
-      without a version bump.
+      without a version bump. See :doc:`experimental-portals`.
   -->
-  <interface name="org.freedesktop.impl.portal.experimental.WebAuthentication">
+  <interface name="org.freedesktop.impl.portal.WebAuthentication.X1">
     <!--
         Start:
         @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
@@ -107,7 +107,7 @@
           when @response is ``0``. The frontend re-checks it against the
           @completion_uri it passed in before handing it to the application,
           comparing the two on their parsed components; see
-          :ref:`org.freedesktop.portal.experimental.WebAuthentication.Start`
+          :ref:`org.freedesktop.portal.WebAuthentication.X1.Start`
           for the rule.
 
           @completion_uri is an ``http`` or ``https`` URI with a host, or a

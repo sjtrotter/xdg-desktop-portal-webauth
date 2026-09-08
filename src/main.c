@@ -6,7 +6,7 @@
  *
  * The D-Bus activated per-user process that owns
  * org.freedesktop.impl.portal.desktop.webauth and implements
- * org.freedesktop.impl.portal.experimental.WebAuthentication on
+ * org.freedesktop.impl.portal.WebAuthentication.X1 on
  * /org/freedesktop/portal/desktop -- the object path every portal backend
  * exports on.
  *
@@ -16,9 +16,10 @@
  * obeys. See docs/SECURITY.md.
  *
  * THE FRONTEND IS NOT IN THIS REPOSITORY. It is a branch of xdg-desktop-portal,
- * experimental/certificate-webauthentication, which exports
- * org.freedesktop.portal.experimental.WebAuthentication only when
- * XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL contains "web-authentication". See
+ * experimental/integration, which exports
+ * org.freedesktop.portal.WebAuthentication.X1 on
+ * /org/freedesktop/portal/desktop/experimental whenever a backend for the
+ * interface is configured. See
  * docs/decisions/0010-backend-only-frontend-lives-upstream.md.
  *
  * The main() shape -- gtk_init plus a plain GMainLoop rather than
@@ -117,16 +118,16 @@ static const char* description =
     "\n"
     "ENABLING THE FRONTEND\n"
     "  The public interface\n"
-    "    org.freedesktop.portal.experimental.WebAuthentication\n"
+    "    org.freedesktop.portal.WebAuthentication.X1\n"
     "  lives in xdg-desktop-portal itself, on the branch\n"
-    "    experimental/certificate-webauthentication\n"
-    "  and is EXPERIMENTAL: it is not exported unless the portal is started with\n"
-    "    XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication\n"
-    "  (\"all\" and a comma separated list also work). With the gate off, the\n"
-    "  interface is absent from introspection and this backend is never called.\n"
-    "  tools/dev-stack.sh wires a development frontend, this backend and an\n"
-    "  end-to-end client together on a private bus; docs/TESTING.md has the\n"
-    "  commands, including a run against a real identity provider.\n"
+    "    experimental/integration\n"
+    "  and is EXPERIMENTAL: it is exported on\n"
+    "    /org/freedesktop/portal/desktop/experimental\n"
+    "  whenever a backend for it is configured, and it is absent from\n"
+    "  introspection when none is. tools/dev-stack.sh wires a development\n"
+    "  frontend, this backend and an end-to-end client together on a private\n"
+    "  bus; docs/TESTING.md has the commands, including a run against a real\n"
+    "  identity provider.\n"
     "\n"
     "CLIENT CERTIFICATES\n"
     "  --cert-adapter portal uses the certificate the Certificate portal granted,\n"

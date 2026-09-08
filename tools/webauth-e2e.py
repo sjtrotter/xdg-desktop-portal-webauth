@@ -5,7 +5,7 @@
 # webauth-e2e.py -- an application, doing what an application does.
 #
 # It calls the PUBLIC interface,
-# org.freedesktop.portal.experimental.WebAuthentication, on
+# org.freedesktop.portal.WebAuthentication.X1, on
 # org.freedesktop.portal.Desktop, and waits for the Response signal on the
 # Request object it gets back. It never names a backend, never reads a .portal
 # file and never calls an impl interface: that is the whole point of the split,
@@ -53,8 +53,8 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 PORTAL_BUS_NAME = "org.freedesktop.portal.Desktop"
-PORTAL_OBJECT_PATH = "/org/freedesktop/portal/desktop"
-INTERFACE = "org.freedesktop.portal.experimental.WebAuthentication"
+PORTAL_OBJECT_PATH = "/org/freedesktop/portal/desktop/experimental"
+INTERFACE = "org.freedesktop.portal.WebAuthentication.X1"
 REQUEST_INTERFACE = "org.freedesktop.portal.Request"
 
 

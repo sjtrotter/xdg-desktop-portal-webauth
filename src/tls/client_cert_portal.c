@@ -17,9 +17,9 @@
 #define P11_KIT_MODULE_CONFIGS "/usr/share/p11-kit/modules"
 #endif
 
-#define CERTIFICATE_PUBLIC_INTERFACE "org.freedesktop.portal.experimental.Certificate"
+#define CERTIFICATE_PUBLIC_INTERFACE "org.freedesktop.portal.Certificate.X1"
 #define PORTAL_BUS_NAME "org.freedesktop.portal.Desktop"
-#define PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
+#define PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop/experimental"
 
 gboolean webauth_cert_portal_interface_present(GError** error)
 {

@@ -5,17 +5,16 @@
 # trigger-webauthentication.sh -- poke the PUBLIC WebAuthentication portal
 # interface.
 #
-# This calls org.freedesktop.portal.experimental.WebAuthentication on
-# org.freedesktop.portal.Desktop at /org/freedesktop/portal/desktop -- the
-# frontend, never this repository's backend. An application (entra-token-helper,
-# say) would do exactly this, and it is the only way to exercise the backend the
-# way it is meant to be exercised.
+# This calls org.freedesktop.portal.WebAuthentication.X1 on
+# org.freedesktop.portal.Desktop at /org/freedesktop/portal/desktop/experimental
+# -- the frontend, never this repository's backend. An application
+# (entra-token-helper, say) would do exactly this, and it is the only way to
+# exercise the backend the way it is meant to be exercised.
 #
-# The interface only exists if the running xdg-desktop-portal was started with
-#     XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication
-# (or "all"). With the gate off the interface is not exported at all and every
-# call below fails with "no such interface" -- which is the intended behaviour,
-# and is exactly the case entra-token-helper reports as exit 40.
+# The interface only exists if the running xdg-desktop-portal found a backend
+# for it. With no backend configured the interface is not exported at all and
+# every call below fails with "no such interface" -- which is the intended
+# behaviour, and is exactly the case entra-token-helper reports as exit 40.
 #
 # It defaults to --session-bus, i.e. whatever DBUS_SESSION_BUS_ADDRESS points
 # at. To keep the real desktop out of it, run the whole thing on a private bus:
@@ -30,16 +29,16 @@
 # accident. Pass your own with START_URI and COMPLETION_URI.
 #
 # Method and argument shapes are taken from
-# data/org.freedesktop.portal.experimental.WebAuthentication.xml on the
-# xdg-desktop-portal branch experimental/certificate-webauthentication (commit
-# a6b06d4) and from that branch's tests/test_webauthentication.py.
+# data/org.freedesktop.portal.WebAuthentication.X1.xml on the
+# xdg-desktop-portal branch experimental/integration (commit 357e4d7) and from
+# that branch's tests/test_webauthentication.py.
 
 set -u
 
 BUS="${BUS:---session}"          # --session (default) or --system
 DEST=org.freedesktop.portal.Desktop
-PATH_=/org/freedesktop/portal/desktop
-IFACE=org.freedesktop.portal.experimental.WebAuthentication
+PATH_=/org/freedesktop/portal/desktop/experimental
+IFACE=org.freedesktop.portal.WebAuthentication.X1
 
 # start_uri must be absolute https with a host. completion_uri must be absolute
 # with a host and no userinfo. Both are validated in the frontend before any
@@ -54,7 +53,8 @@ Usage: ${0##*/} [command]
 Commands:
   version        read the interface's version property (works with no backend
                  running, as long as the interface is exported)
-  introspect     list the experimental interfaces the portal exports
+  introspect     list the interfaces the portal exports on the experimental
+                 object path
   start          Start(s parent_window, s start_uri, s completion_uri, a{sv})
                  -> o handle. A Request: the completion_uri comes back in the
                  Response signal on that handle, not as a return value.
@@ -89,7 +89,8 @@ cmd_version() {
 
 cmd_introspect() {
 	gdbus introspect "$BUS" --dest "$DEST" --object-path "$PATH_" |
-		grep -i experimental || echo "no experimental interfaces exported"
+		grep -i 'interface org.freedesktop.portal' ||
+		echo "no portal interfaces exported on $PATH_"
 }
 
 cmd_start() {

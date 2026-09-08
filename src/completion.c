@@ -4,7 +4,7 @@
  * xdg-desktop-portal-webauth
  *
  * The rule is xdg-desktop-portal's, on the branch
- * experimental/certificate-webauthentication: desktop-portal/web-authentication.c,
+ * experimental/integration: desktop-portal/web-authentication.c,
  * parse_uri() and completion_uri_matches(), LGPL-2.1-or-later, Copyright (C) the
  * xdg-desktop-portal contributors. Translated rather than shared, because the
  * frontend does not install it; the two must not drift.

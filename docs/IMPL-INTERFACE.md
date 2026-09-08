@@ -16,19 +16,19 @@ branch. Applications should read that one and stop there.
 ```
 bus name       org.freedesktop.impl.portal.desktop.webauth   (this backend)
 object path    /org/freedesktop/portal/desktop               (same path as the frontend's)
-interface      org.freedesktop.impl.portal.experimental.WebAuthentication
+interface      org.freedesktop.impl.portal.WebAuthentication.X1
 request objects the frontend's handle path, exported on the BACKEND's bus name
 declared in    $datadir/xdg-desktop-portal/portals/webauth.portal
 ```
 
 ## The XML this repository ships is a copy, and it must track its source
 
-[`../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml`](../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml)
+[`../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml`](../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml)
 is a **verbatim copy**, apart from a header comment saying so, of
 
 ```
-xdg-desktop-portal, branch experimental/certificate-webauthentication, commit a6b06d4
-data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml
+xdg-desktop-portal, branch experimental/integration, commit 357e4d7
+data/org.freedesktop.impl.portal.WebAuthentication.X1.xml
 ```
 
 The interface belongs to the frontend. This repository does not get to change it, and a divergence
@@ -41,10 +41,10 @@ consume it from that project's pkg-config interfaces directory. This copy exists
 branch is unmerged and no released xdg-desktop-portal ships the file. When the branch lands, the
 copy is deleted and the file comes from the interfaces directory like every other backend's.
 
-**`experimental` is not a claim of acceptance.** It is the namespace upstream set aside for portals
-that are not finished — see [UPSTREAMING.md](UPSTREAMING.md) — and an interface in it is not
-exported unless the portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`.
+**The `.X1` suffix is not a claim of acceptance.** It is the naming upstream set aside for portals
+that are not finished — see [UPSTREAMING.md](UPSTREAMING.md) — and the public side of such an
+interface is exported on `/org/freedesktop/portal/desktop/experimental`, and only when a backend
+for it is configured.
 
 ## The signature, and how it is derived from the public one
 
@@ -253,8 +253,7 @@ Each is a real obligation, and each is the price of
 
 | Situation | Who answers | What the application sees |
 |---|---|---|
-| The experimental gate is off | Frontend, at startup | The interface is **not exported**. This is the default state of every machine, and is indistinguishable from the row below by design. |
-| No backend implements the interface | Frontend, at startup | The interface is **not exported**. The application sees "no such interface" and reports *unavailable*, exactly as if no portal were installed. |
+| No backend implements the interface | Frontend, at startup | The interface is **not exported**. This is the default state of every machine: the application sees "no such interface" and reports *unavailable*, exactly as if no portal were installed. |
 | The backend cannot start (no display, no engine) | Frontend | `2`, reason `no_backend` |
 | The backend dies mid-transaction | Frontend | `2`, reason `backend_disappeared` |
 | The backend returns a URI that was not requested | Frontend | `2`, reason `backend_completion_mismatch` |
@@ -288,7 +287,7 @@ wrong call, the fix is a `GetCapabilities`-style addition argued upstream rather
 
 The interface exists so this is possible; the steps are upstream's, unchanged:
 
-1. Implement `org.freedesktop.impl.portal.experimental.WebAuthentication` in a D-Bus-activatable
+1. Implement `org.freedesktop.impl.portal.WebAuthentication.X1` in a D-Bus-activatable
    executable that owns `org.freedesktop.impl.portal.desktop.<name>` and exports the interface at
    `/org/freedesktop/portal/desktop`.
 2. Install `<name>.portal` into `$datadir/xdg-desktop-portal/portals/` — the real directory, which
@@ -297,7 +296,7 @@ The interface exists so this is possible; the steps are upstream's, unchanged:
    ```
    [portal]
    DBusName=org.freedesktop.impl.portal.desktop.<name>
-   Interfaces=org.freedesktop.impl.portal.experimental.WebAuthentication;
+   Interfaces=org.freedesktop.impl.portal.WebAuthentication.X1;
    UseIn=<desktop>
    ```
 
@@ -305,12 +304,11 @@ The interface exists so this is possible; the steps are upstream's, unchanged:
 
    ```
    [preferred]
-   org.freedesktop.impl.portal.experimental.WebAuthentication=<name>
+   org.freedesktop.impl.portal.WebAuthentication.X1=<name>
    ```
 
-4. Start xdg-desktop-portal with
-   `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`, or nothing will ever call you.
-   [`../tools/dev-stack.sh`](../tools/dev-stack.sh) does all four on a private bus.
+4. Restart xdg-desktop-portal, which exports the public interface once it finds your backend
+   configured. [`../tools/dev-stack.sh`](../tools/dev-stack.sh) does all four on a private bus.
 
 A backend must satisfy **everything** in [SECURITY.md](SECURITY.md) that the table above marks as
 backend-enforced, and must not hand-edit the interface XML: it is a tracking copy of the frontend

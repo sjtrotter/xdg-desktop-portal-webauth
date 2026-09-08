@@ -7,7 +7,7 @@
 #
 # dev-stack.sh -- run the experimental WebAuthentication portal end to end: a
 # development xdg-desktop-portal frontend from the branch
-# experimental/certificate-webauthentication, this repository's backend, a
+# experimental/integration, this repository's backend, a
 # fixture identity provider, and tools/webauth-e2e.py against the PUBLIC
 # interface.
 #
@@ -48,7 +48,7 @@
 # WHAT IT NEEDS
 #
 #   $XDP_BUILD   a built xdg-desktop-portal from the branch
-#                experimental/certificate-webauthentication. Default:
+#                experimental/integration. Default:
 #                ../xdg-desktop-portal/build relative to this repository. It
 #                must contain desktop-portal/xdg-desktop-portal and
 #                document-portal/xdg-permission-store.
@@ -65,17 +65,15 @@
 #   1. writes a throwaway $XDG_DESKTOP_PORTAL_DIR holding A SYMLINK TO EVERY
 #      .portal FILE ON THE MACHINE, this repository's webauth.portal, and a COPY
 #      of the machine's effective portals.conf with one line added routing
-#      org.freedesktop.impl.portal.experimental.WebAuthentication to this
+#      org.freedesktop.impl.portal.WebAuthentication.X1 to this
 #      backend. All of it, and not just ours, because XDG_DESKTOP_PORTAL_DIR
 #      makes the frontend ignore every other portal directory AND every other
 #      portals.conf on the machine; tools/lib.sh says it at length.
 #   2. starts xdg-permission-store -- xdg-desktop-portal refuses to start
 #      without it -- on the private bus.
 #   3. starts tools/mtls-server.py on a port of its own choosing.
-#   4. starts the frontend with
-#      XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication, then this
-#      backend, so that the backend's stderr is visible rather than being
-#      swallowed by D-Bus activation.
+#   4. starts the frontend, then this backend, so that the backend's stderr is
+#      visible rather than being swallowed by D-Bus activation.
 #   5. runs tools/webauth-e2e.py with whatever came after `--`.
 #   6. checks the fixture server's access log: THE COMPLETION URI MUST NEVER
 #      HAVE BEEN FETCHED. That is the one thing this whole design exists to
@@ -224,7 +222,6 @@ start_server() {
 
 start_stack() {
 	export XDG_DESKTOP_PORTAL_DIR="$DEVDIR"
-	export XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication
 
 	if [ "$MODE" = private ]; then
 		export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-dev}"
@@ -266,9 +263,9 @@ check_frontend_log() {
 	local configured="no" provided="no" i
 
 	for i in $(seq 1 20); do
-		grep -q "in configuration for org.freedesktop.impl.portal.experimental.WebAuthentication" \
+		grep -q "in configuration for org.freedesktop.impl.portal.WebAuthentication.X1" \
 			"$FRONTEND_LOG" 2>/dev/null && configured="yes"
-		grep -q "Providing portal org.freedesktop.portal.experimental.WebAuthentication" \
+		grep -q "Providing portal org.freedesktop.portal.WebAuthentication.X1" \
 			"$FRONTEND_LOG" 2>/dev/null && provided="yes"
 		[ "$configured" = yes ] && [ "$provided" = yes ] && break
 		sleep 0.25

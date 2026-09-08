@@ -12,7 +12,7 @@ The **portal frontend** boundary establishes who is asking and what may be asked
 name applications call, derives the app id, validates the arguments, applies the policy a caller may
 not influence, and guarantees exactly one answer. It draws nothing and it never sees a card, a PIN
 or a page. **That boundary is xdg-desktop-portal**, branch
-`experimental/certificate-webauthentication` — not this repository
+`experimental/integration` — not this repository
 ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). Frontend-side rules
 below are recorded as *provided by xdg-desktop-portal*, and are stated here because a backend's
 obligations only make sense alongside them, not because this repository implements them.
@@ -25,13 +25,12 @@ boundary protects the identity: whoever can drive the Entra client
 account. The fourth — the **Certificate portal**, whose backend is a separate project — protects the
 card itself: it owns the certificate chooser, the PIN prompt, and the PIN.
 
-**The public interface is gated.** `org.freedesktop.portal.experimental.WebAuthentication` is not
-exported unless the portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. With the gate off, no application can
-reach any of this and this backend is never activated. That is a property of the frontend and this
-repository cannot change it in either direction. Installing this backend on a machine whose portal
-does not know the interface adds no attack surface: the `.portal` file names an interface nothing
-matches.
+**The public interface is experimental.** `org.freedesktop.portal.WebAuthentication.X1` is
+exported on `/org/freedesktop/portal/desktop/experimental`, and not at all unless the portal found
+a backend for it. With none configured, no application can reach any of this and this backend is
+never activated. That is a property of the frontend and this repository cannot change it in either
+direction. Installing this backend on a machine whose portal does not know the interface adds no
+attack surface: the `.portal` file names an interface nothing matches.
 
 They are separated so that none has to be trusted with another's job. The frontend never sees a
 page; the backend never sees an application; neither ever sees a token; the Entra client never
@@ -146,7 +145,7 @@ identity" exists.
 
 This is the split's own security obligation, and it did not exist when there was one process.
 
-`org.freedesktop.impl.portal.experimental.WebAuthentication` takes an `app_id` as an *argument*. An
+`org.freedesktop.impl.portal.WebAuthentication.X1` takes an `app_id` as an *argument*. An
 application that reached it directly would name itself, choose its own storage mode, bypass rate
 limiting, and bypass the frontend's re-check of the returned URI. So:
 

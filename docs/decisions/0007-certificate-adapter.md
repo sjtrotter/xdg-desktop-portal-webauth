@@ -122,7 +122,7 @@ be one, and it should not belong to whichever component happened to need a certi
 
 So: a separate project (repository `xdg-desktop-portal-certificate`, shipping the backend
 `xdg-desktop-portal-certificate`) owns the chooser and the PIN, behind the public
-`org.freedesktop.portal.experimental.Certificate` interface.
+`org.freedesktop.portal.Certificate.X1` interface.
 
 **But it cannot be a hard dependency for v0, because the mechanism that would connect it to this
 service is unproven at exactly the point that matters.**

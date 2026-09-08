@@ -4,6 +4,18 @@ Date: 2026-09-04
 Status: accepted (for the sketch); supersedes the *packaging* half of
 [0008](0008-build-to-the-upstream-shape.md) and retires the incubating frontend
 
+**Update 2026-09-07.** Upstream settled the experimental-portal convention
+([PR #2129](https://github.com/flatpak/xdg-desktop-portal/pull/2129), the frontend's
+`doc/experimental-portals.rst`), and the branch was rebuilt on it. The names below that
+read `org.freedesktop.portal.experimental.WebAuthentication` and
+`org.freedesktop.impl.portal.experimental.WebAuthentication` are now
+`org.freedesktop.portal.WebAuthentication.X1` and
+`org.freedesktop.impl.portal.WebAuthentication.X1`; the public side is exported on
+`/org/freedesktop/portal/desktop/experimental` rather than the standard path; and there is
+no `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate at all — the frontend exports the
+interface whenever a backend for it is configured. The record below is left as it was
+written, except where it states a live rule.
+
 ## Context
 
 [0008](0008-build-to-the-upstream-shape.md) decided to build a portal frontend and a
@@ -57,9 +69,10 @@ repository is an out-of-tree backend plus an application, and nothing else.**
 - The Entra client, which shared this repository at the time, is unchanged in substance. It calls
   `org.freedesktop.portal.experimental.WebAuthentication` on
   `org.freedesktop.portal.Desktop` instead of a project-controlled name, and it now has to
-  say something specific when that interface is absent — see "The gate is a normal
-  outcome" below.
-- `data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a
+  say something specific when that interface is absent — see "An absent interface is a
+  normal outcome" below.
+- `data/org.freedesktop.impl.portal.WebAuthentication.X1.xml` (named
+  `...experimental.WebAuthentication.xml` at the time) is a
   **verbatim copy** of the branch's file and must track it. The interface is not this
   repository's to change.
 - `data/webauth.portal` installs into the **real**
@@ -84,26 +97,24 @@ and `xdg-desktop-portal-termfilechooser` installs `termfilechooser.portal` there
 the user to name it in `portals.conf`.
 
 The honest caveat, kept rather than dropped: **the interface named in that file is
-experimental and gated upstream.** A stock xdg-desktop-portal has never heard of
-`org.freedesktop.impl.portal.experimental.WebAuthentication`, will not match this file
-against any interface it knows, and will ignore it. A frontend that does know it still
-exports nothing unless it was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. Installing the file is
-therefore inert on a machine without the branch — which is what makes it safe, and is not
-the same claim as "this is a supported portal".
+experimental upstream.** A stock xdg-desktop-portal has never heard of
+`org.freedesktop.impl.portal.WebAuthentication.X1`, will not match this file against any
+interface it knows, and will ignore it. Installing the file is therefore inert on a
+machine without the branch — which is what makes it safe, and is not the same claim as
+"this is a supported portal".
 
-## The gate is a normal outcome, and the client must say so
+## An absent interface is a normal outcome, and the client must say so
 
 `entra-token-helper` already reported *unavailable* (exit `40`) when nothing implemented
 the interface, so that a dispatcher could fall through to another provider. That path is
-now the **common** one rather than the exotic one: a correctly installed portal, a
-correctly installed backend and a correctly built client still produce "no such
-interface" unless somebody set the environment variable.
+the **common** one rather than the exotic one: a correctly installed portal and a
+correctly built client still produce "no such interface" until a backend for the interface
+is installed and configured.
 
-So the exit-40 diagnostic must name `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` rather than
-saying "portal unavailable". The three causes — gate off, no backend configured, no portal
-at all — remain indistinguishable to a client, deliberately, because the frontend does not
-export the interface in any of them.
+So the exit-40 diagnostic must say that no backend is configured rather than "portal
+unavailable". The two causes — no backend configured, no portal at all — remain
+indistinguishable to a client, deliberately, because the frontend does not export the
+interface in either of them.
 
 ## Consequences
 
@@ -123,7 +134,7 @@ export the interface in any of them.
   `io.github.sjtrotter.portal.WebAuthentication1`, is overtaken: the name is now the
   frontend branch's to choose.
 - **[0007](0007-certificate-adapter.md) is amended.** The certificate adapter is now a
-  client of the *public* `org.freedesktop.portal.experimental.Certificate` on
+  client of the *public* `org.freedesktop.portal.Certificate.X1` on
   `org.freedesktop.portal.Desktop` — and the interface it calls no longer has
   `OpenPkcs11Endpoint`, which changes what the `portal` adapter can actually do.
 - **The delegation gap gets a cheap answer in-process.** 0007 and 0008 both said this

@@ -33,7 +33,7 @@ Entra ID tenant and ran the full FreeRDP-to-AVD chain through it on 2026-09-05; 
   [docs/decisions/0006-two-repositories.md](docs/decisions/0006-two-repositories.md).
 - **The frontend is not here, and the interface is not ours.** The frontend is a branch of
   xdg-desktop-portal ([docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md)),
-  and `data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml` is a verbatim
+  and `data/org.freedesktop.impl.portal.WebAuthentication.X1.xml` is a verbatim
   copy of that branch's file. A change to the interface is a change to that branch, followed by
   re-copying the file; a hand-edit here produces a backend that no longer implements what it claims.
   Anything about who is calling, what may be asked, or what a caller is told belongs upstream;

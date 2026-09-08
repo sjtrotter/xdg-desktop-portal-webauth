@@ -3,7 +3,7 @@
 The security model for this project is in **[docs/SECURITY.md](docs/SECURITY.md)**. It covers the
 web authentication portal **backend** in this repository, and states alongside it the rules the
 **frontend** enforces so that the backend's obligations make sense. That frontend is not here: it is
-xdg-desktop-portal, on the branch `experimental/certificate-webauthentication`; see
+xdg-desktop-portal, on the branch `experimental/integration`; see
 [docs/decisions/0010](docs/decisions/0010-backend-only-frontend-lives-upstream.md). The Entra ID /
 AVD token client that first used this backend is in its own repository,
 [entra-token-helper](https://github.com/sjtrotter/entra-token-helper); its own rules are kept in
@@ -11,11 +11,11 @@ part 2 of that document until it has a security document of its own.
 
 Two things worth saying here, where people look first.
 
-**The interface is experimental and gated.** `org.freedesktop.portal.experimental.WebAuthentication`
-is not exported unless xdg-desktop-portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. Installing this backend on a machine
-whose portal does not know the interface adds no attack surface: the `.portal` file names an
-interface nothing matches, and the backend is never activated.
+**The interface is experimental.** `org.freedesktop.portal.WebAuthentication.X1` is exported on
+`/org/freedesktop/portal/desktop/experimental`, and only when a backend for it is configured.
+Installing this backend on a machine whose portal does not know the interface adds no attack
+surface: the `.portal` file names an interface nothing matches, and the backend is never
+activated.
 
 **Nothing is released and there is no deployment to report a vulnerability against.** The backend is
 implemented and has been run against a real Entra ID tenant and real hardware

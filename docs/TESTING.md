@@ -74,10 +74,9 @@ made by `dbus-run-session`, starts:
 
 - `xdg-permission-store` from the frontend build — xdg-desktop-portal refuses to start without it;
 - `tools/mtls-server.py`, a fixture identity provider on a port of its own choosing;
-- the **development frontend** from the branch `experimental/certificate-webauthentication`, with
-  `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication` and an `XDG_DESKTOP_PORTAL_DIR`
-  holding this repository's `webauth.portal`, a symlink to every other `.portal` on the machine, and
-  the machine's effective `portals.conf` with one line added;
+- the **development frontend** from the branch `experimental/integration`, with an
+  `XDG_DESKTOP_PORTAL_DIR` holding this repository's `webauth.portal`, a symlink to every other
+  `.portal` on the machine, and the machine's effective `portals.conf` with one line added;
 - this backend;
 - `tools/webauth-e2e.py`, which calls the **public** interface and nothing else.
 
@@ -108,7 +107,8 @@ backend — no "continue anyway", no TLS-errors policy option, nothing reachable
 
 Each is one command, and each was run on 2026-09-04 on Fedora 44 with WebKitGTK 2.52.5, GTK 4.22.4,
 libadwaita 1.9.3, GLib 2.88.3, glib-networking 2.80 (GnuTLS backend), GnuTLS 3.8.13 and
-p11-kit 0.26.5, against xdg-desktop-portal at `experimental/certificate-webauthentication`.
+p11-kit 0.26.5, against xdg-desktop-portal at `experimental/certificate-webauthentication` (the
+frontend branch before the rename to `experimental/integration`).
 
 Every one of them also asserts, from the **server's** access log, that the completion URI was never
 fetched. That is the guarantee the whole design exists for, and it is checked from the far end of
@@ -269,8 +269,8 @@ This is the run the project exists for, and it is the one to run first when some
 `tools/portal-stack.sh` puts **one private bus inside one headless X server** and stands up both
 portals against each other:
 
-- `xdg-permission-store`, and the **development frontend** with **both** gates:
-  `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=certificate,web-authentication`, and an
+- `xdg-permission-store`, and the **development frontend** with **both** experimental interfaces
+  backed, through an
   `XDG_DESKTOP_PORTAL_DIR` holding this repository's `webauth.portal`, the sibling's
   `certificate.portal`, a symlink to every other `.portal` on the machine, and the machine's
   effective `portals.conf` with **two** lines added;
@@ -322,7 +322,8 @@ $ tools/portal-stack.sh
 
 Re-run on 2026-09-05, Fedora 44, WebKitGTK 2.52.5, GTK 4.22.4, libadwaita 1.9.3, GLib 2.88.3,
 glib-networking (GnuTLS backend), GnuTLS 3.8.13, p11-kit 0.27, SoftHSM 2, against
-xdg-desktop-portal at `experimental/certificate-webauthentication`:
+xdg-desktop-portal at `experimental/certificate-webauthentication` (the frontend branch before the
+rename to `experimental/integration`):
 
 ```
 === hop by hop ===
@@ -470,8 +471,7 @@ that path needs no display of the certificate backend's own.
 This tier lives in the client's repository,
 [entra-token-helper](https://github.com/sjtrotter/entra-token-helper), and is run from a checkout of
 it. `tools/entra-e2e.sh` there puts a headless X server and a private bus around the whole stack —
-`xdg-permission-store`, the development frontend with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`, this backend with **no certificate
+`xdg-permission-store`, the development frontend, this backend with **no certificate
 adapter** — plus an Entra-shaped mock authority, and runs `entra-token-helper` against it as an
 ordinary application calling the public interface. It finds this backend through `WEBAUTH_REPO`
 (default `../xdg-desktop-portal-webauth`) and `BACKEND` (default
@@ -489,10 +489,9 @@ RDS-AAD scope, and the sign-in is a click rather than a fresh authentication bec
 provider's session cookie is still in this backend's `shared` partition. That is the behaviour
 `session_mode: shared` exists for, provoked deterministically.
 
-**The gate is the default state of a machine.** Asked with no session bus at all, the client exits
-40 and names `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. The gate off, no backend
-configured, and no portal at all are indistinguishable to a caller by design, and the diagnostic
-names the one that is almost always the cause.
+**No backend is the default state of a machine.** Asked with no session bus at all, the client
+exits 40. No backend configured and no portal at all are indistinguishable to a caller by design,
+and the diagnostic says so rather than guessing.
 
 Nothing in this repository is needed to run it except a build of this backend, and nothing in this
 repository depends on it.

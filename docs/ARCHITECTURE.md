@@ -12,7 +12,7 @@ interface applications must never reach; the backend owns the window. That shape
 early, and its costs are recorded in
 [decisions/0008-build-to-the-upstream-shape.md](decisions/0008-build-to-the-upstream-shape.md).
 **This repository is the backend and nothing else** — the frontend is a branch of
-xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `a6b06d4`; see
+xdg-desktop-portal, `experimental/integration`, commit `357e4d7`; see
 [decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
 
 ```
@@ -23,16 +23,17 @@ xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `a6b06d
                                       ▼
                     ┌─────────────────────────────────────────┐
                     │  xdg-desktop-portal                     │  ANOTHER REPOSITORY,
-                    │  branch experimental/                   │  on a branch
-                    │    certificate-webauthentication        │
-                    │  org.freedesktop.portal.experimental.   │  no window, no engine,
-                    │      WebAuthentication   [GATED]        │  no toolkit, no card
+                    │  branch experimental/integration        │  on a branch
+                    │  org.freedesktop.portal.                │  no window, no engine,
+                    │      WebAuthentication.X1               │  no toolkit, no card
+                    │  on /org/freedesktop/portal/desktop/    │
+                    │      experimental                       │
                     │  app id · validation · options filter   │
                     │  Request objects · one Response         │
                     └─────────────────────────────────────────┘
                                       │
                                       │  D-Bus: org.freedesktop.impl.portal.
-                                      │         experimental.WebAuthentication
+                                      │         WebAuthentication.X1
                                       │         (backend interface; NOT for applications)
                                       ▼
                     ┌─────────────────────────────────────────┐
@@ -50,9 +51,10 @@ xdg-desktop-portal, `experimental/certificate-webauthentication`, commit `a6b06d
                                               PIN prompt, no card handling here
 ```
 
-**`[GATED]`** is load-bearing: the public interface is not exported unless the portal was started
-with `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. With the gate off, an application
-sees "no such interface" and this backend is never activated.
+**The experimental object path is load-bearing:** the public interface is exported on
+`/org/freedesktop/portal/desktop/experimental`, and only when a backend for it is configured. With
+no backend configured, an application sees "no such interface" and this backend is never
+activated.
 
 The Certificate portal knows nothing about the web. The web authentication portal knows nothing
 about OAuth, and knows as little about cards as the chosen adapter allows. The Entra client owns no
@@ -166,7 +168,7 @@ disabled, no URI or page-content logging.
 selecting between a system-browser session, a WebKit session, manual paste and a browser extension.
 That seam is now the impl interface, and those alternatives are now **separate backends** chosen by
 `portals.conf` — each with its own `.portal` file naming
-`org.freedesktop.impl.portal.experimental.WebAuthentication` — exactly as a desktop chooses
+`org.freedesktop.impl.portal.WebAuthentication.X1` — exactly as a desktop chooses
 `xdg-desktop-portal-gtk` or `-gnome`. The preference order is unchanged in substance (system
 browser wherever the completion can be returned safely, per RFC 8252; WebKitGTK where interception
 or a card requires it, which is the AVD/PIV case; paste as the headless fallback; an extension only
@@ -273,10 +275,9 @@ taken on the handle derived from its own `handle_token` *before* `Start` is call
 completion cannot race it. It never names a backend, never reads a `.portal` file, and cannot tell
 which backend served it. When the interface is not exported it reports *unavailable* rather than
 failing, so a dispatcher can fall through to another provider. **That is the common case**, not the
-exotic one: the interface is experimental and absent unless the portal was started with
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=web-authentication`. Three causes — the gate off, no backend
-configured, no portal at all — are indistinguishable by design, because the frontend exports nothing
-in any of them.
+exotic one: the interface is experimental and absent unless a backend for it is configured. Two
+causes — no backend configured, no portal at all — are indistinguishable by design, because the
+frontend exports nothing in either of them.
 
 **There are three completion checks in the chain, and none is redundant.** The backend answers "is
 this navigation the URI the request named" — a question about URIs, asked against a live browser.
@@ -306,14 +307,14 @@ this portal that has run against a real tenant.
    (fresh `state`, fresh PKCE verifier and S256 challenge), builds the authorization URL, subscribes
    to `Response`, and calls
    `Start(parent_window, start_uri, "https://login.microsoftonline.com/common/oauth2/nativeclient", { handle_token, session_mode: "shared", timeout: 300, title })`
-   on `org.freedesktop.portal.experimental.WebAuthentication`. If that interface is absent — the
-   experimental gate is off, or no backend is configured — the client exits `40` here instead,
-   naming the environment variable.
+   on `org.freedesktop.portal.WebAuthentication.X1`, at
+   `/org/freedesktop/portal/desktop/experimental`. If that interface is absent — no backend is
+   configured, or there is no portal at all — the client exits `40` here instead.
 5. **The frontend** (xdg-desktop-portal) derives the app id, validates both URIs, filters the
    options, decides the storage mode, mints and exports the Request, finds the backend named by
    `portals.conf`, and calls
    `Start(handle, app_id, parent_window, start_uri, completion_uri, options)` on
-   `org.freedesktop.impl.portal.experimental.WebAuthentication`.
+   `org.freedesktop.impl.portal.WebAuthentication.X1`.
 6. **The backend** exports its impl Request at the same handle, parses `parent_window`, opens the
    window with chrome naming the app id it was given and the origin the engine reports; the user
    authenticates; `certauth.login.microsoftonline.us` challenges for a client certificate; **the
@@ -358,14 +359,15 @@ a click rather than a card, for the RDS proof-of-possession token.
 
 ```
 application (entra-token-helper, or anything else)
-    │ org.freedesktop.portal.experimental.WebAuthentication
-    │ on org.freedesktop.portal.Desktop                  [GATED]
+    │ org.freedesktop.portal.WebAuthentication.X1
+    │ on org.freedesktop.portal.Desktop,
+    │ at /org/freedesktop/portal/desktop/experimental
     ▼
 xdg-desktop-portal           already running; the branch adds two portals to it
-    │ org.freedesktop.impl.portal.experimental.WebAuthentication
+    │ org.freedesktop.impl.portal.WebAuthentication.X1
     ▼
 xdg-desktop-portal-webauth   D-Bus activated, GTK4 + WebKitGTK      THIS REPOSITORY
-    │ org.freedesktop.portal.experimental.Certificate   (as a client, preferred adapter)
+    │ org.freedesktop.portal.Certificate.X1   (as a client, preferred adapter)
     ▼                         ...which is the SAME xdg-desktop-portal, which routes to
 xdg-desktop-portal-certificate   separate repository (xdg-desktop-portal-certificate), optional
 ```

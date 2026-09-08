@@ -13,8 +13,8 @@
 # WHAT IT STANDS UP, all on ONE private bus inside ONE headless X server:
 #
 #   xdg-permission-store        the frontend refuses to start without it
-#   xdg-desktop-portal          the development frontend, BOTH gates on:
-#                               XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=certificate,web-authentication
+#   xdg-desktop-portal          the development frontend, with BOTH experimental
+#                               interfaces backed in portals.conf
 #   xdg-desktop-portal-certificate
 #                               the sibling backend, against its SoftHSM fixture
 #   xdg-desktop-portal-webauth  this backend, --cert-adapter portal
@@ -324,7 +324,7 @@ rm -f -- "$DEVDIR/certificate.portal"
 sed -e '/^#/d' -e '/^$/d' "$CERTIFICATE_REPO/data/certificate.portal.in" \
 	>"$DEVDIR/certificate.portal" || die "no certificate.portal.in in $CERTIFICATE_REPO"
 xdp_conf_set "$DEVDIR/portals.conf" \
-	org.freedesktop.impl.portal.experimental.Certificate 'certificate;'
+	org.freedesktop.impl.portal.Certificate.X1 'certificate;'
 
 # ------------------------------------------------------------ p11-kit, for this run only
 #
@@ -775,15 +775,12 @@ fi
 #                      throwaway CONFDIR above; in --live it is left as the
 #                      real environment's value, and install_module_file()
 #                      put the module where that real value actually points.
-#   XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL
-#                      BOTH gates. Neither portal is exported without its name.
 #
 # The PKCS11_PORTAL_CERTIFICATE_* variables are the only channel a module loaded
 # by p11-kit has: a PKCS#11 consumer cannot say "RSA only" or "here is why I am
 # asking". KEY_ALGORITHMS is pinned so the chooser has one row and the fixture
 # server's trust anchor is known in advance.
 export DISPLAY XDG_DESKTOP_PORTAL_DIR XDG_CONFIG_HOME
-export XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=certificate,web-authentication
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-dev}"
 export SOFTHSM2_CONF="$CERT_SOFTHSM_DIR/softhsm2.conf"
 export XDG_DATA_HOME="$LOGDIR/data-home"

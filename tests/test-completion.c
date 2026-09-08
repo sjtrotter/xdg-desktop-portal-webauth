@@ -5,7 +5,7 @@
  *
  * The cases marked FRONTEND are ported one for one from xdg-desktop-portal's
  * tests/test_webauthentication.py on the branch
- * experimental/certificate-webauthentication: test_invalid_uri_rejected,
+ * experimental/integration: test_invalid_uri_rejected,
  * test_completion_mismatch_rejected and test_completion_normalisation_accepted.
  * The two implementations of one rule are allowed to drift only if nobody is
  * looking, so this table is what looks.

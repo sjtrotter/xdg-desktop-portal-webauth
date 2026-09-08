@@ -4,14 +4,14 @@
 # ONE gdbus-codegen run over both impl interfaces, with the common prefix
 # stripped, so the generated symbols read the way upstream's do:
 #
-#   org.freedesktop.impl.portal.experimental.WebAuthentication
-#       -> XdpImplExperimentalWebAuthentication
+#   org.freedesktop.impl.portal.WebAuthentication.X1
+#       -> XdpImplWebAuthenticationX1
 #   org.freedesktop.impl.portal.Request
 #       -> XdpImplRequest
 impl_dbus_sources = gnome.gdbus_codegen(
   'xdp-impl-dbus',
   sources: [
-    '../data/org.freedesktop.impl.portal.experimental.WebAuthentication.xml',
+    '../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml',
     '../data/org.freedesktop.impl.portal.Request.xml',
   ],
   interface_prefix: 'org.freedesktop.impl.portal.',

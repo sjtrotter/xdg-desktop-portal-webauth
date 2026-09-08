@@ -9,7 +9,7 @@ The fixture tables below are the ones `test-completion.c` now carries, with the 
 marked `FRONTEND` in that file.
 
 **Half of it exists already, in the frontend's repository.** The xdg-desktop-portal branch
-`experimental/certificate-webauthentication` ships `tests/templates/webauthentication.py` (a
+`experimental/integration` ships `tests/templates/webauthentication.py` (a
 python-dbusmock backend) and `tests/test_webauthentication.py` (16 functions, 35 cases, 70 runs,
 each case run once as `AppInfoHost` and once as `AppInfoFlatpak`). Everything below that is a frontend obligation is that
 suite; what is left for this repository is the backend's half.

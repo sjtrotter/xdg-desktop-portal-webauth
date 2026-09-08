@@ -8,13 +8,13 @@
 
 /** @file
  *  This backend's implementation of
- *  org.freedesktop.impl.portal.experimental.WebAuthentication: the impl
- *  skeleton and its one handler.
+ *  org.freedesktop.impl.portal.WebAuthentication.X1: the impl skeleton and its
+ *  one handler.
  *
  *  The interface is defined by the xdg-desktop-portal branch
- *  experimental/certificate-webauthentication (commit a6b06d4), and the copy of
- *  the XML in data/ tracks that branch verbatim. It is not this repository's to
- *  change. See docs/IMPL-INTERFACE.md.
+ *  experimental/integration (commit 357e4d7), and the copy of the XML in data/
+ *  tracks that branch verbatim. It is not this repository's to change. See
+ *  docs/IMPL-INTERFACE.md.
  *
  *  This is xdg-desktop-portal-gtk's src/account.c under another name:
  *
@@ -57,7 +57,7 @@
 
 #define WEBAUTH_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.webauth"
 #define WEBAUTH_BACKEND_OBJECT_PATH "/org/freedesktop/portal/desktop"
-#define WEBAUTH_IMPL_INTERFACE "org.freedesktop.impl.portal.experimental.WebAuthentication"
+#define WEBAUTH_IMPL_INTERFACE "org.freedesktop.impl.portal.WebAuthentication.X1"
 #define WEBAUTH_IMPL_INTERFACE_VERSION 1u
 
 /** The only bus name whose owner may call this backend. */

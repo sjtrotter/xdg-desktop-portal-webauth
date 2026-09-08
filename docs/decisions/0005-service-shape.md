@@ -146,7 +146,7 @@ Not every flow needs a service-owned engine, and the ones that do not should not
    packaging, and outright failure under private browsing or enterprise policy.
 
 Under [0008](0008-build-to-the-upstream-shape.md) each of these is a separate **backend** — a
-process implementing `org.freedesktop.impl.portal.experimental.WebAuthentication`, declaring itself
+process implementing `org.freedesktop.impl.portal.WebAuthentication.X1`, declaring itself
 in a `.portal` file, and selected in `portals.conf` — rather than an implementation behind an
 in-process vtable with a capability mask. The list above is unchanged; only who chooses, and when,
 has moved. See [`src/webkit-session.h`](../../src/webkit-session.h)

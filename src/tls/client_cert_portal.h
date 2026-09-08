@@ -11,7 +11,7 @@
  *  as a PKCS#11 token.
  *
  *  WHAT CHANGED, and it is the whole shape of this file. The original design had
- *  this backend call org.freedesktop.portal.experimental.Certificate as an
+ *  this backend call org.freedesktop.portal.Certificate.X1 as an
  *  ordinary client - AcquireCredential for a grant, then brokered Sign for each
  *  private key operation - and hand the signing to the TLS stack somehow. Spike
  *  S2 settled that "somehow": there is no external-signer seam. WebKitGTK's
