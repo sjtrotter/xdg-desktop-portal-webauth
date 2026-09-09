@@ -137,7 +137,7 @@ summary(
   {
     'backend bus name': 'org.freedesktop.impl.portal.desktop.webauth',
     'impl interface': 'org.freedesktop.impl.portal.WebAuthentication.X1',
-    'object path': '/org/freedesktop/portal/desktop',
+    'object path': '/org/freedesktop/portal/desktop/experimental',
     'portal file': portal_dir / 'webauth.portal',
     'frontend': 'xdg-desktop-portal, branch experimental/integration',
     'public interface (frontend)': 'org.freedesktop.portal.WebAuthentication.X1',

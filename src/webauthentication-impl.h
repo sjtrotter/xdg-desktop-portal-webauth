@@ -56,7 +56,7 @@
  */
 
 #define WEBAUTH_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.webauth"
-#define WEBAUTH_BACKEND_OBJECT_PATH "/org/freedesktop/portal/desktop"
+#define WEBAUTH_BACKEND_OBJECT_PATH "/org/freedesktop/portal/desktop/experimental"
 #define WEBAUTH_IMPL_INTERFACE "org.freedesktop.impl.portal.WebAuthentication.X1"
 #define WEBAUTH_IMPL_INTERFACE_VERSION 1u
 

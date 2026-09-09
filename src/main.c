@@ -7,8 +7,9 @@
  * The D-Bus activated per-user process that owns
  * org.freedesktop.impl.portal.desktop.webauth and implements
  * org.freedesktop.impl.portal.WebAuthentication.X1 on
- * /org/freedesktop/portal/desktop -- the object path every portal backend
- * exports on.
+ * /org/freedesktop/portal/desktop/experimental -- the object path the
+ * experimental-portal convention assigns to a backend of an experimental
+ * interface (doc/experimental-portals.rst in xdg-desktop-portal).
  *
  * APPLICATIONS MUST NOT CALL THIS PROCESS. It exists to serve one caller:
  * xdg-desktop-portal, which has already established who the application is,

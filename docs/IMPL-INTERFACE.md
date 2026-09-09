@@ -15,7 +15,7 @@ branch. Applications should read that one and stop there.
 
 ```
 bus name       org.freedesktop.impl.portal.desktop.webauth   (this backend)
-object path    /org/freedesktop/portal/desktop               (same path as the frontend's)
+object path    /org/freedesktop/portal/desktop/experimental  (same path as the frontend's)
 interface      org.freedesktop.impl.portal.WebAuthentication.X1
 request objects the frontend's handle path, exported on the BACKEND's bus name
 declared in    $datadir/xdg-desktop-portal/portals/webauth.portal
@@ -289,7 +289,8 @@ The interface exists so this is possible; the steps are upstream's, unchanged:
 
 1. Implement `org.freedesktop.impl.portal.WebAuthentication.X1` in a D-Bus-activatable
    executable that owns `org.freedesktop.impl.portal.desktop.<name>` and exports the interface at
-   `/org/freedesktop/portal/desktop`.
+   `/org/freedesktop/portal/desktop/experimental`, the path the experimental-portal convention
+   assigns to backends of experimental interfaces.
 2. Install `<name>.portal` into `$datadir/xdg-desktop-portal/portals/` — the real directory, which
    is where the frontend looks:
 

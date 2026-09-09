@@ -16,6 +16,11 @@ no `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate at all — the frontend exports
 interface whenever a backend for it is configured. The record below is left as it was
 written, except where it states a live rule.
 
+**Update 2026-09-09.** The 2026-09-07 rebuild left this backend on the standard path while the
+convention says "the backend object path should be the same" as the frontend's experimental
+one. The backend, the frontend's proxy to it, the mock template and the tests now all use
+`/org/freedesktop/portal/desktop/experimental`.
+
 ## Context
 
 [0008](0008-build-to-the-upstream-shape.md) decided to build a portal frontend and a
@@ -65,7 +70,8 @@ repository is an out-of-tree backend plus an application, and nothing else.**
   a pytest suite (16 functions, 35 cases, 70 runs, passing).
 - This repository builds **one binary**, `xdg-desktop-portal-webauth`, owning
   `org.freedesktop.impl.portal.desktop.webauth` and exporting
-  `/org/freedesktop/portal/desktop`.
+  `/org/freedesktop/portal/desktop/experimental` (until 2026-09-09 the standard path; see the
+  update above).
 - The Entra client, which shared this repository at the time, is unchanged in substance. It calls
   `org.freedesktop.portal.experimental.WebAuthentication` on
   `org.freedesktop.portal.Desktop` instead of a project-controlled name, and it now has to
