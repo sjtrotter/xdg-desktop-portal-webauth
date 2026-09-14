@@ -68,7 +68,7 @@ runtime.
 
 The frontend is on the branch `experimental/integration` of a personal fork of
 xdg-desktop-portal, with `357e4d7` defining this interface. Its
-`tests/test_webauthentication.py` has 16 test functions and 35 parametrised cases, run once with the
+`tests/test_webauthentication.py` has 14 test functions, parametrised to run once with the
 caller identified as an ordinary host process and once as a Flatpak application. The branch has been
 proposed to nobody. The `.X1` suffix and the `/org/freedesktop/portal/desktop/experimental` object
 path are what upstream set aside for unfinished portals, not a sign that this one was accepted.
