@@ -2,16 +2,15 @@
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 
 # xdg-desktop-portal-webauth: an out-of-tree BACKEND for the experimental
-# org.freedesktop.impl.portal.WebAuthentication.X1 portal interface.
+# org.freedesktop.impl.portal.experimental.WebAuthentication1 portal interface.
 #
 # This is a COMPLETE, STANDALONE meson project. It can be built on its own:
 #
 #     meson setup build && ninja -C build
 #
-# The frontend is xdg-desktop-portal itself (branch
-# experimental/integration) and the two speak D-Bus. Consumers
-# such as entra-token-helper (its own repository) are ordinary applications that
-# call the portal.
+# Frontend: xdg-desktop-portal, branch experimental/integration.
+# Portal object path: /org/freedesktop/portal/desktop.
+# Frontend opt-in: XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1.
 #
 # The layout mirrors every out-of-tree backend: data/ holds the .portal file, the
 # D-Bus service file and the interface XML, src/ holds one file per portal
@@ -136,12 +135,14 @@ summary(
 summary(
   {
     'backend bus name': 'org.freedesktop.impl.portal.desktop.webauth',
-    'impl interface': 'org.freedesktop.impl.portal.WebAuthentication.X1',
-    'object path': '/org/freedesktop/portal/desktop/experimental',
+    'impl interface': 'org.freedesktop.impl.portal.experimental.WebAuthentication1',
+    'object path': '/org/freedesktop/portal/desktop',
     'portal file': portal_dir / 'webauth.portal',
     'frontend': 'xdg-desktop-portal, branch experimental/integration',
-    'public interface (frontend)': 'org.freedesktop.portal.WebAuthentication.X1',
-    'public object path (frontend)': '/org/freedesktop/portal/desktop/experimental',
+    'public interface (frontend)': 'org.freedesktop.portal.experimental.WebAuthentication1',
+    'public object path (frontend)': '/org/freedesktop/portal/desktop',
+    'frontend environment': 'XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1',
+    'certificate frontend opt-in': 'append Certificate1 to XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL',
     'called by': 'xdg-desktop-portal only, never by applications',
     'client certificates': 'providers: portal (primary) and pkcs11 (fallback)',
     'p11-kit module configuration read from': p11kit_module_configs,

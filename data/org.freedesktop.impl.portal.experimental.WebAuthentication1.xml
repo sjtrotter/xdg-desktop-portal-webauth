@@ -8,9 +8,9 @@
 
   Apart from this comment block, this file is copied byte for byte from
 
-      data/org.freedesktop.impl.portal.WebAuthentication.X1.xml
+      data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml
 
-  on the xdg-desktop-portal branch experimental/integration, at commit 357e4d7
+  on the xdg-desktop-portal branch experimental/integration, at commit fc43671
   "web-authentication: Add an experimental WebAuthentication portal". (The
   branch is rebased on upstream, so that id moves.)
 
@@ -28,7 +28,7 @@
 
 <node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
   <!--
-      org.freedesktop.impl.portal.WebAuthentication.X1:
+      org.freedesktop.impl.portal.experimental.WebAuthentication1:
       @short_description: Backend for the web sign-in portal
 
       This backend interface owns the web view: it opens the window, watches
@@ -43,10 +43,11 @@
       than a request, so a backend that cannot honour ``ephemeral`` must fail
       rather than quietly use the shared store.
 
-      This is an **experimental** interface and can change or get removed
-      without a version bump. See :doc:`experimental-portals`.
+      This is an **experimental** interface and can change or get removed at
+      any time. An incompatible change increments the number at the end of
+      the interface name. See :doc:`experimental-portals`.
   -->
-  <interface name="org.freedesktop.impl.portal.WebAuthentication.X1">
+  <interface name="org.freedesktop.impl.portal.experimental.WebAuthentication1">
     <!--
         Start:
         @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
@@ -107,7 +108,7 @@
           when @response is ``0``. The frontend re-checks it against the
           @completion_uri it passed in before handing it to the application,
           comparing the two on their parsed components; see
-          :ref:`org.freedesktop.portal.WebAuthentication.X1.Start`
+          :ref:`org.freedesktop.portal.experimental.WebAuthentication1.Start`
           for the rule.
 
           @completion_uri is an ``http`` or ``https`` URI with a host, or a

@@ -10,16 +10,15 @@ is a branch of xdg-desktop-portal, and **the XML on that branch is the specifica
 ```
 repository   a local checkout of xdg-desktop-portal   (remote: origin, https://github.com/sjtrotter/xdg-desktop-portal)
 branch       experimental/integration
-commit       357e4d7  web-authentication: Add an experimental WebAuthentication portal
-public XML   data/org.freedesktop.portal.WebAuthentication.X1.xml
-impl XML     data/org.freedesktop.impl.portal.WebAuthentication.X1.xml
+public XML   data/org.freedesktop.portal.experimental.WebAuthentication1.xml
+impl XML     data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml
 frontend     desktop-portal/web-authentication.c
 mock backend tests/templates/webauthentication.py
 tests        tests/test_webauthentication.py
 ```
 
 The impl half is also here, as a verbatim tracking copy:
-[`../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml`](../data/org.freedesktop.impl.portal.WebAuthentication.X1.xml).
+[`../data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml`](../data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml).
 The public half is deliberately **not** copied: this repository has no reason to hold a
 second copy of an interface it does not implement, and a stale one would be worse than
 none.
@@ -29,15 +28,16 @@ right.
 
 ## Summary
 
-Interface `org.freedesktop.portal.WebAuthentication.X1`, on bus name
+Interface `org.freedesktop.portal.experimental.WebAuthentication1`, on bus name
 `org.freedesktop.portal.Desktop`, object path
-`/org/freedesktop/portal/desktop/experimental` — experimental portals are exported on
-their own object path, not the standard one — `version` property `1`.
+`/org/freedesktop/portal/desktop`, `version` property `1`.
 
-**It is not exported unless xdg-desktop-portal found a backend for it.** With none
-configured it is absent from introspection and `Properties.Get` fails; a client must treat
-that as *unavailable* and fall through, not as an error. It is experimental and can change
-or be removed without a version bump.
+The frontend exports it when a backend is configured and `WebAuthentication1` is in
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` in the frontend environment at startup. The list
+is comma separated, with no spaces; include `Certificate1` to enable the Certificate portal.
+Otherwise the interface is absent from introspection and `Properties.Get` fails; a client
+must treat that as *unavailable* and fall through. Breaking changes increment the trailing
+interface number; non-breaking changes increment the `version` property.
 
 ```
 Start (s parent_window, s start_uri, s completion_uri, a{sv} options) → o handle  [Request]

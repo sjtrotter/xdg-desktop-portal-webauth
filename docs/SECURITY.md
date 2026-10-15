@@ -25,11 +25,11 @@ boundary protects the identity: whoever can drive the Entra client
 account. The fourth — the **Certificate portal**, whose backend is a separate project — protects the
 card itself: it owns the certificate chooser, the PIN prompt, and the PIN.
 
-**The public interface is experimental.** `org.freedesktop.portal.WebAuthentication.X1` is
-exported on `/org/freedesktop/portal/desktop/experimental`, and not at all unless the portal found
-a backend for it. With none configured, no application can reach any of this and this backend is
-never activated. That is a property of the frontend and this repository cannot change it in either
-direction. Installing this backend on a machine whose portal does not know the interface adds no
+**The public interface is experimental.** `org.freedesktop.portal.experimental.WebAuthentication1` is
+exported on `/org/freedesktop/portal/desktop` when a backend is configured and the frontend
+starts with `WebAuthentication1` in `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL`. Without both,
+the interface is absent and this backend is never activated. That is a property of the frontend
+and this repository cannot change it in either direction. Installing this backend on a machine whose portal does not know the interface adds no
 attack surface: the `.portal` file names an interface nothing matches.
 
 They are separated so that none has to be trusted with another's job. The frontend never sees a
@@ -145,7 +145,7 @@ identity" exists.
 
 This is the split's own security obligation, and it did not exist when there was one process.
 
-`org.freedesktop.impl.portal.WebAuthentication.X1` takes an `app_id` as an *argument*. An
+`org.freedesktop.impl.portal.experimental.WebAuthentication1` takes an `app_id` as an *argument*. An
 application that reached it directly would name itself, choose its own storage mode, bypass rate
 limiting, and bypass the frontend's re-check of the returned URI. So:
 

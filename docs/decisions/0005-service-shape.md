@@ -1,5 +1,7 @@
 # 5. URL in, completion out: no protocol semantics in the authentication service
 
+Superseded in part by ADR [0011](0011-merged-experimental-portal-convention.md).
+
 Date: 2026-09-03
 Status: accepted (for the sketch); its "one service, not a frontend and a backend" position is
 superseded by [0008](0008-build-to-the-upstream-shape.md), and its "Naming" section by

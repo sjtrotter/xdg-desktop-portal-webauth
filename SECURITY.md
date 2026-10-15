@@ -11,8 +11,9 @@ part 2 of that document until it has a security document of its own.
 
 Two things worth saying here, where people look first.
 
-**The interface is experimental.** `org.freedesktop.portal.WebAuthentication.X1` is exported on
-`/org/freedesktop/portal/desktop/experimental`, and only when a backend for it is configured.
+**The interface is experimental.** `org.freedesktop.portal.experimental.WebAuthentication1` is exported on
+`/org/freedesktop/portal/desktop` when a backend is configured and the frontend starts with
+`WebAuthentication1` in `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL`.
 Installing this backend on a machine whose portal does not know the interface adds no attack
 surface: the `.portal` file names an interface nothing matches, and the backend is never
 activated.

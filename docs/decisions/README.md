@@ -12,3 +12,4 @@ the split of 2026-09-07 ([0006](0006-two-repositories.md)); 0009 was never writt
 | [0007](0007-certificate-adapter.md) | Certificate handling behind an adapter: portal preferred, in-process retained until proven |
 | [0008](0008-build-to-the-upstream-shape.md) | Build to the upstream shape now: a portal frontend and a portal backend |
 | [0010](0010-backend-only-frontend-lives-upstream.md) | Be a backend only: the frontend lives in xdg-desktop-portal |
+| [0011](0011-merged-experimental-portal-convention.md) | Follow the merged experimental-portal convention |

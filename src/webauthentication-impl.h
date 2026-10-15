@@ -8,11 +8,11 @@
 
 /** @file
  *  This backend's implementation of
- *  org.freedesktop.impl.portal.WebAuthentication.X1: the impl skeleton and its
- *  one handler.
+ *  org.freedesktop.impl.portal.experimental.WebAuthentication1: the impl
+ *  skeleton and its one handler.
  *
  *  The interface is defined by the xdg-desktop-portal branch
- *  experimental/integration (commit 357e4d7), and the copy of the XML in data/
+ *  experimental/integration (commit fc43671), and the copy of the XML in data/
  *  tracks that branch verbatim. It is not this repository's to change. See
  *  docs/IMPL-INTERFACE.md.
  *
@@ -56,8 +56,8 @@
  */
 
 #define WEBAUTH_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.webauth"
-#define WEBAUTH_BACKEND_OBJECT_PATH "/org/freedesktop/portal/desktop/experimental"
-#define WEBAUTH_IMPL_INTERFACE "org.freedesktop.impl.portal.WebAuthentication.X1"
+#define WEBAUTH_BACKEND_OBJECT_PATH "/org/freedesktop/portal/desktop"
+#define WEBAUTH_IMPL_INTERFACE "org.freedesktop.impl.portal.experimental.WebAuthentication1"
 #define WEBAUTH_IMPL_INTERFACE_VERSION 1u
 
 /** The only bus name whose owner may call this backend. */

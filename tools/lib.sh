@@ -465,7 +465,7 @@ xdp_write_portal_dir() {
 	# Named explicitly rather than through default=, so that the frontend's log
 	# line names the interface this backend implements.
 	xdp_conf_set "$dir/portals.conf" \
-		org.freedesktop.impl.portal.WebAuthentication.X1 'webauth;'
+		org.freedesktop.impl.portal.experimental.WebAuthentication1 'webauth;'
 
 	# ON A PRIVATE BUS, NOTHING OWNS org.freedesktop.secrets. The frontend
 	# builds its Secret proxy at start-up and D-Bus activation on a bus with no
@@ -475,6 +475,19 @@ xdp_write_portal_dir() {
 	if [ "$mode" != live ]; then
 		xdp_conf_set "$dir/portals.conf" org.freedesktop.impl.portal.Secret 'none;'
 	fi
+}
+
+# Append missing experimental portal names to the frontend opt-in list.
+xdp_experimental_portals() {
+	local enabled="${XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL:-}" name
+
+	for name in "$@"; do
+		case ",$enabled," in
+		*",$name,"*) ;;
+		*) enabled="${enabled:+$enabled,}$name" ;;
+		esac
+	done
+	printf '%s\n' "$enabled"
 }
 
 # ------------------------------------------------------------ waiting for a name

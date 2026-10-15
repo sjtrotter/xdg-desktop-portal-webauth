@@ -10,6 +10,9 @@
 # the card, the chooser and the PIN stay in that service, and that nothing in
 # this process ever sees a PIN.
 #
+# The frontend is started with WebAuthentication1 and Certificate1 added to
+# XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL, keeping any names the caller set.
+#
 # WHAT IT STANDS UP, all on ONE private bus inside ONE headless X server:
 #
 #   xdg-permission-store        the frontend refuses to start without it
@@ -324,7 +327,7 @@ rm -f -- "$DEVDIR/certificate.portal"
 sed -e '/^#/d' -e '/^$/d' "$CERTIFICATE_REPO/data/certificate.portal.in" \
 	>"$DEVDIR/certificate.portal" || die "no certificate.portal.in in $CERTIFICATE_REPO"
 xdp_conf_set "$DEVDIR/portals.conf" \
-	org.freedesktop.impl.portal.Certificate.X1 'certificate;'
+	org.freedesktop.impl.portal.experimental.Certificate1 'certificate;'
 
 # ------------------------------------------------------------ p11-kit, for this run only
 #
@@ -483,10 +486,14 @@ inner() {
 	# ACTIVATES org.freedesktop.portal.Desktop -- and activation finds the SYSTEM
 	# portal at /usr/libexec, which then owns the name this script's frontend was
 	# about to take.
+	local experimental
+	experimental="$(xdp_experimental_portals WebAuthentication1 Certificate1)"
 	if [ "$MODE" = live ]; then
-		"$XDP_BUILD/desktop-portal/xdg-desktop-portal" -r -v >"$LOGDIR/frontend.log" 2>&1 &
+		XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL="$experimental" \
+			"$XDP_BUILD/desktop-portal/xdg-desktop-portal" -r -v >"$LOGDIR/frontend.log" 2>&1 &
 	else
-		"$XDP_BUILD/desktop-portal/xdg-desktop-portal" -v >"$LOGDIR/frontend.log" 2>&1 &
+		XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL="$experimental" \
+			"$XDP_BUILD/desktop-portal/xdg-desktop-portal" -v >"$LOGDIR/frontend.log" 2>&1 &
 	fi
 	FE=$!
 	xdp_wait_for_name org.freedesktop.portal.Desktop "$FE" || {
@@ -814,6 +821,7 @@ if [ "$MODE" = live ]; then
 	rc=$?
 else
 	dbus-run-session -- bash -c "
+		$(declare -f xdp_experimental_portals)
 		$(declare -f xdp_wait_for_name)
 		$(declare -f expect_log)
 		$(declare -f check_completion_was_not_fetched)

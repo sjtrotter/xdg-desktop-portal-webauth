@@ -202,12 +202,13 @@ Also in this phase: the repository split from
 
 Only after phases 0 and 1 — **and note that a step of this phase has already been taken, in the
 wrong order.** The interfaces exist, as
-`org.freedesktop.portal.WebAuthentication.X1` and
-`org.freedesktop.impl.portal.WebAuthentication.X1`, on an unproposed xdg-desktop-portal
-branch. The `.X1` suffix and the experimental object path are what upstream set aside for portals
-in exactly this state, so
-that is not the ownership claim the old incubating names existed to avoid — but writing the patch
-is not the same as opening the conversation, and it must not be presented as one.
+`org.freedesktop.portal.experimental.WebAuthentication1` and
+`org.freedesktop.impl.portal.experimental.WebAuthentication1`, on an unproposed xdg-desktop-portal
+branch. Experimental portals use the `experimental` namespace, a trailing number for breaking
+changes, and `/org/freedesktop/portal/desktop`. The frontend requires a configured backend
+and `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1` in its startup environment.
+The Certificate portal also requires `Certificate1` in that comma-separated list.
+The interfaces have not been proposed upstream.
 [UPSTREAMING.md](UPSTREAMING.md) says where the branch is and what is left.
 
 The acceptance path, in order:

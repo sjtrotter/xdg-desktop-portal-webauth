@@ -22,35 +22,26 @@ repository   a local checkout of xdg-desktop-portal
 remote       upstream → https://github.com/flatpak/xdg-desktop-portal.git
              origin   → https://github.com/sjtrotter/xdg-desktop-portal.git
 branch       experimental/integration
-base         upstream/main = c95490a  settings: include xdp-dex.h for the
-                                      dex_scheduler_spawnv fallback
-commits      b269c19  doc: Document experimental portals                  ┐
-             0138498  xdp: Add support to export experimental portals     │ series 1
-             c3c4f7e  doc: Render experimental interface titles           ┘
-             51b2d78  session-dex: Add xdp_session_dex_close()            ┐
-             3784cfc  session-dex: Fix the wrapped session store          │
-             47fdbee  request-dex: Let a portal see that a request was    │ series 2
-                      closed                                              │
-             fb80027  certificate: Add an experimental Certificate portal │
-             066c0b0  tests: Add Certificate portal tests                 ┘
-             0770c26  request-dex: Let a portal close an impl request     ┐
-             357e4d7  web-authentication: Add an experimental             │ series 3
-                      WebAuthentication portal                 ← this one │
-             2201f41  tests: Add WebAuthentication portal tests           ┘
+base         upstream/main = 8eba842
+public XML   data/org.freedesktop.portal.experimental.WebAuthentication1.xml
+impl XML     data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml
 ```
 
-**Three series, proposed in that order.** This interface is the third of the three, and it
-is nearly free-standing: one method, no session object, and one small addition to
-`xdp-request-dex.c` — `xdp_request_dex_close_impl()`, which the frontend needs to end the
-backend's call when its own deadline passes. `fb80027` is the Certificate portal the
-`portal` certificate adapter calls — on the same branch, in the same frontend process
-([decisions/0007](decisions/0007-certificate-adapter.md)).
+The frontend branch hosts WebAuthentication and Certificate in one process. The backend's
+`portal` certificate adapter calls `org.freedesktop.portal.experimental.Certificate1` on
+`org.freedesktop.portal.Desktop` at `/org/freedesktop/portal/desktop`.
 
-Series 1 is upstream's own experimental-portal convention, documented in the frontend's
-`doc/experimental-portals.rst`: an experimental interface is named
-`org.freedesktop.portal.<Name>.X<n>` and exported on
-`/org/freedesktop/portal/desktop/experimental`, and it is exported whenever a backend for
-it is configured rather than behind an environment variable.
+The convention is documented in the frontend's `doc/experimental-portals.rst`:
+
+- Frontend interfaces use `org.freedesktop.portal.experimental.<Name><N>`; backend interfaces
+  use `org.freedesktop.impl.portal.experimental.<Name><N>`.
+- Both use `/org/freedesktop/portal/desktop`. Request and Session handles retain their own paths.
+- Breaking changes increment the trailing number; non-breaking changes increment `version`.
+- The frontend requires a configured backend and the portal name in
+  `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` at startup. For both portals, set
+  `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1,Certificate1` in the frontend's
+  environment. Names are comma separated, with no spaces. Preserve existing names and append
+  only missing names.
 
 **What this interface lost when the branch was rewritten**: the AVD vocabulary. The generic
 XML no longer names `no_certificate_adapter` or `unrelated_certificate_challenge`, which are
@@ -79,25 +70,11 @@ pre-existing `usb` failure (`umockdev-run` is not installed there),
 `tests/test_webauthentication.py` 70 passed, `tests/test_certificate.py` 98 passed,
 `gitlint --commits upstream/main..HEAD` passes, `black --check` passes.
 
-## Why `experimental` is not a claim of acceptance
+## Experimental status
 
-[PR #1889](https://github.com/flatpak/xdg-desktop-portal/pull/1889) ("Introduce
-Credentials portal (experimental)") is where the mechanism was settled. Sebastian Wick's
-comment of 2026-01-28, setting an experimental namespace and a gate, is quoted in
-[decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
-Isaiah Inuwa, minutes later:
-
-> I noticed the other portals have singular names: should we do that here too?
-> `org.freedesktop.portal.experimental.Credential`
-
-So: singular name, an experimental namespace, not exported by default. The convention that
-was actually merged spells that as the `.X<n>` suffix and the
-`/org/freedesktop/portal/desktop/experimental` object path, with export conditional on a
-configured backend. That is what an unfinished portal looks like upstream, and it is what
-the branch implements. It carries no more standing than the old
-`io.github.sjtrotter.*` names did — it just carries it in the place where the people whose
-opinion matters can see it. `WebAuthentication` is not singular-vs-plural ambiguous, so
-the naming note above did not force a change here.
+The experimental-portal mechanism is merged upstream (PR #2129, fixed by #2173).
+WebAuthentication and Certificate remain on the `experimental/integration` branch.
+The experimental namespace carries no stability guarantee or claim of interface acceptance.
 
 ## What this repository is now
 
@@ -112,7 +89,7 @@ An out-of-tree backend, and nothing else:
 | `tests/` | the rules, tested with no display and no bus |
 | `data/webauth.portal.in` | `DBusName`, `Interfaces`, `UseIn`; installed into `$datadir/xdg-desktop-portal/portals` |
 | `data/org.freedesktop.impl.portal.desktop.webauth.service.in` | D-Bus activation |
-| `data/org.freedesktop.impl.portal.WebAuthentication.X1.xml` | a **verbatim tracking copy** of the branch's file; deleted the day the branch lands and the file ships in xdg-desktop-portal's interfaces directory |
+| `data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml` | a **verbatim tracking copy** of the branch's file; deleted the day the branch lands and the file ships in xdg-desktop-portal's interfaces directory |
 | `tools/` | the fixture, the fixture identity provider, the private-bus stack, the Xvfb smoke test, the public-interface client |
 | `spikes/` | `webkit-client-cert.c`, S2's answer |
 
@@ -138,7 +115,7 @@ vocabulary, the matching rule or the backend's structure.
 | the `reason` symbols were this repository's list | fixed by the XML: impl side `timeout`, `no_display`, `no_engine`, `user_cancelled`, `session_terminated`, `credential_unavailable`; public side adds `backend_disappeared`, `backend_completion_mismatch`, `backend_protocol_error` | Settled, and the split between the two lists is itself informative: a backend cannot report `backend_disappeared` about itself. The list is generic on purpose: `no_certificate_adapter` named a piece of this backend |
 | `timeout` default and ceiling were prose | 300 default, 900 ceiling, always forwarded | Settled in code |
 | `title` "length-limited" | ≤ 256 characters and single-line | Settled in code |
-| the interface was ours to version | **experimental**: it can change or be removed without a version bump, it carries an `.X1` suffix, and it is exported on `/org/freedesktop/portal/desktop/experimental` only when a backend for it is configured | This is the largest change to what a consumer must expect |
+| interface versioning and export | **experimental**: breaking changes increment the trailing number; export on `/org/freedesktop/portal/desktop` requires a configured backend and frontend opt-in | Consumers must handle an unavailable interface |
 
 And what the **Certificate** interface, on the same branch, forced on the certificate
 adapter — which matters more here than anything in the paragraph above:

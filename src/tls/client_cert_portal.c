@@ -17,9 +17,9 @@
 #define P11_KIT_MODULE_CONFIGS "/usr/share/p11-kit/modules"
 #endif
 
-#define CERTIFICATE_PUBLIC_INTERFACE "org.freedesktop.portal.Certificate.X1"
+#define CERTIFICATE_PUBLIC_INTERFACE "org.freedesktop.portal.experimental.Certificate1"
 #define PORTAL_BUS_NAME "org.freedesktop.portal.Desktop"
-#define PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop/experimental"
+#define PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
 
 gboolean webauth_cert_portal_interface_present(GError** error)
 {
@@ -42,7 +42,9 @@ gboolean webauth_cert_portal_interface_present(GError** error)
 	if (reply == NULL)
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-		                    "the Certificate portal interface is not exported");
+		                    "Certificate portal not exported; check "
+		                    "XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL includes Certificate1 "
+		                    "in the frontend environment");
 		return FALSE;
 	}
 

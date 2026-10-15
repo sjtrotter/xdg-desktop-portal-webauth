@@ -6,10 +6,8 @@
  *
  * The D-Bus activated per-user process that owns
  * org.freedesktop.impl.portal.desktop.webauth and implements
- * org.freedesktop.impl.portal.WebAuthentication.X1 on
- * /org/freedesktop/portal/desktop/experimental -- the object path the
- * experimental-portal convention assigns to a backend of an experimental
- * interface (doc/experimental-portals.rst in xdg-desktop-portal).
+ * org.freedesktop.impl.portal.experimental.WebAuthentication1 on
+ * /org/freedesktop/portal/desktop.
  *
  * APPLICATIONS MUST NOT CALL THIS PROCESS. It exists to serve one caller:
  * xdg-desktop-portal, which has already established who the application is,
@@ -18,9 +16,10 @@
  *
  * THE FRONTEND IS NOT IN THIS REPOSITORY. It is a branch of xdg-desktop-portal,
  * experimental/integration, which exports
- * org.freedesktop.portal.WebAuthentication.X1 on
- * /org/freedesktop/portal/desktop/experimental whenever a backend for the
- * interface is configured. See
+ * org.freedesktop.portal.experimental.WebAuthentication1 on
+ * /org/freedesktop/portal/desktop when a backend for the interface is
+ * configured and WebAuthentication1 is listed in
+ * XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL. See
  * docs/decisions/0010-backend-only-frontend-lives-upstream.md.
  *
  * The main() shape -- gtk_init plus a plain GMainLoop rather than
@@ -118,17 +117,13 @@ static const char* description =
     "  org.freedesktop.portal.Desktop are refused with AccessDenied.\n"
     "\n"
     "ENABLING THE FRONTEND\n"
-    "  The public interface\n"
-    "    org.freedesktop.portal.WebAuthentication.X1\n"
-    "  lives in xdg-desktop-portal itself, on the branch\n"
-    "    experimental/integration\n"
-    "  and is EXPERIMENTAL: it is exported on\n"
-    "    /org/freedesktop/portal/desktop/experimental\n"
-    "  whenever a backend for it is configured, and it is absent from\n"
-    "  introspection when none is. tools/dev-stack.sh wires a development\n"
-    "  frontend, this backend and an end-to-end client together on a private\n"
-    "  bus; docs/TESTING.md has the commands, including a run against a real\n"
-    "  identity provider.\n"
+    "  Frontend: xdg-desktop-portal, branch experimental/integration.\n"
+    "  Public interface: org.freedesktop.portal.experimental.WebAuthentication1\n"
+    "  Object path: /org/freedesktop/portal/desktop\n"
+    "  Configure a backend and set this in the frontend environment at startup:\n"
+    "    XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1\n"
+    "  Append Certificate1 for the Certificate portal; use commas and no spaces.\n"
+    "  tools/dev-stack.sh starts a private stack; see docs/TESTING.md.\n"
     "\n"
     "CLIENT CERTIFICATES\n"
     "  --cert-adapter portal uses the certificate the Certificate portal granted,\n"
@@ -148,8 +143,7 @@ static const char* description =
     "\n"
     "STATUS\n"
     "  EXPERIMENTAL. The impl interface is defined by an xdg-desktop-portal\n"
-    "  branch that has not been proposed to anyone, and it can change or be\n"
-    "  removed without a version bump.";
+    "  branch. Breaking changes increment the trailing interface number.";
 
 /* THE WINDOW FOLLOWS THE SESSION'S LIGHT/DARK SETTING, AND HAS TO BE TOLD IT
  * DIRECTLY. libadwaita takes the colour scheme from the SETTINGS PORTAL, which

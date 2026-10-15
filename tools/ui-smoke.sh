@@ -28,6 +28,7 @@
 #   xdotool     xdotool (only for --cancel)    $XDOTOOL
 #   a fixture from tools/softhsm-fixture.sh
 #   a built frontend, as tools/dev-stack.sh describes
+#   dev-stack.sh enables WebAuthentication1 in the frontend environment
 #
 #     tools/ui-smoke.sh                       # plain https, no certificates
 #     tools/ui-smoke.sh --mtls                # the server demands a client certificate

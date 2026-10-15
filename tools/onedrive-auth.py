@@ -9,7 +9,7 @@
 # authorize URL to the first file and then polls until the second file exists,
 # expecting the whole redirect URI the user would otherwise have copied out of a
 # browser address bar. That is the same pair of URIs
-# org.freedesktop.portal.WebAuthentication.X1.Start takes and returns, so the
+# org.freedesktop.portal.experimental.WebAuthentication1.Start takes and returns, so the
 # client needs no patch: this script sits between the two files and the portal.
 #
 #     onedrive --confdir ~/.config/onedrive --reauth \
@@ -47,8 +47,8 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 PORTAL_BUS_NAME = "org.freedesktop.portal.Desktop"
-PORTAL_OBJECT_PATH = "/org/freedesktop/portal/desktop/experimental"
-INTERFACE = "org.freedesktop.portal.WebAuthentication.X1"
+PORTAL_OBJECT_PATH = "/org/freedesktop/portal/desktop"
+INTERFACE = "org.freedesktop.portal.experimental.WebAuthentication1"
 REQUEST_INTERFACE = "org.freedesktop.portal.Request"
 REQUEST_PREFIX = "/org/freedesktop/portal/desktop/request"
 
@@ -252,7 +252,7 @@ def main():
     try:
         flow.run()
     except GLib.Error as error:
-        # No backend and no portal at all look the same to a caller, by design.
+        # Missing opt-in, backend or frontend can leave the interface unavailable.
         note(f"error Start failed: {redact(error.message)}")
         return 2
 

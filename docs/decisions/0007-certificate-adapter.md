@@ -1,5 +1,7 @@
 # 7. Certificate handling behind an adapter: portal preferred, in-process retained until proven
 
+Superseded in part by ADR [0011](0011-merged-experimental-portal-convention.md).
+
 Date: 2026-09-03
 Status: accepted, and **substantially amended on 2026-09-04 by the S2 result**: the adapter has two
 providers, `portal` and `pkcs11`, and there is no `inproc` provider at all. The adapter lives in the

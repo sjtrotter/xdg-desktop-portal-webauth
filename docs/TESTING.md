@@ -80,6 +80,11 @@ made by `dbus-run-session`, starts:
 - this backend;
 - `tools/webauth-e2e.py`, which calls the **public** interface and nothing else.
 
+`dev-stack.sh` starts the frontend with `WebAuthentication1` in
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL`, preserving caller-supplied names and appending
+only missing names. A manually started frontend needs the same opt-in in its environment
+at startup, plus a configured backend. Use comma-separated names with no spaces.
+
 Nothing touches the session bus and nothing opens a window on the session display.
 
 ### Prerequisites
@@ -267,7 +272,10 @@ $ BUILDDIR=../build ./run-test.sh ./test_webauthentication.py -q
 
 This is the run the project exists for, and it is the one to run first when something has changed.
 `tools/portal-stack.sh` puts **one private bus inside one headless X server** and stands up both
-portals against each other:
+portals against each other.
+
+`portal-stack.sh` enables `WebAuthentication1,Certificate1` in the frontend
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` list and preserves caller-supplied names. The stack includes:
 
 - `xdg-permission-store`, and the **development frontend** with **both** experimental interfaces
   backed, through an

@@ -1,5 +1,7 @@
 # 10. Be a backend only: the frontend lives in xdg-desktop-portal
 
+Superseded in part by ADR [0011](0011-merged-experimental-portal-convention.md).
+
 Date: 2026-09-04
 Status: accepted (for the sketch); supersedes the *packaging* half of
 [0008](0008-build-to-the-upstream-shape.md) and retires the incubating frontend

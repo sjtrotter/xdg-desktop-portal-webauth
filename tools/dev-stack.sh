@@ -45,6 +45,9 @@
 #   get_app_from_pid). The cgroup is created directly rather than through
 #   `systemd-run --user`, which would need the real session bus.
 #
+# The frontend is started with WebAuthentication1 added to
+# XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL, keeping any names the caller set.
+#
 # WHAT IT NEEDS
 #
 #   $XDP_BUILD   a built xdg-desktop-portal from the branch
@@ -65,7 +68,7 @@
 #   1. writes a throwaway $XDG_DESKTOP_PORTAL_DIR holding A SYMLINK TO EVERY
 #      .portal FILE ON THE MACHINE, this repository's webauth.portal, and a COPY
 #      of the machine's effective portals.conf with one line added routing
-#      org.freedesktop.impl.portal.WebAuthentication.X1 to this
+#      org.freedesktop.impl.portal.experimental.WebAuthentication1 to this
 #      backend. All of it, and not just ours, because XDG_DESKTOP_PORTAL_DIR
 #      makes the frontend ignore every other portal directory AND every other
 #      portals.conf on the machine; tools/lib.sh says it at length.
@@ -221,6 +224,8 @@ start_server() {
 }
 
 start_stack() {
+	local experimental
+	experimental="$(xdp_experimental_portals WebAuthentication1)"
 	export XDG_DESKTOP_PORTAL_DIR="$DEVDIR"
 
 	if [ "$MODE" = private ]; then
@@ -239,9 +244,11 @@ start_stack() {
 	# script's frontend was about to take.
 	FRONTEND_LOG="$DEVDIR/frontend.log"
 	if [ "$MODE" = live ]; then
-		"$FRONTEND_BIN" -r -v >"$FRONTEND_LOG" 2>&1 &
+		XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL="$experimental" \
+			"$FRONTEND_BIN" -r -v >"$FRONTEND_LOG" 2>&1 &
 	else
-		"$FRONTEND_BIN" -v >"$FRONTEND_LOG" 2>&1 &
+		XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL="$experimental" \
+			"$FRONTEND_BIN" -v >"$FRONTEND_LOG" 2>&1 &
 	fi
 	FRONTEND_PID=$!
 
@@ -263,9 +270,9 @@ check_frontend_log() {
 	local configured="no" provided="no" i
 
 	for i in $(seq 1 20); do
-		grep -q "in configuration for org.freedesktop.impl.portal.WebAuthentication.X1" \
+		grep -q "in configuration for org.freedesktop.impl.portal.experimental.WebAuthentication1" \
 			"$FRONTEND_LOG" 2>/dev/null && configured="yes"
-		grep -q "Providing portal org.freedesktop.portal.WebAuthentication.X1" \
+		grep -q "Providing portal org.freedesktop.portal.experimental.WebAuthentication1" \
 			"$FRONTEND_LOG" 2>/dev/null && provided="yes"
 		[ "$configured" = yes ] && [ "$provided" = yes ] && break
 		sleep 0.25
