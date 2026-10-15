@@ -2,38 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 #
-# trigger-webauthentication.sh -- poke the PUBLIC WebAuthentication portal
-# interface.
-#
-# This calls org.freedesktop.portal.experimental.WebAuthentication1 on
-# org.freedesktop.portal.Desktop at /org/freedesktop/portal/desktop
-# -- the frontend, never this repository's backend. An application
-# (entra-token-helper, say) would do exactly this, and it is the only way to
-# exercise the backend the way it is meant to be exercised.
-#
-# The interface only exists if the running xdg-desktop-portal found a backend
-# for it and WebAuthentication1 is listed in XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL.
-# Without either, the interface is not exported at all and every call below
-# that targets it fails with "no such interface" -- which is the intended
-# behaviour, and is exactly the case entra-token-helper reports as exit 40.
-# `introspect` still succeeds: other portals share the object path.
-#
-# It defaults to --session-bus, i.e. whatever DBUS_SESSION_BUS_ADDRESS points
-# at. To keep the real desktop out of it, run the whole thing on a private bus:
-#
-#     dbus-run-session -- tools/trigger-webauthentication.sh
-#
-# ...but a private bus has no portal on it, so in practice use tools/dev-stack.sh,
-# which starts a frontend and a backend on a private bus and then runs this.
-#
-# THE URIs BELOW ARE PLACEHOLDERS. They point at example.invalid, which by RFC
-# 6761 can never resolve, so nothing here can reach a real identity provider by
-# accident. Pass your own with START_URI and COMPLETION_URI.
-#
-# Method and argument shapes are taken from
-# data/org.freedesktop.portal.experimental.WebAuthentication1.xml on the
-# xdg-desktop-portal branch experimental/integration and from
-# that branch's tests/test_webauthentication.py.
+# Call the public WebAuthentication interface through xdg-desktop-portal; see docs/TESTING.md.
 
 set -u
 
@@ -42,9 +11,7 @@ DEST=org.freedesktop.portal.Desktop
 PATH_=/org/freedesktop/portal/desktop
 IFACE=org.freedesktop.portal.experimental.WebAuthentication1
 
-# start_uri must be absolute https with a host. completion_uri must be absolute
-# with a host and no userinfo. Both are validated in the frontend before any
-# backend is woken; a malformed one is a D-Bus error out of Start().
+# The frontend validates URI arguments before activating a backend.
 START_URI="${START_URI:-https://example.invalid/authorize?client_id=placeholder&response_type=code}"
 COMPLETION_URI="${COMPLETION_URI:-https://example.invalid/oauth2/nativeclient}"
 
@@ -53,15 +20,12 @@ usage() {
 Usage: ${0##*/} [command]
 
 Commands:
-  version        read the interface's version property (works with no backend
-                 running, as long as the interface is exported)
+  version        read the exported interface version
   introspect     list the interfaces on /org/freedesktop/portal/desktop
   start          Start(s parent_window, s start_uri, s completion_uri, a{sv})
-                 -> o handle. A Request: the completion_uri comes back in the
-                 Response signal on that handle, not as a return value.
+                 returns a Request handle; Response carries completion_uri
   reject-scheme  a start_uri that is not https; expect InvalidArgument
-  reject-mode    an unknown session_mode; expect InvalidArgument, never a
-                 silent fallback to "shared"
+  reject-mode    submit an unknown session_mode; expect InvalidArgument
   monitor        watch Request and WebAuthentication signals; exit on Ctrl-C
   all            monitor in the background, then version + start + both
                  rejection cases
@@ -74,9 +38,7 @@ EOF
 }
 
 monitor_bg() {
-	# The answer to Start() arrives as a Response signal on the Request object,
-	# not as the method's return value, so something has to be watching before
-	# the call is made.
+	# Subscribe before Start because completion arrives through the Request Response signal.
 	gdbus monitor "$BUS" --dest "$DEST" &
 	MONITOR_PID=$!
 	sleep 1
@@ -95,9 +57,7 @@ cmd_introspect() {
 }
 
 cmd_start() {
-	# session_mode is "shared" or "ephemeral" and nothing else; timeout is
-	# clamped to 900 by the frontend; title is untrusted application text and is
-	# rendered as such, never as the identity of the window.
+	# The title is untrusted application text.
 	gdbus call "$BUS" --dest "$DEST" --object-path "$PATH_" \
 		--method "$IFACE".Start \
 		"" "$START_URI" "$COMPLETION_URI" \

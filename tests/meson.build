@@ -1,11 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 
-# The tests that need neither a display nor a session bus. What they cover is
-# the rules: the completion match, the options, the storage partition's name and
-# the logging that must never emit a credential. Everything between a D-Bus call
-# and a Return key is tools/ui-smoke.sh, which is not a meson test because it
-# needs Xvfb, a frontend build and a SoftHSM fixture.
+# Unit tests need neither a display nor a session bus; UI tests use tools/ui-smoke.sh; see docs/TESTING.md.
 webauth_unit_tests = {
   'completion': 'test-completion.c',
   'options': 'test-options.c',

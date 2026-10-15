@@ -2,39 +2,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 #
-# mtls-server.py -- the identity provider the tests sign in against.
-#
-# A three step flow, which is the shape of a real authorization code flow with
-# the protocol taken out:
-#
-#   GET /start   302 -> /login?state=<echo>
-#   GET /login   302 -> <completion uri>?code=<random>&state=<echo>
-#   GET /cb      the completion URI, WHEN it points back here -- served only so
-#                that a run which fetched it can be told apart from one which
-#                did not. The backend must never fetch it.
-#   GET /wait    a page that does not redirect, for the runs that have to
-#                interrupt a flow rather than let it finish.
-#
-# It prints "client-cn=<common name>" beside each request when the connection
-# carried a client certificate. tools/portal-stack.sh reads that line: it is the
-# only account in the whole stack of WHICH certificate satisfied the handshake,
-# and without it a run cannot tell the certificate portal's token from any other.
-#
-# With --require-client-cert the socket is wrapped with ssl.CERT_REQUIRED and a
-# CA file, so a client that cannot produce a certificate signed by that CA does
-# not complete the handshake and gets no response at all. That is the whole
-# point of the fixture: the TLS layer, not the application, is what a smart card
-# satisfies.
-#
-# --cookie sets a cookie on /start and reports, in the completion URI, whether
-# the engine ALREADY had one when it arrived. That is how the storage-partition
-# tests tell "shared" from "ephemeral" without looking inside the engine: within
-# one flow the cookie always comes back, so the question has to be asked of the
-# first request of a run.
-#
-# WHAT IT PRINTS: one line per request, method and path only. The query carries
-# the authorization code and the state, so it is never logged, never echoed into
-# a page, and the code is generated per request rather than fixed.
+# Fixture redirects echo state and issue a random code; completion must be intercepted before load.
+# Queries must stay out of logs and page content; see docs/TESTING.md.
 
 import argparse
 import http.server
@@ -56,12 +25,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def _client_cn(self):
-        # THE CLIENT CERTIFICATE THE TLS LAYER ACTUALLY ACCEPTED, asked of the
-        # socket rather than of anything the request said. It is the only place
-        # in the whole stack that can say which certificate was presented, so a
-        # run that means to prove a card was used has to read it here. The
-        # common name is a fixture identity and is printed; nothing else from
-        # the certificate is.
+        # Read the certificate accepted by TLS from the socket; log only its fixture common name.
         try:
             peer = self.connection.getpeercert()
         except (AttributeError, ValueError):
@@ -116,12 +80,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if state:
                 args["state"] = state
             if self.server.use_cookie:
-                # WHETHER THE ENGINE ARRIVED WITH THE COOKIE A PREVIOUS RUN SET,
-                # asked BEFORE this run sets one: inside a single flow the cookie
-                # always comes back, so only the first request of a run can tell
-                # a persistent store from an ephemeral one. The answer travels
-                # down the redirect chain into the completion URI, where the
-                # client can assert on it.
+                # Check the cookie on the first request to detect state persisted across flows.
                 seen = "portal_fixture=" in (self.headers.get("Cookie") or "")
                 args["seen"] = "yes" if seen else "no"
                 cookie = f"portal_fixture={self.server.cookie_value}; Path=/; Max-Age=3600"
@@ -144,9 +103,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/wait":
-            # A page that goes nowhere, so that a flow can be interrupted rather
-            # than finishing on its own: the cancel and Close tests need a window
-            # that is still open when they reach for it.
+            # This page keeps the window open for cancellation tests.
             self._page("<html><body><h1>waiting for you</h1></body></html>")
             return
 

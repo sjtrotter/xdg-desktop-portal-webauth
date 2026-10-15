@@ -1,27 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later
  * SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
  *
- * xdg-desktop-portal-webauth - an out-of-tree xdg-desktop-portal BACKEND:
- * a window, a web engine, a card.
- *
- * The D-Bus activated per-user process that owns
- * org.freedesktop.impl.portal.desktop.webauth and implements
- * org.freedesktop.impl.portal.experimental.WebAuthentication1 on
- * /org/freedesktop/portal/desktop.
- *
- * APPLICATIONS MUST NOT CALL THIS PROCESS. It exists to serve one caller:
- * xdg-desktop-portal, which has already established who the application is,
- * already validated the arguments, and already applied the policy this backend
- * obeys. See docs/SECURITY.md.
- *
- * THE FRONTEND IS NOT IN THIS REPOSITORY. It is a branch of xdg-desktop-portal,
- * experimental/integration, which exports
- * org.freedesktop.portal.experimental.WebAuthentication1 on
- * /org/freedesktop/portal/desktop when a backend for the interface is
- * configured and WebAuthentication1 is listed in
- * XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL. See
- * docs/decisions/0010-backend-only-frontend-lives-upstream.md.
- *
  * The main() shape -- gtk_init plus a plain GMainLoop rather than
  * GtkApplication, g_bus_own_name with REPLACE under --replace, and quitting on
  * name-lost -- is xdg-desktop-portal-gtk's, LGPL-2.1-or-later, Copyright (C)
@@ -45,11 +24,9 @@
 #include "webauthentication-impl.h"
 #include "webkit-session.h"
 
-/* Process exit codes, matching the Entra client's and the certificate portal
- * backend's so a supervisor sees one scheme. They have nothing to do with the
- * D-Bus response codes 0, 1 and 2. */
+/* Process exit codes follow the Entra client and certificate backend conventions. */
 #define WEBAUTH_EXIT_SUCCESS 0
-#define WEBAUTH_EXIT_UNAVAILABLE 40 /* no session bus, no display, no web engine */
+#define WEBAUTH_EXIT_UNAVAILABLE 40
 #define WEBAUTH_EXIT_USAGE 64
 #define WEBAUTH_EXIT_INTERNAL 70
 
@@ -73,7 +50,7 @@ static const GOptionEntry entries[] = {
 	  "Take the bus name from a running instance that permitted it", NULL },
 	{ "allow-replacement", 0, 0, G_OPTION_ARG_NONE, &opt_allow_replacement,
 	  "Let a later instance take the bus name from this one", NULL },
-	{ "verbose", 'v', 0, G_OPTION_ARG_NONE, &opt_verbose, "Log decisions and breadcrumbs on stderr",
+	{ "verbose", 'v', 0, G_OPTION_ARG_NONE, &opt_verbose, "Log backend events on stderr",
 	  NULL },
 	{ "cert-adapter", 0, 0, G_OPTION_ARG_STRING, &opt_cert_adapter,
 	  "Client certificate provider: auto (default), portal, pkcs11 or none", "WHICH" },
@@ -84,74 +61,35 @@ static const GOptionEntry entries[] = {
 	{ "client-cert-pin-file", 0, 0, G_OPTION_ARG_FILENAME, &opt_client_cert_pin_file,
 	  "File holding the token PIN, for a token that asks for one", "PATH" },
 	{ "debug-trust-certificate", 0, 0, G_OPTION_ARG_STRING_ARRAY, &opt_debug_trust,
-	  "DEVELOPMENT ONLY: accept host=FILE as that host's server certificate; repeatable",
+	  "Development: accept host=FILE as the server certificate; repeatable",
 	  "HOST=FILE" },
 	{ "no-activate", 0, 0, G_OPTION_ARG_NONE, &opt_no_activate,
 	  "Do not request the bus name; start, check the engine, and exit", NULL },
 	{ "debug-allow-core", 0, 0, G_OPTION_ARG_NONE, &opt_allow_core,
-	  "DEVELOPMENT ONLY: leave core dumps and ptrace attach enabled", NULL },
+	  "Development: leave core dumps and ptrace attach enabled", NULL },
 	{ "version", 0, 0, G_OPTION_ARG_NONE, &opt_version, "Print the version and exit", NULL },
 	{ NULL, 0, 0, 0, NULL, NULL, NULL },
 };
 
 static const char* description =
-    "WHAT THIS IS\n"
-    "  An out-of-tree BACKEND of xdg-desktop-portal. It hosts the web view a\n"
-    "  sign-in flow runs in, shows the security chrome, intercepts the completion\n"
-    "  navigation before it loads, and answers TLS client certificate challenges.\n"
-    "  It is not a portal frontend, it owns no public interface, and no\n"
-    "  application talks to it.\n"
+    "WebKitGTK backend for the experimental WebAuthentication portal.\n"
+    "D-Bus activates this service; only the owner of org.freedesktop.portal.Desktop may call it.\n"
+    "Bus name: " WEBAUTH_BACKEND_BUS_NAME "\n"
+    "Interface: " WEBAUTH_IMPL_INTERFACE "\n"
+    "Object path: " WEBAUTH_BACKEND_OBJECT_PATH "\n"
     "\n"
-    "  Normally started by D-Bus activation when xdg-desktop-portal selects this\n"
-    "  backend, not from a shell. It owns\n"
-    "    " WEBAUTH_BACKEND_BUS_NAME "\n"
-    "  on the session bus, implementing\n"
-    "    " WEBAUTH_IMPL_INTERFACE "\n"
-    "  on\n"
-    "    " WEBAUTH_BACKEND_OBJECT_PATH "\n"
-    "  as declared in data/webauth.portal.\n"
+    "The frontend requires xdg-desktop-portal branch experimental/integration, a configured\n"
+    "backend, and XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1.\n"
+    "Add Certificate1 to the same variable to enable the Certificate portal.\n"
     "\n"
-    "  ONLY xdg-desktop-portal CALLS THIS. The app id is an argument supplied by\n"
-    "  the portal; a caller that reached this bus name directly would be naming\n"
-    "  itself. Calls from any sender that does not own\n"
-    "  org.freedesktop.portal.Desktop are refused with AccessDenied.\n"
+    "The auto certificate provider tries the Certificate portal and its p11-kit module,\n"
+    "then the token named by --client-cert-uri. PINs must come from --client-cert-pin-file;\n"
+    "pin-value in the certificate URI is refused. This process has no chooser or PIN prompt.\n"
+    "See docs/decisions/0007-certificate-adapter.md and docs/TESTING.md.\n"
     "\n"
-    "ENABLING THE FRONTEND\n"
-    "  Frontend: xdg-desktop-portal, branch experimental/integration.\n"
-    "  Public interface: org.freedesktop.portal.experimental.WebAuthentication1\n"
-    "  Object path: /org/freedesktop/portal/desktop\n"
-    "  Configure a backend and set this in the frontend environment at startup:\n"
-    "    XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1\n"
-    "  Append Certificate1 for the Certificate portal; use commas and no spaces.\n"
-    "  tools/dev-stack.sh starts a private stack; see docs/TESTING.md.\n"
-    "\n"
-    "CLIENT CERTIFICATES\n"
-    "  --cert-adapter portal uses the certificate the Certificate portal granted,\n"
-    "  presented by that portal's own PKCS#11 module: the card, the chooser and\n"
-    "  the PIN all stay there. The module does not exist yet, so \"auto\" falls\n"
-    "  through to pkcs11.\n"
-    "  --cert-adapter pkcs11 uses the token named by --client-cert-uri. A PIN, if\n"
-    "  the token wants one, is read from --client-cert-pin-file: a PIN on a\n"
-    "  command line is readable by every process on the machine, and a pin-value\n"
-    "  in the URI is refused for the same reason.\n"
-    "  There is deliberately NO in-process chooser and no PIN prompt. See\n"
-    "  docs/decisions/0007-certificate-adapter.md.\n"
-    "\n"
-    "EXIT CODES\n"
-    "   0 clean shutdown        40 unavailable (no bus, no display, no engine)\n"
-    "  64 usage                 70 internal\n"
-    "\n"
-    "STATUS\n"
-    "  EXPERIMENTAL. The impl interface is defined by an xdg-desktop-portal\n"
-    "  branch. Breaking changes increment the trailing interface number.";
+    "Exit codes: 0 clean shutdown; 40 unavailable; 64 usage; 70 internal error.\n"
+    "The interface is experimental; breaking changes increment its trailing number.";
 
-/* THE WINDOW FOLLOWS THE SESSION'S LIGHT/DARK SETTING, AND HAS TO BE TOLD IT
- * DIRECTLY. libadwaita takes the colour scheme from the SETTINGS PORTAL, which
- * looks the caller up by /proc/<pid> -- and PR_SET_DUMPABLE(0) makes this
- * process's /proc entries root-owned on purpose, so the portal answers
- * AccessDenied. GSettings talks to dconf and looks nobody up by pid, so it works
- * in a process the portal cannot identify. The schema is looked up rather than
- * assumed: a missing schema aborts in g_settings_new(). */
 static void apply_colour_scheme(GSettings* settings, const char* key, gpointer user_data)
 {
 	g_autofree char* scheme = g_settings_get_string(settings, "color-scheme");
@@ -165,6 +103,7 @@ static void apply_colour_scheme(GSettings* settings, const char* key, gpointer u
 	adw_style_manager_set_color_scheme(adw_style_manager_get_default(), wanted);
 }
 
+/* GSettings avoids the Settings portal's /proc identity check while this process is hardened. */
 static void follow_colour_scheme(void)
 {
 	GSettingsSchemaSource* source = g_settings_schema_source_get_default();
@@ -180,8 +119,7 @@ static void follow_colour_scheme(void)
 	if (schema == NULL || !g_settings_schema_has_key(schema, "color-scheme"))
 		return;
 
-	/* Leaked on purpose: it lives for the life of the process, and the "changed"
-	 * handler is what keeps the window following the session. */
+	/* The settings object and its signal handler live for the process lifetime. */
 	{
 		GSettings* settings = g_settings_new("org.gnome.desktop.interface");
 
@@ -198,14 +136,11 @@ static gboolean on_signal(gpointer user_data)
 
 static void on_name_acquired(GDBusConnection* connection, const char* name, gpointer user_data)
 {
-	g_debug("owning %s", name);
+	g_debug("Bus name acquired: %s", name);
 }
 
 static void on_name_lost(GDBusConnection* connection, const char* name, gpointer user_data)
 {
-	/* Either another instance replaced this one, or the name could not be taken.
-	 * Either way this process is done: a backend that stays running without the
-	 * name is a backend holding a window nobody can answer for. */
 	g_main_loop_quit(loop);
 }
 
@@ -219,22 +154,8 @@ int main(int argc, char** argv)
 
 	setlocale(LC_ALL, "");
 
-	/* Avoid pointless and confusing recursion: this process must not route its
-	 * own dialogs through the portal it is a backend of. */
+	/* Backend dialogs must not recurse through the portal. */
 	g_unsetenv("GTK_USE_PORTAL");
-
-	/* TWO CHOOSERS FOR ONE SIGN-IN, and nothing here can help it.
-	 *
-	 * One mutual-TLS handshake needs the certificate portal's module in TWO
-	 * processes: here, to build the GTlsCertificate the challenge is answered
-	 * with, and in WebKit's network process, to use the key. They are separate
-	 * D-Bus peers, so the portal asks the user twice, seconds apart, for the
-	 * same card and the same certificate.
-	 *
-	 * The process-tree delegation that answered the second from the first is
-	 * out of the portal interface: it could never fire for a Flatpak caller,
-	 * and ancestry alone crosses application boundaries. See docs/SECURITY.md
-	 * and the certificate backend's ADR 0011. */
 
 	g_set_prgname("xdg-desktop-portal-webauth");
 
@@ -249,8 +170,7 @@ int main(int argc, char** argv)
 		return WEBAUTH_EXIT_USAGE;
 	}
 
-	/* As early as the options allow: everything before this point is
-	 * g_option_context_parse() on a fixed argv. */
+	/* Apply hardening before loading credentials or creating windows. */
 	webauth_harden(opt_allow_core);
 
 	if (opt_version)
@@ -263,20 +183,7 @@ int main(int argc, char** argv)
 
 	webauth_log_set_verbose(opt_verbose);
 
-	/* --verbose promises breadcrumbs, so it has to turn the debug level on as
-	 * well: GLib's default writer drops g_debug() unless a domain is enabled.
-	 * This backend's domain only -- turning on "all" buries the six lines that
-	 * matter under GIO's, dconf's and GDK's.
-	 *
-	 * BUT NOT IF THE OPERATOR ALREADY SAID WHICH DOMAINS THEY WANTED.
-	 * g_log_writer_default_set_debug_domains() REPLACES $G_MESSAGES_DEBUG
-	 * rather than adding to it, and the domain that matters most when this
-	 * backend goes wrong is not its own: it is
-	 * "pkcs11-portal-certificate", the certificate portal's client-side
-	 * PKCS#11 module, which runs INSIDE THIS PROCESS to build the certificate
-	 * and inside the web engine's network process to use the key. Silencing it
-	 * turned a module that was refusing to load into a bare "the requested data
-	 * were not available", and cost an afternoon. */
+	/* The debug-domain setter replaces G_MESSAGES_DEBUG; preserve an explicit operator selection. */
 	if (opt_verbose && g_getenv("G_MESSAGES_DEBUG") == NULL)
 	{
 		const char* domains[] = { G_LOG_DOMAIN, NULL };
@@ -300,13 +207,10 @@ int main(int argc, char** argv)
 		}
 	}
 
-	/* A DISPLAY IS REQUIRED TO START, unlike the certificate backend: every
-	 * method this backend has opens a window. A backend that cannot show a page
-	 * must not claim the interface, so that the frontend can fall through to
-	 * another one. */
+	/* A backend must have a display before it claims the interface. */
 	if (!gtk_init_check())
 	{
-		g_printerr("xdg-desktop-portal-webauth: no display\n");
+		g_printerr("xdg-desktop-portal-webauth: display unavailable\n");
 		return WEBAUTH_EXIT_UNAVAILABLE;
 	}
 
@@ -324,15 +228,14 @@ int main(int argc, char** argv)
 	connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
 	if (connection == NULL)
 	{
-		g_printerr("xdg-desktop-portal-webauth: no session bus: %s\n", error->message);
+		g_printerr("xdg-desktop-portal-webauth: session bus unavailable: %s\n", error->message);
 		return WEBAUTH_EXIT_UNAVAILABLE;
 	}
 
 	if (opt_no_activate)
 	{
 		g_print("xdg-desktop-portal-webauth " PACKAGE_VERSION
-		        ": engine present, display available, session bus reachable, certificate "
-		        "provider %s. Not requesting the bus name.\n",
+		        ": startup checks passed; certificate provider %s; bus name unrequested\n",
 		        webauth_cert_adapter_configured_name());
 		return WEBAUTH_EXIT_SUCCESS;
 	}
@@ -343,19 +246,12 @@ int main(int argc, char** argv)
 	backend = webauth_backend_new(connection, &error);
 	if (backend == NULL)
 	{
-		g_printerr("xdg-desktop-portal-webauth: could not export the backend interface: %s\n",
+		g_printerr("xdg-desktop-portal-webauth: backend interface export failed: %s\n",
 		           error->message);
 		return WEBAUTH_EXIT_INTERNAL;
 	}
 
-	/* REPLACEMENT IS NOT OFFERED TO ANYONE UNLESS IT IS ASKED FOR, AND THE TWO
-	 * HALVES ARE SEPARATE FLAGS. ALLOW_REPLACEMENT is not "let the package
-	 * manager replace me"; it is "let whoever asks next replace me", and D-Bus
-	 * offers nothing finer -- no uid check, no peer identity. What would be taken
-	 * over here is the window that shows a corporate sign-in page and the process
-	 * that answers a certificate challenge, so the default is a name nobody can
-	 * take. An upgrade is therefore a restart, and --replace exists for a
-	 * development loop against an instance started with --allow-replacement. */
+	/* Allowing replacement lets any session-bus peer take the name. */
 	owner_id = g_bus_own_name_on_connection(
 	    connection, WEBAUTH_BACKEND_BUS_NAME,
 	    (opt_allow_replacement ? G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT
@@ -367,8 +263,7 @@ int main(int argc, char** argv)
 
 	webauth_backend_shutdown(backend);
 
-	/* The answers emitted above have to reach the bus before the process goes
-	 * away, or the frontend learns about the loss by waiting for ever. */
+	/* Flush pending replies before disconnecting from the bus. */
 	g_dbus_connection_flush_sync(connection, NULL, NULL);
 
 	webauth_backend_free(backend);

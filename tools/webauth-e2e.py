@@ -2,42 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 #
-# webauth-e2e.py -- an application, doing what an application does.
-#
-# It calls the PUBLIC interface,
-# org.freedesktop.portal.experimental.WebAuthentication1, on
-# org.freedesktop.portal.Desktop, and waits for the Response signal on the
-# Request object it gets back. It never names a backend, never reads a .portal
-# file and never calls an impl interface: that is the whole point of the split,
-# and a test that cheated on it would not be testing it.
-#
-# What it checks, and each of these is a claim in docs/PUBLIC-INTERFACE.md:
-#
-#   * the response code and, when one is expected, the reason symbol;
-#   * that the completion URI comes back complete, with the query the flow ended
-#     on -- the authorization code and the state it echoed;
-#   * that the state is the one this client sent, compared in full;
-#   * that the completion URI matches the one that was asked for.
-#
-# It prints the shape of what came back and never its query: the code in it is
-# the credential the whole exercise was about.
-#
-#     tools/webauth-e2e.py --start-uri https://localhost:8443/start \
-#         --completion-uri https://example.invalid/cb
-#     tools/webauth-e2e.py ... --session-mode ephemeral --expect-cookie no
-#     tools/webauth-e2e.py ... --cancel-after 2000 --expect-response 1
-#
-# --entra-authorize builds the start URI for a REAL Entra ID authorization code
-# flow instead of taking one, so that a live run against the identity provider
-# is one command rather than a URL assembled by hand. See docs/TESTING.md,
-# "Live run against Entra". It writes the PKCE code verifier to a file with mode
-# 0600 and NEVER prints it: a verifier on a terminal is a verifier in a scrollback
-# buffer, and with the authorization code it is the whole credential.
-#
-#     tools/webauth-e2e.py --entra-authorize \
-#         --entra-authority https://login.microsoftonline.us/<tenant> \
-#         --entra-verifier-file ~/.cache/webauth-verifier \
-#         --completion-uri https://login.microsoftonline.com/common/oauth2/nativeclient
+# Exercise the public WebAuthentication interface and validate the returned protocol response; see docs/TESTING.md.
 
 import argparse
 import base64
@@ -58,20 +23,13 @@ INTERFACE = "org.freedesktop.portal.experimental.WebAuthentication1"
 REQUEST_INTERFACE = "org.freedesktop.portal.Request"
 
 
-# ------------------------------------------------------------------ Entra ID
-#
-# The AVD public client, and the redirect its registration forces. THE REDIRECT
-# IS THE COMMERCIAL nativeclient URL FOR BOTH CLOUDS -- there is no .us variant
-# and asking for one is rejected with AADSTS50011 -- which is exactly why this
-# portal exists: nothing may ever be allowed to FETCH that URL, because its query
-# carries the authorization code.
+# The AVD client registration requires the commercial nativeclient redirect in both clouds.
 ENTRA_AVD_CLIENT_ID = "a85cf173-4192-42f8-81fa-777a763e6e2c"
 ENTRA_NATIVECLIENT_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient"
 ENTRA_USGOV_AVD_SCOPE = "https://www.wvd.azure.us/.default openid profile offline_access"
 
 
 def pkce_pair():
-    """A code verifier and its S256 challenge, RFC 7636 §4."""
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode("ascii")
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
@@ -79,14 +37,7 @@ def pkce_pair():
 
 
 def write_verifier(path, verifier, state):
-    """0600 BEFORE ANYTHING IS WRITTEN, not after.
-
-    os.open with O_CREAT|O_EXCL and mode 0600 is the only way to create a file
-    that was never, for any instant, readable by another user; opening it and
-    chmod-ing afterwards leaves exactly that window. O_EXCL because a file
-    holding half a credential is never overwritten in place: a previous one is
-    moved aside to <path>.prev (replacing an older .prev) so a rerun works.
-    """
+    # The verifier must be private from creation; retain the prior value in .prev.
     if os.path.lexists(path):
         previous = path + ".prev"
         if os.path.lexists(previous):
@@ -98,7 +49,6 @@ def write_verifier(path, verifier, state):
 
 
 def entra_authorize_uri(args, state):
-    """The authorization endpoint URL for an authorization code flow with PKCE."""
     verifier, challenge = pkce_pair()
     write_verifier(args.entra_verifier_file, verifier, state)
 
@@ -110,8 +60,7 @@ def entra_authorize_uri(args, state):
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-        # A fresh sign-in rather than whatever the shared store remembers: a live
-        # run is testing the CARD, and a silently reused session tests nothing.
+        # Force sign-in so a stored session cannot bypass token authentication.
         "prompt": "login",
     }
 
@@ -135,7 +84,7 @@ class Run:
         self.loop.quit()
 
     def on_timeout(self):
-        self.failed = "no Response signal arrived"
+        self.failed = "Response signal timed out"
         self.loop.quit()
         return GLib.SOURCE_REMOVE
 
@@ -209,15 +158,12 @@ class Run:
 def check(run, args):
     problems = []
 
-    # Close() is not answered, by design: the frontend unexports the Request
-    # instead of emitting a Response, so an application that closes its own
-    # request gets silence. What has to be true is that the silence is the
-    # backend having stopped, which dev-stack.sh checks in the backend's log.
+    # Request.Close unexports the public request without Response; dev-stack.sh checks backend termination.
     if args.expect_no_response:
         if run.response is None:
             print("Response none=expected-after-close")
             return []
-        return [f"a Response arrived after Close(): response={run.response}"]
+        return [f"Response received after Close(): response={run.response}"]
 
     if run.failed:
         return [run.failed]
@@ -238,17 +184,17 @@ def check(run, args):
 
     if args.expect_response != 0:
         if completion is not None:
-            problems.append("a non-zero response must not carry a completion_uri")
+            problems.append("Nonzero response contains completion_uri")
         return problems
 
     if completion is None:
-        return problems + ["no completion_uri in the results"]
+        return problems + ["Results contain no completion_uri"]
 
     parsed = urllib.parse.urlsplit(completion)
     wanted = urllib.parse.urlsplit(args.completion_uri)
     query = urllib.parse.parse_qs(parsed.query)
 
-    # The shape only: the query carries the authorization code.
+    # Completion queries carry authorization codes and must stay out of logs.
     print(f"completion scheme={parsed.scheme} host={parsed.netloc} path={parsed.path}")
     print("completion query keys=" + ",".join(sorted(query)))
 
@@ -257,18 +203,18 @@ def check(run, args):
         wanted.netloc.lower(),
         wanted.path,
     ):
-        problems.append("the completion URI is not the one that was requested")
+        problems.append("Completion URI does not match the request")
 
     code = query.get("code", [None])[0]
     if code:
         print(f"completion code length={len(code)}")
     elif args.require_code:
-        problems.append("no code in the completion URI")
+        problems.append("Completion URI contains no code")
 
     if args.state:
         got = query.get("state", [None])[0]
         if got != args.state:
-            problems.append("the state did not come back unchanged")
+            problems.append("Completion state does not match the request")
         else:
             print("completion state=echoed")
 
@@ -288,8 +234,7 @@ def main():
     parser.add_argument(
         "--entra-authorize",
         action="store_true",
-        help="build the start URI for a real Entra ID authorization code flow "
-        "instead of taking --start-uri",
+        help="build an Entra ID authorization code flow URI",
     )
     parser.add_argument("--entra-client-id", default=ENTRA_AVD_CLIENT_ID)
     parser.add_argument(
@@ -300,8 +245,7 @@ def main():
     parser.add_argument("--entra-scope", default=ENTRA_USGOV_AVD_SCOPE)
     parser.add_argument(
         "--entra-verifier-file",
-        help="where to write the PKCE code verifier, created 0600 and never overwritten. "
-        "It is NEVER printed.",
+        help="PKCE verifier output file (mode 0600); existing content moves to .prev",
     )
     parser.add_argument("--session-mode", choices=["shared", "ephemeral"])
     parser.add_argument("--title")
@@ -313,8 +257,7 @@ def main():
     parser.add_argument(
         "--expect-no-response",
         action="store_true",
-        help="assert that NO Response arrives, which is what Request.Close() means: "
-        "the frontend unexports the request rather than answering it",
+        help="require no Response signal after Request.Close()",
     )
     parser.add_argument("--expect-reason")
     parser.add_argument("--expect-cookie", choices=["yes", "no"])
@@ -324,13 +267,12 @@ def main():
 
     if args.entra_authorize:
         if not args.entra_authority:
-            parser.error("--entra-authorize needs --entra-authority")
+            parser.error("--entra-authorize requires --entra-authority")
         if not args.entra_verifier_file:
-            parser.error("--entra-authorize needs --entra-verifier-file")
+            parser.error("--entra-authorize requires --entra-verifier-file")
         if args.start_uri:
-            parser.error("--entra-authorize builds the start URI; do not pass --start-uri")
-        # The state goes into the authorize URL itself, so it must not also be
-        # appended to the start URI the way the fixture flow's is.
+            parser.error("--entra-authorize cannot be combined with --start-uri")
+        # Entra URLs already contain state; fixture URLs receive it in start().
         args.start_uri = entra_authorize_uri(args, args.state)
         args.state_in_start_uri = False
         parsed = urllib.parse.urlsplit(args.start_uri)

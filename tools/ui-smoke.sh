@@ -5,38 +5,10 @@
 # Adapted from the sibling backend xdg-desktop-portal-certificate's
 # tools/ui-smoke.sh (same author, same licence).
 #
-# ui-smoke.sh -- the whole thing, WINDOW INCLUDED, with nobody at the keyboard.
-#
-# It puts a headless X server round tools/dev-stack.sh. That is all it needs to
-# do for the ordinary flows: the fixture identity provider redirects by itself,
-# so the sign-in window is driven by the server rather than by a user, and the
-# transaction ends when the completion URI is reached. What still needs a
-# keyboard is CANCELLING, and --cancel is that: it waits for the window and
-# sends Escape.
-#
-# THIS IS THE ONLY AUTOMATED TEST THAT OPENS THE WINDOW. tests/ covers the
-# rules with no display; this covers everything between a D-Bus call and a
-# rendered page, which is where the interesting mistakes live.
-#
-# It is NOT a substitute for docs/TESTING.md. A software token in a headless X
-# server is a rehearsal: no reader, no PIN retry counter to spend, and nothing to
-# pull out mid-handshake.
-#
-# WHAT IT NEEDS, none of which has to be installed system wide:
-#
-#   Xvfb        xorg-x11-server-Xvfb           $XVFB
-#   xdotool     xdotool (only for --cancel)    $XDOTOOL
-#   a fixture from tools/softhsm-fixture.sh
-#   a built frontend, as tools/dev-stack.sh describes
-#   dev-stack.sh enables WebAuthentication1 in the frontend environment
-#
-#     tools/ui-smoke.sh                       # plain https, no certificates
-#     tools/ui-smoke.sh --mtls                # the server demands a client certificate
-#     tools/ui-smoke.sh --cancel              # Escape, expecting response 1
-#     tools/ui-smoke.sh --cookie --session-mode=ephemeral -- --expect-cookie no
-#
-# Everything after `--` goes to tools/webauth-e2e.py; everything before it that
-# this script does not recognise goes to tools/dev-stack.sh.
+# Run tools/dev-stack.sh under Xvfb; --cancel sends Escape to the sign-in window.
+# Other options pass to dev-stack.sh; arguments after -- pass to webauth-e2e.py.
+# XVFB and XDOTOOL select executables; SCREEN and WINDOW_TITLE select the display and window.
+# Requires a built frontend and tools/softhsm-fixture.sh fixture; see docs/TESTING.md.
 
 set -u
 
@@ -87,8 +59,6 @@ done
 [ -n "$XVFB" ] || die "Xvfb not found; set \$XVFB"
 [ "$CANCEL" = 1 ] && [ -z "$XDOTOOL" ] && die "xdotool not found; set \$XDOTOOL"
 
-# --cancel drives the window instead of letting the flow finish, so the
-# expectation changes with it.
 if [ "$CANCEL" = 1 ] && [ "${#E2E_ARGS[@]}" -eq 0 ]; then
 	E2E_ARGS=(--expect-response 1 --expect-reason user_cancelled)
 fi
@@ -103,14 +73,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# X11 rather than Wayland, because a headless X server is something a machine
-# with no compositor can start and xdotool can drive.
+# Xvfb and xdotool require the X11 backend.
 export DISPLAY="$SCREEN"
 unset WAYLAND_DISPLAY
 export GDK_BACKEND=x11
 export GTK_A11Y=none
-# The window's theme must not depend on what the machine running the test has its
-# desktop set to.
+# Keep fixture window appearance independent of desktop settings.
 export ADW_DEBUG_COLOR_SCHEME="${ADW_DEBUG_COLOR_SCHEME:-prefer-dark}"
 export KEEP_LOGS=1
 
@@ -128,8 +96,7 @@ if [ "$CANCEL" = 1 ]; then
 
 	if [ -n "$wid" ]; then
 		echo "${0##*/}: driving '$WINDOW_TITLE' with Escape"
-		# There is no window manager, so focus is set directly and the key goes
-		# through XTEST to whatever has it.
+		# Without a window manager, focus must be assigned directly before sending the key.
 		"$XDOTOOL" windowfocus "$wid" 2>/dev/null
 		sleep 1
 		"$XDOTOOL" key Escape

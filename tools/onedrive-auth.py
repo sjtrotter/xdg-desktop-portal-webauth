@@ -2,36 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 #
-# onedrive-auth.py -- an unmodified application through the portal.
-#
-# The abraunegg OneDrive client (Fedora package `onedrive`) has
-# `--auth-files <authUrlFile>:<responseUrlFile>`: it writes the Microsoft
-# authorize URL to the first file and then polls until the second file exists,
-# expecting the whole redirect URI the user would otherwise have copied out of a
-# browser address bar. That is the same pair of URIs
-# org.freedesktop.portal.experimental.WebAuthentication1.Start takes and returns, so the
-# client needs no patch: this script sits between the two files and the portal.
-#
-#     onedrive --confdir ~/.config/onedrive --reauth \
-#         --auth-files /run/user/$UID/a:/run/user/$UID/b &
-#     tools/onedrive-auth.py /run/user/$UID/a:/run/user/$UID/b
-#
-# The completion URI is the `redirect_uri` of the authorize URL the client
-# wrote -- https://login.microsoftonline.com/common/oauth2/nativeclient for the
-# common endpoint, the same path on login.microsoftonline.us and the other
-# clouds -- and not a value this script chooses. If the URL carries no
-# redirect_uri, the nativeclient path on the URL's own host is used.
-#
-# It does not delete either file. The client deletes both itself once the
-# response file appears, observed against onedrive v2.5.11.
-#
-# Exit status: 0 the flow completed and the response file was written, 1 the
-# user cancelled, 2 anything else, with one line saying what.
-#
-# WHAT IT LOGS: one line per state change, on stderr, carrying scheme, host and
-# path only. The response URI's query is the authorization code and the
-# authorize URL's query is the request that code answers; neither is ever
-# printed, and URLs in D-Bus error text have their query stripped.
+# Bridge OneDrive --auth-files through the public WebAuthentication portal; see docs/TESTING.md.
 
 import argparse
 import os
@@ -63,12 +34,10 @@ def note(line):
 
 
 def redact(text):
-    """Anything URL-shaped, with its query and fragment taken off."""
     return QUERY_IN_URL.sub(r"\1?<redacted>", " ".join(str(text).split()))
 
 
 def shape(uri):
-    """scheme, host and path: what can be logged about a URI that carries a credential."""
     parsed = urllib.parse.urlsplit(uri)
     if parsed.netloc:
         return f"scheme={parsed.scheme} host={parsed.netloc} path={parsed.path}"
@@ -76,19 +45,18 @@ def shape(uri):
 
 
 def split_auth_files(values):
-    """--auth-files syntax: one 'a:b' argument, or the two paths as two arguments."""
     if len(values) == 2:
         return values[0], values[1]
     parts = values[0].split(":")
     if len(parts) != 2 or not parts[0] or not parts[1]:
         raise ValueError(
-            "expected <authUrlFile>:<responseUrlFile>, or the two paths as two arguments"
+            "auth_files requires <authUrlFile>:<responseUrlFile> or two paths"
         )
     return parts[0], parts[1]
 
 
 def wait_for_url(path, deadline):
-    """The client writes the file and then the URL; an empty file is not yet an answer."""
+    # OneDrive creates the file before writing its URL.
     while time.monotonic() < deadline:
         try:
             with open(path, "r", encoding="utf-8") as handle:
@@ -98,15 +66,15 @@ def wait_for_url(path, deadline):
         except FileNotFoundError:
             pass
         except OSError as error:
-            raise RuntimeError(f"cannot read {path}: {error.strerror}") from error
+            raise RuntimeError(f"{path} could not be read: {error.strerror}") from error
         time.sleep(0.25)
-    raise TimeoutError(f"no authorize URL in {path}")
+    raise TimeoutError(f"Authorize URL missing from {path}")
 
 
 def completion_uri_for(start_uri):
     parsed = urllib.parse.urlsplit(start_uri)
     if parsed.scheme.lower() != "https" or not parsed.hostname:
-        raise ValueError("the authorize URL is not an absolute https URL with a host")
+        raise ValueError("Authorize URL must be absolute HTTPS with a host")
 
     redirect = urllib.parse.parse_qs(parsed.query).get("redirect_uri", [""])[0]
     if redirect:
@@ -115,8 +83,7 @@ def completion_uri_for(start_uri):
 
 
 def write_response(path, uri):
-    """0600 before anything is written, and renamed into place: the client polls for
-    this file's existence, so it must never be seen half written."""
+    # OneDrive polls for existence; publish a complete response with private permissions.
     directory = os.path.dirname(os.path.abspath(path))
     temporary = os.path.join(directory, f".{os.path.basename(path)}.{os.getpid()}")
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -151,15 +118,12 @@ class Flow:
         self.loop.quit()
 
     def on_timeout(self):
-        self.failure = "no Response signal arrived"
+        self.failure = "Response signal timed out"
         self.loop.quit()
         return GLib.SOURCE_REMOVE
 
     def run(self):
-        # The Request path is predictable from the unique name and handle_token,
-        # so the Response subscription goes on before Start() is called and the
-        # signal cannot be missed. The returned handle is still checked, because
-        # a frontend older than 0.9 of xdg-desktop-portal mints its own.
+        # Subscribe on the predicted Request path before Start; older frontends may return a different handle.
         token = "onedriveauth" + secrets.token_hex(8)
         sender = self.bus.get_unique_name()[1:].replace(".", "_")
         expected = f"{REQUEST_PREFIX}/{sender}/{token}"
@@ -192,8 +156,7 @@ class Flow:
             )
         note(f"request {handle}")
 
-        # The frontend keeps the deadline and answers 2 with reason `timeout`;
-        # this one is only for a frontend that has stopped answering at all.
+        # The backend owns the portal deadline; this timer bounds a missing reply.
         GLib.timeout_add_seconds(self.args.timeout + 30, self.on_timeout)
         self.loop.run()
 
@@ -245,14 +208,13 @@ def main():
     try:
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     except GLib.Error as error:
-        note(f"error no session bus: {redact(error.message)}")
+        note(f"error session bus unavailable: {redact(error.message)}")
         return 2
 
     flow = Flow(bus, args, start_uri, completion_uri)
     try:
         flow.run()
     except GLib.Error as error:
-        # Missing opt-in, backend or frontend can leave the interface unavailable.
         note(f"error Start failed: {redact(error.message)}")
         return 2
 
@@ -267,24 +229,24 @@ def main():
     reason = flow.results.get("reason")
     if flow.response != 0:
         detail = f", reason {reason}" if reason else ""
-        note(f"error the portal answered {flow.response}{detail}")
+        note(f"error portal response: {flow.response}{detail}")
         return 2
 
     uri = flow.results.get("completion_uri")
     if not uri:
-        note("error the portal completed without a completion URI")
+        note("error portal result has no completion URI")
         return 2
     parsed = urllib.parse.urlsplit(uri)
     keys = ",".join(sorted(urllib.parse.parse_qs(parsed.query, keep_blank_values=True)))
     note(f"result query keys={keys or '(none)'} fragment={'yes' if parsed.fragment else 'no'}")
 
     try:
+        # OneDrive deletes both auth files after the response file appears.
         write_response(response_path, uri)
     except OSError as error:
-        note(f"error cannot write {response_path}: {error.strerror}")
+        note(f"error {response_path} could not be written: {error.strerror}")
         return 2
 
-    # Not removed here: onedrive deletes both files itself once this one appears.
     note(f"completed, response written to {response_path}")
     return 0
 

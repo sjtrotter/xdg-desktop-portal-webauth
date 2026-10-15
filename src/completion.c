@@ -16,9 +16,7 @@
 
 #include <gio/gio.h>
 
-/* GLib does not expose the default port of a scheme, and only schemes with a
- * host are accepted, so a short table is enough. A custom scheme has no default
- * port, which is what -1 means. */
+/* GLib provides no scheme default-port lookup; custom schemes have no default port. */
 static int default_port_for_scheme(const char* scheme)
 {
 	if (g_ascii_strcasecmp(scheme, "https") == 0)
@@ -39,8 +37,7 @@ static int effective_port(GUri* uri)
 	return default_port_for_scheme(g_uri_get_scheme(uri));
 }
 
-/* http and https name a host. A private-use scheme (RFC 8252 section 7.1) has no
- * authority at all: 'com.example.app:/oauth2redirect'. */
+/* RFC 8252 private-use schemes may omit the authority. */
 static gboolean scheme_requires_host(const char* scheme)
 {
 	return g_ascii_strcasecmp(scheme, "https") == 0 || g_ascii_strcasecmp(scheme, "http") == 0;
@@ -59,13 +56,13 @@ static GUri* parse_uri(const char* uri_string, const char* what, GError** error)
 
 	if (uri_string == NULL || *uri_string == '\0')
 	{
-		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "No %s given", what);
+		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s is required", what);
 		return NULL;
 	}
 
 	if (strlen(uri_string) > WEBAUTH_MAX_URI_LENGTH)
 	{
-		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "The %s is too long", what);
+		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s is too long", what);
 		return NULL;
 	}
 
@@ -74,31 +71,30 @@ static GUri* parse_uri(const char* uri_string, const char* what, GError** error)
 		if ((guchar) uri_string[i] < 0x20 || (guchar) uri_string[i] == 0x7f)
 		{
 			g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-			            "The %s contains control characters", what);
+			            "%s contains control characters", what);
 			return NULL;
 		}
 
 		if (uri_string[i] == '\\')
 		{
 			g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-			            "The %s contains a backslash", what);
+			            "%s contains a backslash", what);
 			return NULL;
 		}
 	}
 
-	/* Parsed exactly as the frontend parses it: encoded, so that the string the
-	 * application asked for and the string compared here are the same bytes. */
+	/* Encoded parsing must match the frontend's completion comparison. */
 	uri = g_uri_parse(uri_string, G_URI_FLAGS_ENCODED, NULL);
 	if (!uri)
 	{
-		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "The %s is not a valid URI",
+		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s is not a valid URI",
 		            what);
 		return NULL;
 	}
 
 	if (g_uri_get_userinfo(uri) != NULL)
 	{
-		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "The %s carries userinfo",
+		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s contains userinfo",
 		            what);
 		return NULL;
 	}
@@ -116,14 +112,14 @@ gboolean webauth_completion_start_uri_is_valid(const char* uri_string, GError** 
 	if (g_ascii_strcasecmp(g_uri_get_scheme(uri), "https") != 0)
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-		                    "The start_uri must be an https URI");
+		                    "start_uri must use HTTPS");
 		return FALSE;
 	}
 
 	if (!uri_has_host(uri))
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-		                    "The start_uri has no host");
+		                    "start_uri has no host");
 		return FALSE;
 	}
 
@@ -142,23 +138,21 @@ gboolean webauth_completion_uri_is_valid(const char* uri_string, GError** error)
 		if (!uri_has_host(uri))
 		{
 			g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-			                    "The completion_uri has no host");
+			                    "completion_uri has no host");
 			return FALSE;
 		}
 	}
 	else if (!uri_has_host(uri) && *g_uri_get_path(uri) == '\0')
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-		                    "The completion_uri names neither a host nor a path");
+		                    "completion_uri must have a host or path");
 		return FALSE;
 	}
 
-	/* A wildcard is not a pattern here, and a host that reads like one is refused
-	 * rather than matched literally. */
 	if (uri_has_host(uri) && strchr(g_uri_get_host(uri), '*') != NULL)
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-		                    "The completion_uri host contains a wildcard");
+		                    "completion_uri host contains a wildcard");
 		return FALSE;
 	}
 

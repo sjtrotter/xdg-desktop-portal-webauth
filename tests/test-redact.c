@@ -1,8 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later
  * SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
- *
- * The negative tests: a completion URI's query, a PKCS#11 URI with a pin-value
- * in it, and a PIN must not survive a trip through the logging interface.
  */
 
 #include <string.h>
@@ -29,7 +26,6 @@ static void test_uri_shape_keeps_the_host_and_drops_the_query(void)
 
 	g_assert_nonnull(strstr(rendered, "login.example.com"));
 	g_assert_nonnull(strstr(rendered, "https"));
-	/* The path is a length, not a path: a path can carry an identifier. */
 	g_assert_null(strstr(rendered, "nativeclient"));
 	g_assert_null(strstr(rendered, CODE));
 	g_assert_null(strstr(rendered, "code="));
@@ -58,8 +54,6 @@ static void test_secret_has_no_length(void)
 {
 	g_autofree char* rendered = webauth_redact_field(WEBAUTH_FIELD_SECRET, "123456");
 
-	/* Not even a length: a redacted PIN in a log still says one was entered and
-	 * how long it was. */
 	g_assert_cmpstr(rendered, ==, "<secret>");
 }
 

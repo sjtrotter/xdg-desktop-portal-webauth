@@ -10,7 +10,7 @@
 
       data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml
 
-  on the xdg-desktop-portal branch experimental/integration, at commit fc43671
+  on the xdg-desktop-portal branch experimental/webauthentication, at commit 0242523
   "web-authentication: Add an experimental WebAuthentication portal". (The
   branch is rebased on upstream, so that id moves.)
 
@@ -31,19 +31,16 @@
       org.freedesktop.impl.portal.experimental.WebAuthentication1:
       @short_description: Backend for the web sign-in portal
 
-      This backend interface owns the web view: it opens the window, watches
-      every navigation the view is asked to make in any frame, stops the flow
-      when the completion URI is reached, and reports the URI it stopped on.
-      A matched navigation must never be loaded, in any frame: it carries the
-      result of the sign-in.
+      The backend owns the web view and its window. It checks every navigation
+      in every frame for a match against the completion URI. A match ends the
+      flow and returns the matched URI. Matching navigations must never be
+      loaded in any frame.
 
-      Everything the backend is told has been validated by the frontend, and
-      the values it is told are the ones the frontend decided: ``timeout`` has
-      already been clamped, and ``session_mode`` arrives as a decision rather
-      than a request, so a backend that cannot honour ``ephemeral`` must fail
-      rather than quietly use the shared store.
+      The frontend validates requests and clamps ``timeout``. Backends must
+      honour ``session_mode`` and fail if ``ephemeral`` storage is requested
+      but unavailable.
 
-      This is an **experimental** interface and can change or get removed at
+      This is an experimental interface and can change or get removed at
       any time. An incompatible change increments the number at the end of
       the interface name. See :doc:`experimental-portals`.
   -->
@@ -62,9 +59,9 @@
         Runs a web sign-in flow.
 
         @app_id is derived by the frontend. An empty string means the frontend
-        could not establish one; the backend must then say that the
-        application is unidentified rather than show an empty name or anything
-        the application supplied.
+        could not establish one. In that case, the backend must identify the
+        application as unidentified and must not display an empty name or an
+        application-supplied name.
 
         Supported keys in the @options vardict include:
 
@@ -74,16 +71,14 @@
 
         * ``session_mode`` (``s``)
 
-          ``shared`` or ``ephemeral``. Already validated.
+          ``shared`` or ``ephemeral``, validated by the frontend.
 
         * ``timeout`` (``u``)
 
-          Seconds, already clamped to the ceiling. The frontend runs this
-          deadline too: when it passes it calls ``Close()`` on @handle and
-          answers the application itself, so a backend that never answers is
-          not a request that never ends. The backend still owns the window and
-          should end the flow on its own deadline; whichever end reaches it
-          first, the window has to go away.
+          Maximum duration in seconds, clamped by the frontend. The frontend
+          enforces the deadline by calling ``Close()`` on @handle and returning
+          a response to the application. The backend should also enforce the
+          deadline and must close its window when the flow ends.
 
         * ``title`` (``s``)
 
@@ -91,40 +86,38 @@
 
         * ``app_identity_level`` (``s``)
 
-          How much @app_id can be trusted: ``sandboxed`` when a sandbox engine
-          vouched for it, ``host`` when it was derived from a host process,
-          and ``unidentified`` when the frontend could not establish one at
-          all. The backend renders the difference; it never re-derives it.
+          Trust level of @app_id: ``sandboxed`` for an ID verified by a sandbox
+          engine, ``host`` for an ID derived from a host process, and
+          ``unidentified`` when the frontend could not establish an ID. The
+          backend must display this distinction and use the supplied level.
 
-        ``handle_token`` is not forwarded, and neither are keys the frontend
-        does not know.
+        The frontend omits ``handle_token`` and unknown keys.
 
         The following results get returned via the @results vardict:
 
         * ``completion_uri`` (``s``)
 
-          The matched URI, complete and undecoded, obtained from the web engine
-          rather than reconstructed, including query and fragment. Present only
-          when @response is ``0``. The frontend re-checks it against the
-          @completion_uri it passed in before handing it to the application,
-          comparing the two on their parsed components; see
+          The complete, undecoded URI from the web engine, including query and
+          fragment. Backends must return the original URI without
+          reconstructing it. Present only when @response is ``0``. The frontend
+          validates its parsed components against @completion_uri before
+          returning it to the application. See
           :ref:`org.freedesktop.portal.experimental.WebAuthentication1.Start`
           for the rule.
 
           @completion_uri is an ``http`` or ``https`` URI with a host, or a
           private-use scheme redirect URI as described in :rfc:`8252` section
-          7.1 - for example ``com.example.app:/oauth2redirect`` - which has no
-          authority and is matched on its scheme and its path. An engine that
-          refuses to navigate to a scheme it does not know still has to report
-          the navigation it refused, because that navigation is the answer.
+          7.1, such as ``com.example.app:/oauth2redirect``, which has no
+          authority and is matched on its scheme and path. Backends must
+          report matching navigations even if the engine rejects the scheme.
 
         * ``reason`` (``s``)
 
           An optional stable symbol explaining a non-zero @response, for
           instance ``timeout``, ``no_display``, ``no_engine``,
           ``user_cancelled``, ``session_terminated`` or
-          ``credential_unavailable``. The frontend forwards it verbatim, so a
-          backend that invents a value hands it straight to applications.
+          ``credential_unavailable``. The frontend forwards this value
+          unchanged to the application.
     -->
     <method name="Start">
       <arg type="o" name="handle" direction="in"/>

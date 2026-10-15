@@ -5,83 +5,29 @@
 # Adapted from the sibling backend xdg-desktop-portal-certificate's
 # tools/dev-stack.sh (same author, same licence).
 #
-# dev-stack.sh -- run the experimental WebAuthentication portal end to end: a
-# development xdg-desktop-portal frontend from the branch
-# experimental/integration, this repository's backend, a
-# fixture identity provider, and tools/webauth-e2e.py against the PUBLIC
-# interface.
+# Usage: tools/dev-stack.sh [options] [-- e2e-options]
+# Run a fixture sign-in on a private D-Bus session with an existing display.
 #
-# THIS OPENS A WINDOW. The backend is a web view; there is nothing to run
-# headless. On a private bus with no display it exits 40, which is correct and
-# is not what you wanted. Either run it under tools/ui-smoke.sh, which brings its
-# own Xvfb, or run it with DISPLAY set to a desktop you are happy to see a
-# window on.
+#   --live                     use the session bus and replace the system portal
+#   --keep                     wait before shutting down the stack
+#   --no-e2e                   start the stack without running the client
+#   --mtls                     require a fixture client certificate
+#   --cookie                   set and report the fixture cookie
+#   --cookie-value=VALUE       set the fixture cookie value (default: one)
+#   --session-mode=MODE        request shared or ephemeral storage; accepts a separate value
+#   --completion-uri=URI       set the completion URI (default: https://example.invalid/cb)
+#   --as-app=ID                identify the client through a cgroup and desktop file
+#   --start-path=PATH          set the fixture start path (default: /start)
+#   --data-home=PATH           reuse this data directory across runs
+#   --expect-backend-log=ERE   require an extended regular expression match in the backend log
+#   -h, --help                 show this help
 #
-# Two modes.
-#
-#   PRIVATE BUS (the default). Everything runs inside `dbus-run-session`, so
-#   nothing touches the user's real session bus.
-#
-#   --live. Uses the real session bus and takes org.freedesktop.portal.Desktop
-#   away from the system portal for the duration. THE SYSTEM PORTAL COMES BACK
-#   BY D-BUS ACTIVATION as soon as this script's frontend exits and something
-#   asks for the name again.
-#
-#     tools/dev-stack.sh                       # plain https flow, no certificates
-#     tools/dev-stack.sh --mtls                # the server demands a client certificate
-#     tools/dev-stack.sh --cookie --session-mode ephemeral
-#     tools/dev-stack.sh --keep                # leave it up for manual gdbus
-#     tools/dev-stack.sh -- --cancel-after 2000 --expect-response 1
-#     tools/dev-stack.sh --as-app=org.example.WebauthClient --cookie
-#     tools/dev-stack.sh --start-path=/wait -- --cancel-after 3000 --expect-no-response
-#
-#   --as-app RUNS THE CLIENT AS AN IDENTIFIED APPLICATION, which is the only way
-#   to reach the shared storage mode: an unidentified caller is narrowed to
-#   ephemeral by the backend, on purpose (src/storage.h). It does what a desktop
-#   environment does when it launches an application -- puts the process in a
-#   systemd user scope named app-<id>-<random>.scope, and makes an
-#   <id>.desktop file findable -- because that is what xdg-desktop-portal reads
-#   to derive a host caller's identity (shared/xdp-app-info-host.c,
-#   get_app_from_pid). The cgroup is created directly rather than through
-#   `systemd-run --user`, which would need the real session bus.
-#
-# The frontend is started with WebAuthentication1 added to
-# XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL, keeping any names the caller set.
-#
-# WHAT IT NEEDS
-#
-#   $XDP_BUILD   a built xdg-desktop-portal from the branch
-#                experimental/integration. Default:
-#                ../xdg-desktop-portal/build relative to this repository. It
-#                must contain desktop-portal/xdg-desktop-portal and
-#                document-portal/xdg-permission-store.
-#   $BACKEND     this repository's backend binary. Default:
-#                ./build/src/xdg-desktop-portal-webauth
-#   $XDP_ENV     a file to source first, for a frontend built against a scratch
-#                prefix -- LD_LIBRARY_PATH for libdex, PKG_CONFIG_PATH.
-#                Default: .xdp-env in this repository if it exists.
-#   $SOFTHSM_DIR the fixture from tools/softhsm-fixture.sh. It supplies the
-#                server certificate and, with --mtls, the client one.
-#
-# WHAT IT DOES
-#
-#   1. writes a throwaway $XDG_DESKTOP_PORTAL_DIR holding A SYMLINK TO EVERY
-#      .portal FILE ON THE MACHINE, this repository's webauth.portal, and a COPY
-#      of the machine's effective portals.conf with one line added routing
-#      org.freedesktop.impl.portal.experimental.WebAuthentication1 to this
-#      backend. All of it, and not just ours, because XDG_DESKTOP_PORTAL_DIR
-#      makes the frontend ignore every other portal directory AND every other
-#      portals.conf on the machine; tools/lib.sh says it at length.
-#   2. starts xdg-permission-store -- xdg-desktop-portal refuses to start
-#      without it -- on the private bus.
-#   3. starts tools/mtls-server.py on a port of its own choosing.
-#   4. starts the frontend, then this backend, so that the backend's stderr is
-#      visible rather than being swallowed by D-Bus activation.
-#   5. runs tools/webauth-e2e.py with whatever came after `--`.
-#   6. checks the fixture server's access log: THE COMPLETION URI MUST NEVER
-#      HAVE BEEN FETCHED. That is the one thing this whole design exists to
-#      guarantee, and it is checked from the server's side rather than the
-#      client's.
+# XDP_BUILD selects the experimental/integration frontend build.
+# BACKEND selects the backend binary; XDP_ENV selects an environment file to source.
+# SOFTHSM_DIR selects the tools/softhsm-fixture.sh fixture.
+# The frontend needs WebAuthentication1 in XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL.
+# Live mode holds org.freedesktop.portal.Desktop until exit; D-Bus activation restores it on demand.
+# See docs/TESTING.md for setup and hardware-token tests.
 
 set -u
 
@@ -125,7 +71,7 @@ else
 fi
 
 usage() {
-	sed -n '3,80p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '8,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 	exit 0
 }
 
@@ -176,7 +122,7 @@ preflight() {
 		die "no fixture at $SOFTHSM_DIR; run tools/softhsm-fixture.sh first"
 
 	[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] ||
-		die "no display. The backend is a web view; use tools/ui-smoke.sh, which brings an Xvfb."
+		die "Display unavailable; tools/ui-smoke.sh supplies Xvfb."
 
 	if ldd "$FRONTEND_BIN" 2>/dev/null | grep -q 'not found'; then
 		echo "${0##*/}: the frontend cannot resolve its libraries:" >&2
@@ -237,11 +183,7 @@ start_stack() {
 		PERM_PID=""
 	fi
 
-	# THE FRONTEND GOES UP FIRST, and this is not a preference. GTK asks the
-	# settings portal for a theme as soon as the backend initialises it, which on
-	# a private bus ACTIVATES org.freedesktop.portal.Desktop -- and activation
-	# finds the SYSTEM portal at /usr/libexec, which then owns the name this
-	# script's frontend was about to take.
+	# Start the frontend before GTK can activate the system portal through Settings.
 	FRONTEND_LOG="$DEVDIR/frontend.log"
 	if [ "$MODE" = live ]; then
 		XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL="$experimental" \
@@ -281,15 +223,11 @@ check_frontend_log() {
 	if [ "$configured" = yes ] && [ "$provided" = yes ]; then
 		echo "${0##*/}: frontend: web authentication portal provided"
 	else
-		echo "${0##*/}: frontend: web authentication portal MISSING (configured=$configured provided=$provided; see $FRONTEND_LOG)"
+		echo "${0##*/}: frontend: web authentication portal unavailable (configured=$configured provided=$provided; see $FRONTEND_LOG)"
 	fi
 }
 
-# THE ONE THING THIS DESIGN EXISTS TO GUARANTEE, checked from the server's side.
-# The completion URI carries the authorization code; a backend that let the
-# engine follow the redirect would have sent that code to a page with no part in
-# the exchange. When the completion URI points at the fixture server, the proof
-# is that its access log never names the path.
+# The completion URI carries the authorization code and must never appear in the server access log.
 check_completion_was_not_fetched() {
 	local path
 
@@ -301,17 +239,13 @@ check_completion_was_not_fetched() {
 		return 1
 	fi
 
-	echo "${0##*/}: the completion URI was never fetched ($path absent from the access log)"
+	echo "${0##*/}: Completion URI absent from server access log: $path"
 	return 0
 }
 
-# The cgroup a desktop environment would have put the application in, made by
-# hand. sd_pid_get_user_unit() reads the leaf of /proc/<pid>/cgroup, so a
-# directory named app-<id>-<random>.scope under the user manager's delegated
-# tree is enough; systemd itself is not involved and the real session bus is not
-# touched. Removed on the way out, which only succeeds once it is empty.
 APP_CGROUP=""
 
+# The frontend derives host identity from an app-<id>-<random>.scope cgroup and a matching desktop file.
 make_app_scope() {
 	local root="/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/app.slice"
 
@@ -330,8 +264,7 @@ make_app_scope() {
 		return 0
 	}
 
-	# The .desktop file the frontend insists on before it will believe the unit
-	# name, in a directory of this run's own.
+	# The frontend requires a matching desktop file to accept the scope identity.
 	mkdir -p "$DEVDIR/share/applications"
 	cat >"$DEVDIR/share/applications/$AS_APP.desktop" <<EOF
 [Desktop Entry]
@@ -349,9 +282,7 @@ remove_app_scope() {
 	APP_CGROUP=""
 }
 
-# Some outcomes are not visible to the application at all: Request.Close() is
-# answered by the frontend unexporting the request, so the only account of what
-# the backend did is the backend's own log line.
+# Request.Close unexports the public request without Response; verify termination in the backend log.
 check_backend_log() {
 	[ -n "$EXPECT_BACKEND" ] || return 0
 
@@ -374,10 +305,7 @@ stop_stack() {
 inner() {
 	BACKEND_ARGS=(--verbose)
 
-	# The fixture server's certificate is issued by the fixture CA, which nothing
-	# on the machine trusts -- correctly. See the option's own documentation in
-	# src/webkit-session.h for why this exists and why it is the only trust
-	# override in the binary.
+	# The fixture CA requires an explicit development trust pin.
 	BACKEND_ARGS+=(--debug-trust-certificate "localhost=$SOFTHSM_DIR/server.pem")
 
 	if [ "$MTLS" = 1 ]; then
@@ -386,9 +314,7 @@ inner() {
 			--client-cert-uri "$(cat "$SOFTHSM_DIR/cert-uri")"
 			--client-cert-pin-file "$SOFTHSM_DIR/pin"
 		)
-		# The token is visible to p11-kit -- and therefore to WebKit's network
-		# process, which is where the URI is resolved -- only because these two
-		# point at the fixture. The machine's own configuration is untouched.
+		# WebKit's network process inherits the fixture p11-kit configuration.
 		export XDG_CONFIG_HOME="$SOFTHSM_DIR"
 		export SOFTHSM2_CONF="$SOFTHSM_DIR/softhsm2.conf"
 	fi
@@ -397,11 +323,7 @@ inner() {
 		BACKEND_ARGS+=(--replace --allow-replacement)
 	fi
 
-	# THE SHARED STORE IS A DIRECTORY UNDER $XDG_DATA_HOME, so a test run points
-	# that somewhere disposable rather than writing an identity provider's
-	# cookies into the home directory of whoever ran the script. Two runs that
-	# want to share a store pass the same --data-home; one that does not gets a
-	# directory of this run's own.
+	# Use a disposable data home unless a test explicitly shares storage across runs.
 	export XDG_DATA_HOME="${DATA_HOME:-$DEVDIR/data-home}"
 	mkdir -p "$XDG_DATA_HOME"
 
@@ -419,8 +341,7 @@ inner() {
 		[ -n "$SESSION_MODE" ] && args+=(--session-mode "$SESSION_MODE")
 
 		if [ -n "$APP_CGROUP" ]; then
-			# The client puts ITSELF in the scope and then becomes the client, so
-			# that the process the frontend inspects is the one in the cgroup.
+			# The process inspected by the frontend must enter the scope before exec.
 			bash -c 'echo $$ >"$1/cgroup.procs" || exit 40; shift; exec "$@"' -- \
 				"$APP_CGROUP" python3 "$REPO/tools/webauth-e2e.py" "${args[@]}" "${E2E_ARGS[@]}"
 		else
@@ -483,13 +404,12 @@ main() {
 		return $?
 	fi
 
-	# KEPT, not removed, when the run fails: the logs in it are the only account
-	# of what the frontend, the backend and the server each did.
 	DEV_STACK_INNER=1 DEVDIR="$DEVDIR" XDP_BUILD="$XDP_BUILD" BACKEND="$BACKEND" \
 		XDP_ENV="$XDP_ENV" SOFTHSM_DIR="$SOFTHSM_DIR" \
 		dbus-run-session -- "${BASH_SOURCE[0]}" "${forward[@]}" -- "${E2E_ARGS[@]}"
 	rc=$?
 
+	# Failed runs retain their logs.
 	[ "$rc" = 0 ] && [ "${KEEP_LOGS:-0}" = 0 ] && fixture_remove "$DEVDIR" dev-stack
 	return $rc
 }

@@ -18,7 +18,7 @@ static gboolean pkcs11_available(GError** error)
 	if (webauth_cert_adapter_cert_uri() == NULL)
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-		                    "no --client-cert-uri was given");
+		                    "--client-cert-uri is required");
 		return FALSE;
 	}
 
@@ -34,8 +34,7 @@ static GTlsCertificate* pkcs11_acquire(const WebAuthCertChallenge* challenge, GE
 	                                                     webauth_cert_adapter_key_uri(), &inner);
 	if (certificate == NULL)
 	{
-		/* Library error text names the token and can carry a URI; it is cut
-		 * before either reaches a log or a D-Bus error. */
+		/* Library error URIs can expose token identity or PINs. */
 		g_autofree char* safe = webauth_redact_error_text(inner->message);
 
 		g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "%s", safe);
@@ -45,9 +44,7 @@ static GTlsCertificate* pkcs11_acquire(const WebAuthCertChallenge* challenge, GE
 	return certificate;
 }
 
-/* The PIN is read from a file the operator named, once, and is wiped when the
- * transaction ends. It is never in argv, never in the environment, and never
- * logged - not even as a length. */
+/* The PIN is cached for the transaction and wiped on release. */
 static const char* pkcs11_pin(void)
 {
 	const char* path = webauth_cert_adapter_pin_file();

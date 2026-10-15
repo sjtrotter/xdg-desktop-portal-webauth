@@ -25,9 +25,7 @@ struct WebAuthChrome
 	gpointer user_data;
 };
 
-/* Application text, rendered as application text: it is put in a label of its
- * own, under a fixed word that says where it came from, and it is escaped
- * because a title carrying markup would otherwise draw whatever it liked. */
+/* Application title hints are escaped and labelled separately from trusted identity. */
 static char* application_hint_markup(const char* title_hint)
 {
 	g_autofree char* escaped = NULL;
@@ -40,9 +38,7 @@ static char* application_hint_markup(const char* title_hint)
 	return g_strdup_printf("<small>The application says: %s</small>", escaped);
 }
 
-/* WHAT THE FRONTEND ESTABLISHED, said in words rather than in a code. The three
- * levels are the impl XML's; an empty app id is the fourth case and is the one
- * that has to be loudest. */
+/* Identity levels come from the impl XML; an empty application id is unidentified. */
 static char* caller_markup(const char* app_id, const char* app_identity_level)
 {
 	g_autofree char* escaped = NULL;
@@ -77,8 +73,7 @@ static gboolean on_close_request(GtkWindow* window, gpointer user_data)
 	if (self->on_cancel != NULL)
 		self->on_cancel(self->user_data);
 
-	/* The transaction destroys the window on its own terms, once it has
-	 * answered. */
+	/* The transaction owns window teardown. */
 	return TRUE;
 }
 
@@ -127,8 +122,7 @@ WebAuthChrome* webauth_chrome_new(const char* app_id, const char* app_identity_l
 	self->spinner = gtk_spinner_new();
 	adw_header_bar_pack_end(header, self->spinner);
 
-	/* The lock is never colour alone: the icon has a text label beside it and
-	 * both change together. */
+	/* The connection status must also be conveyed by text. */
 	self->origin_icon = gtk_image_new_from_icon_name("channel-secure-symbolic");
 	self->origin_label = gtk_label_new("");
 	gtk_label_set_selectable(GTK_LABEL(self->origin_label), FALSE);

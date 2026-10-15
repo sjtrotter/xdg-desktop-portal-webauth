@@ -1,13 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 
-# ONE gdbus-codegen run over both impl interfaces, with the common prefix
-# stripped, so the generated symbols read the way upstream's do:
-#
-#   org.freedesktop.impl.portal.experimental.WebAuthentication1
-#       -> XdpImplExperimentalWebAuthentication1
-#   org.freedesktop.impl.portal.Request
-#       -> XdpImplRequest
 impl_dbus_sources = gnome.gdbus_codegen(
   'xdp-impl-dbus',
   sources: [
@@ -18,9 +11,7 @@ impl_dbus_sources = gnome.gdbus_codegen(
   namespace: 'XdpImpl',
 )
 
-# The parts with no window, no engine and no bus in them, so that the unit tests
-# need neither a display nor a session bus to run. The completion rule is here
-# because it is the one piece of this backend that a test can exhaust.
+# Core tests require neither a display nor a session bus.
 webauth_core_sources = files(
   'completion.c',
   'harden.c',
@@ -43,9 +34,7 @@ webauth_service_sources = files(
 
 webauth_deps = [glib_dep, gobject_dep, gio_dep]
 
-# One log domain for everything this backend writes, so that --verbose can turn
-# ON this backend's breadcrumbs without also turning on GIO's, dconf's and GDK's
-# -- which is what "all" did, and it buried the six lines that matter.
+# A separate log domain lets verbose mode enable only backend messages.
 webauth_c_args = ['-DG_LOG_DOMAIN="webauth"']
 
 webauth_ui_deps = [gtk_dep, adw_dep, webkit_dep]
@@ -71,9 +60,7 @@ webauth_core_dep = declare_dependency(
   dependencies: webauth_deps,
 )
 
-# The D-Bus and UI half, as a library rather than only as objects inside the
-# binary, so that a test can stand the impl object up on a private bus and drive
-# the real code rather than a copy of it.
+# The service library lets integration tests exercise the impl object on a private bus.
 webauth_service = static_library(
   'webauth-service',
   webauth_service_sources + impl_dbus_sources,
@@ -86,7 +73,7 @@ webauth_service = static_library(
 
 webauth_service_dep = declare_dependency(
   link_with: [webauth_service, webauth_core],
-  # The generated header, so that a dependent compiles after codegen has run.
+  # Expose the generated header dependency so consumers compile after code generation.
   sources: impl_dbus_sources[1],
   include_directories: [config_inc, include_directories('.')],
   dependencies: webauth_deps + webauth_ui_deps,
