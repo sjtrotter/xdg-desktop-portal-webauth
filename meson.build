@@ -20,6 +20,8 @@ cc = meson.get_compiler('c')
 gnome = import('gnome')
 
 add_project_arguments(
+  '-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_80',
+  '-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_80',
   cc.get_supported_arguments([
     '-Wshadow',
     '-Wpointer-arith',
@@ -42,9 +44,9 @@ dbus_interfaces_dir = datadir / 'dbus-1' / 'interfaces'
 # The frontend discovers backend declarations in this directory.
 portal_dir = datadir / 'xdg-desktop-portal' / 'portals'
 
-glib_dep = dependency('glib-2.0', version: '>= 2.66')
-gobject_dep = dependency('gobject-2.0', version: '>= 2.66')
-gio_dep = dependency('gio-2.0', version: '>= 2.66')
+glib_dep = dependency('glib-2.0', version: '>= 2.80')
+gobject_dep = dependency('gobject-2.0', version: '>= 2.80')
+gio_dep = dependency('gio-2.0', version: '>= 2.80')
 
 webkit_dep = dependency('webkitgtk-6.0', version: '>= 2.40')
 gtk_dep = dependency('gtk4', version: '>= 4.10')
