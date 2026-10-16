@@ -1,5 +1,12 @@
 # xdg-desktop-portal-webauth
 
+> **Development has stopped (2026-10-16).** Most native applications are better served by the
+> system browser with authorization code + PKCE and a registered or loopback redirect
+> (RFC 8252), which keeps browser single sign-on and needs no new desktop service. This
+> repository stays available as a reference; open issues are not scheduled. The Certificate
+> portal ([xdg-desktop-portal-certificate](https://github.com/sjtrotter/xdg-desktop-portal-certificate))
+> continues on its own. Details: [#14](https://github.com/sjtrotter/xdg-desktop-portal-webauth/issues/14).
+
 A backend for an experimental xdg-desktop-portal interface that runs a web sign-in for an
 application. The application passes a start URI and the completion URI it expects; the portal
 opens a WebKitGTK window, lets the user sign in, stops the navigation that reaches the
@@ -90,7 +97,7 @@ Both `--client-cert-uri` and `--client-key-uri` reject `pin-value`; supply the P
 | Caller name in the certificate chooser | partial | the chooser names this backend, not the application |
 | Grant lifetime tied to the sign-in | partial | a grant outlives the sign-in, and a TLS connection outlives the grant |
 | Second consumer, second backend | partial | a OneDrive wrapper ran against a fixture; there is no second backend |
-| Upstream proposal | not started | |
+| Upstream proposal | not planned | development stopped, see the notice above |
 | Independent security review | missing | |
 
 Hardware evidence, all with one PIV card, one reader, OpenSC, GNOME 50 on Wayland and one US
