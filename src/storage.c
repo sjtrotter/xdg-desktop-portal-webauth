@@ -61,8 +61,7 @@ char* webauth_storage_directory_name(const char* app_id)
 			g_string_append_c(out, '_');
 	}
 
-	/* A leading dot hides the directory and "." and ".." are not names at all;
-	 * an app id that reduces to one of them is treated as no name. */
+	/* Leading dots are removed to exclude hidden directories and parent-directory components. */
 	while (out->len > 0 && out->str[0] == '.')
 		g_string_erase(out, 0, 1);
 
@@ -91,8 +90,7 @@ gboolean webauth_storage_paths(const char* app_id, char** data_directory, char**
 	data = g_build_filename(base, "data", NULL);
 	cache = g_build_filename(base, "cache", NULL);
 
-	/* 0700 from the first instant: a store holds session cookies for the
-	 * application's identity provider. */
+	/* Storage holds session cookies and must be private from creation. */
 	if (g_mkdir_with_parents(data, 0700) != 0 || g_mkdir_with_parents(cache, 0700) != 0)
 	{
 		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,

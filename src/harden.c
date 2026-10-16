@@ -51,9 +51,7 @@ void webauth_harden_identifiable_begin(void)
 		return;
 	}
 
-	/* Logged at MESSAGE, not DEBUG: an operator reading a journal is entitled to
-	 * see every interval in which this process was readable, without having to
-	 * have asked for breadcrumbs first. */
+	/* Identification intervals must be logged without verbose mode. */
 	webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_HARDENING, "outcome",
 	                  WEBAUTH_FIELD_OUTCOME, "identifiable-begin", NULL);
 }
@@ -71,7 +69,6 @@ void webauth_harden_identifiable_end(void)
 
 	if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0)
 	{
-		/* THE WINDOW IS STUCK OPEN AND THAT IS A WARNING, not a debug line. */
 		webauth_log_event(G_LOG_LEVEL_WARNING, WEBAUTH_EVENT_HARDENING, "outcome",
 		                  WEBAUTH_FIELD_OUTCOME, "identifiable-end-failed", NULL);
 		return;

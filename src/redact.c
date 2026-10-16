@@ -25,9 +25,7 @@ gboolean webauth_log_get_verbose(void)
 	return verbose;
 }
 
-/* A host or an app id is a string from somewhere else, and a log line is read in
- * a terminal: control characters, escape sequences and bidi overrides are
- * dropped rather than passed through. */
+/* Log values must exclude terminal controls and bidi overrides. */
 static char* sanitise(const char* value)
 {
 	GString* out = g_string_new(NULL);
@@ -58,8 +56,7 @@ static char* sanitise(const char* value)
 	return g_string_free(out, FALSE);
 }
 
-/* The one shape a URI may be logged in: enough to say where the flow was, never
- * enough to replay it. */
+/* URI paths may contain identifiers; only their length is loggable. */
 static char* uri_shape(const char* value)
 {
 	g_autoptr(GUri) uri = NULL;
@@ -97,8 +94,7 @@ char* webauth_redact_field(WebAuthFieldKind kind, const char* value)
 			return g_strdup_printf("<cert-uri:%zu>", value != NULL ? strlen(value) : 0);
 
 		case WEBAUTH_FIELD_SECRET:
-			/* Not even a length: a redacted secret in a log still says one was
-			 * entered and how long it was. */
+			/* Secret lengths must also be redacted. */
 			return g_strdup("<secret>");
 
 		case WEBAUTH_FIELD_OUTCOME:
@@ -136,10 +132,7 @@ void webauth_log_event(GLogLevelFlags level, const char* event, ...)
 	g_log(G_LOG_DOMAIN, level, "%s", line->str);
 }
 
-/* p11-kit, OpenSC, GnuTLS and glib-networking all put URIs in error strings, and
- * a PKCS#11 URI may carry a pin-value attribute. Truncating at the first URI is
- * cheap and correct; passing library error text through unmodified is how a PIN
- * reaches a journal. */
+/* Library errors may contain PKCS#11 URIs with pin-value attributes. */
 char* webauth_redact_error_text(const char* message)
 {
 	const char* cut = NULL;
@@ -160,8 +153,7 @@ char* webauth_redact_error_text(const char* message)
 	if (cut == NULL)
 		return sanitise(message);
 
-	/* Back up to the start of the token the URI begins in, so that a scheme
-	 * left dangling before the cut does not read as part of the message. */
+	/* Truncate the whole token containing the URI to avoid a dangling scheme. */
 	while (cut > message && !g_ascii_isspace(cut[-1]))
 		cut--;
 

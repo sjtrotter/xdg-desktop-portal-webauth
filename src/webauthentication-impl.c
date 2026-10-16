@@ -23,24 +23,18 @@ struct WebAuthBackend
 	GDBusConnection* connection;
 	XdpImplExperimentalWebAuthentication1* skeleton;
 
-	/* The frontend's unique name, cached for refusals only; see
-	 * webauth_backend_sender_is_frontend(). */
+	/* The cached owner may only be used to refuse calls. */
 	char* frontend_owner;
 	gboolean owner_resolved;
 	guint frontend_watch;
 
-	/* Every transaction with a window still open. Borrowed pointers: a
-	 * transaction removes itself when it answers. The list exists so that the
-	 * frontend going away can take the windows down with it. */
+	/* The list holds transaction references until the finished hook removes them; frontend loss cancels them all. */
 	GPtrArray* transactions;
 };
 
-/* ONE BACKEND PER PROCESS. The Request skeleton is exported by this object but
- * is a separate GObject with its own default handler, and that handler has to
- * ask the same question every method asks. */
+/* The Request default handler uses the single backend for authorization. */
 static WebAuthBackend* singleton = NULL;
 
-/* ------------------------------------------------------------ peer identity */
 
 static void set_frontend_owner(WebAuthBackend* self, const char* owner)
 {
@@ -54,10 +48,7 @@ static void set_frontend_owner(WebAuthBackend* self, const char* owner)
 	                  owner != NULL ? "present" : "gone", NULL);
 }
 
-/* THE WATCHER IS FOR CLEANUP; THE BUS IS THE AUTHORITY. D-Bus does not order
- * NameOwnerChanged against the messages of the process that lost the name, so a
- * cached owner alone would accept calls from a former frontend that is still
- * connected. */
+/* NameOwnerChanged is not ordered against former-owner messages; accepted calls require a bus owner lookup. */
 static const char* resolve_frontend_owner(WebAuthBackend* self)
 {
 	g_autoptr(GVariant) reply = NULL;
@@ -71,8 +62,6 @@ static const char* resolve_frontend_owner(WebAuthBackend* self)
 	    "GetNameOwner", g_variant_new("(s)", WEBAUTH_FRONTEND_BUS_NAME), G_VARIANT_TYPE("(s)"),
 	    G_DBUS_CALL_FLAGS_NO_AUTO_START, 1000, NULL, &error);
 
-	/* NameHasNoOwner, or a bus that did not answer: nobody may call. Failing
-	 * closed is the only safe direction here. */
 	if (reply != NULL)
 		g_variant_get(reply, "(&s)", &owner);
 
@@ -81,16 +70,7 @@ static const char* resolve_frontend_owner(WebAuthBackend* self)
 	return self->frontend_owner;
 }
 
-/* A NEGATIVE MAY COME OUT OF THE CACHE. A POSITIVE MAY NOT.
- *
- *   ACCEPTING a sender hands it Start with an app id of its choosing and a
- *   window on the user's screen, so it is never decided from a remembered
- *   answer: every accept asks the bus who owns the name now.
- *
- *   REFUSING one is free and cannot be wrong in a dangerous direction, so it is
- *   decided from the cached owner with no bus call at all -- and that matters,
- *   because anything on the session bus can send this process a message and a
- *   GetNameOwner round trip per stranger's message IS the denial of service. */
+/* Cached refusals avoid a bus round trip for each message from an unauthorized sender. */
 gboolean webauth_backend_sender_is_frontend(WebAuthBackend* self, const char* sender)
 {
 	if (self == NULL || sender == NULL)
@@ -102,7 +82,6 @@ gboolean webauth_backend_sender_is_frontend(WebAuthBackend* self, const char* se
 	if (self->frontend_owner == NULL || g_strcmp0(sender, self->frontend_owner) != 0)
 		return FALSE;
 
-	/* The cache says yes, which is exactly when it may not be believed. */
 	resolve_frontend_owner(self);
 
 	return self->frontend_owner != NULL && g_strcmp0(sender, self->frontend_owner) == 0;
@@ -118,8 +97,6 @@ static gboolean reject_stranger(WebAuthBackend* self, GDBusMethodInvocation* inv
 	if (webauth_backend_sender_is_frontend(self, g_dbus_method_invocation_get_sender(invocation)))
 		return FALSE;
 
-	/* Logged by outcome and never explained to the caller: a caller that is not
-	 * the portal has no business learning why. */
 	webauth_log_event(G_LOG_LEVEL_MESSAGE, WEBAUTH_EVENT_START_REFUSED, "outcome",
 	                  WEBAUTH_FIELD_OUTCOME, "sender-not-frontend", NULL);
 
@@ -149,9 +126,6 @@ static void on_frontend_appeared(GDBusConnection* connection, const char* name, 
 	set_frontend_owner(user_data, owner);
 }
 
-/* THE FRONTEND CAN VANISH. There is nobody left to answer, and a window
- * belonging to no request is the leaked window the interface promises not to
- * have. */
 static void on_frontend_vanished(GDBusConnection* connection, const char* name, gpointer user_data)
 {
 	WebAuthBackend* self = user_data;
@@ -160,10 +134,8 @@ static void on_frontend_vanished(GDBusConnection* connection, const char* name, 
 	cancel_all(self, WEBAUTH_REASON_SESSION_TERMINATED);
 }
 
-/* ------------------------------------------------------------------- Start */
 
-/* The transaction is held by the list until it answers; the slot is what the
- * finished hook needs in order to take it off again. */
+/* The finished hook uses this slot to remove its transaction from the backend list. */
 typedef struct
 {
 	WebAuthBackend* backend;
@@ -218,8 +190,7 @@ static gboolean handle_start(XdpImplExperimentalWebAuthentication1* object,
 	                  WEBAUTH_FIELD_APP_ID, arg_app_id, "uri", WEBAUTH_FIELD_URI_SHAPE,
 	                  arg_start_uri, NULL);
 
-	/* Validated again, because this backend's safety must not depend on a
-	 * frontend having been correct. */
+	/* Validate URIs independently of the frontend. */
 	if (!webauth_completion_start_uri_is_valid(arg_start_uri, &error) ||
 	    !webauth_completion_uri_is_valid(arg_completion_uri, &error))
 	{
@@ -274,7 +245,6 @@ static gboolean handle_start(XdpImplExperimentalWebAuthentication1* object,
 	return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
 
-/* ------------------------------------------------------------------ export */
 
 WebAuthBackend* webauth_backend_new(GDBusConnection* bus, GError** error)
 {

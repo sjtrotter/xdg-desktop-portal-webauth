@@ -3,40 +3,15 @@
 # SPDX-FileCopyrightText: 2026 Stephen J. Trotter <stephen.j.trotter@gmail.com>
 #
 # Adapted from the sibling backend xdg-desktop-portal-certificate's
-# tools/softhsm-fixture.sh (same author, same licence): the token now
-# holds ONE client certificate, and the fixture also issues the CA and the
-# server certificate tools/mtls-server.py needs, because here the point is a
-# mutual-TLS handshake rather than a signature.
+# tools/softhsm-fixture.sh (same author, same licence).
 #
-# It builds, in one throwaway directory nothing else on the machine sees:
-#
-#   ca.pem              the CA that signs both ends of the fixture
-#   server.pem/.key     what tools/mtls-server.py listens with
-#   tokens/             a SoftHSM token holding the client certificate and its
-#                       private key, non-extractable, behind a PIN
-#   pin                 that PIN, mode 0600, which is how the backend is given
-#                       it: a PIN on a command line is world-readable
-#   pkcs11/modules/     a p11-kit module directory naming libsofthsm2.so, to be
-#                       used as $XDG_CONFIG_HOME so that the token is visible to
-#                       GnuTLS -- and therefore to WebKit's network process --
-#                       without touching the machine's own configuration
-#
-# A TEST THAT HAS ONLY BEEN RUN AGAINST A SOFTWARE TOKEN HAS NOT BEEN RUN. This
-# is the rehearsal; docs/TESTING.md lists what only a card can answer.
-#
-#     tools/softhsm-fixture.sh              # create it
-#     tools/softhsm-fixture.sh --clean      # remove it
-#
-#   $SOFTHSM_DIR     where to put it. Default ${TMPDIR:-/tmp}/xdp-webauth-softhsm
-#   $SOFTHSM_MODULE  path to libsofthsm2.so. Searched for if unset.
-#   $SOFTHSM_UTIL    path to softhsm2-util. Searched for if unset.
-#
-# THE DIRECTORY IS CHECKED BEFORE IT IS USED, AND BEFORE IT IS DELETED, by
-# tools/lib.sh: ownership, containment under $TMPDIR, no symlinks on the path,
-# and this project's marker file. An `rm -rf` gated on ownership alone is an
-# `rm -rf` a mistyped SOFTHSM_DIR aims at $HOME.
-#
-# The PIN is 123456 and it is a test PIN in a scratch directory; do not reuse it.
+# Usage: tools/softhsm-fixture.sh [--clean]
+# Create a disposable SoftHSM client token, CA and TLS server certificate.
+# Use --clean to remove the validated fixture directory.
+# SOFTHSM_DIR selects the directory under TMPDIR (default: ${TMPDIR:-/tmp}/xdp-webauth-softhsm).
+# SOFTHSM_MODULE and SOFTHSM_UTIL select the module and utility paths.
+# PIN and SO_PIN are disposable fixture values; do not use real-token PINs.
+# See docs/TESTING.md for hardware-token tests.
 
 set -eu
 
@@ -71,9 +46,7 @@ find_module() {
 		}
 	done
 
-	die "libsofthsm2.so not found. Install softhsm, or set SOFTHSM_MODULE.
-Without root, 'dnf download softhsm' and 'rpm2cpio ... | cpio -idmu' into a
-scratch directory is enough: nothing here needs the package installed."
+	die "libsofthsm2.so not found; install softhsm or set SOFTHSM_MODULE"
 }
 
 find_util() {
@@ -87,7 +60,7 @@ find_util() {
 		return
 	fi
 
-	# Alongside the module, in an unpacked-rpm layout.
+	# Unpacked RPMs place the utility beside the module's library directory.
 	candidate="$(dirname "$(dirname "$(dirname "$1")")")/bin/softhsm2-util"
 	[ -x "$candidate" ] && {
 		echo "$candidate"
@@ -123,19 +96,13 @@ EOF
 
 printf '%s' "$MODULE" >"$SOFTHSM_DIR/module-path"
 
-# THE MODULE HAS TO BE VISIBLE TO p11-kit, NOT JUST TO US. The certificate is
-# resolved from a URI inside WebKit's NETWORK PROCESS, which is a child of the
-# backend and has no idea what this script decided: it finds the token only
-# because p11-kit reads $XDG_CONFIG_HOME/pkcs11/modules, and that variable is
-# pointed here. The machine's own p11-kit configuration is not touched.
+# WebKit's network process resolves the token through the inherited p11-kit configuration.
 cat >"$SOFTHSM_DIR/pkcs11/modules/webauth-softhsm.module" <<EOF
 module: $MODULE
 critical: no
 EOF
 
-# The PIN goes in a file, not in argv and not in a URI's pin-value: the backend
-# refuses a pin-value for exactly this reason, and /proc/*/cmdline is readable
-# by every user on the machine.
+# Keep the fixture PIN in a private file for the backend to read.
 (umask 177 && printf '%s' "$PIN" >"$SOFTHSM_DIR/pin")
 
 export SOFTHSM2_CONF="$SOFTHSM_DIR/softhsm2.conf"
@@ -187,25 +154,20 @@ certtool --generate-certificate --load-privkey server.key --load-ca-privkey ca.k
 	--load-ca-certificate ca.pem --template server.tmpl --outfile server.pem 2>/dev/null
 
 openssl x509 -in client.pem -outform der -out client.der
-# softhsm2-util imports PKCS#8 only, and certtool writes PKCS#1 for RSA.
+# softhsm2-util requires PKCS#8; certtool writes RSA keys as PKCS#1.
 openssl pkcs8 -topk8 -nocrypt -in client.key -out client.p8
 
 "$UTIL" --module "$MODULE" --init-token --slot 0 --label "$LABEL" \
 	--so-pin "$SO_PIN" --pin "$PIN" >/dev/null
 
-# softhsm2-util and pkcs11-tool take the PIN on argv and offer no other way, so
-# it is visible in ps for the length of these two calls. THAT IS ONLY ACCEPTABLE
-# BECAUSE THIS IS A THROWAWAY FIXTURE PIN in a scratch directory. Nothing that
-# touches a real card may copy this pattern.
+# These utilities expose the disposable fixture PIN in argv; real-token code must keep PINs out of argv.
 "$UTIL" --module "$MODULE" --import client.p8 --token "$LABEL" \
 	--label "$OBJECT" --id 01 --pin "$PIN" >/dev/null
 
 pkcs11-tool --module "$MODULE" --token-label "$LABEL" --login --pin "$PIN" \
 	--write-object client.der --type cert --id 01 --label "$OBJECT" >/dev/null
 
-# The private key stays on the token: what the backend is given is a URI. The
-# fixture's own client.key and client.p8 are removed so that a run cannot
-# accidentally prove the pipeline with a file instead of the token.
+# Remove fixture key files so the handshake must use the token.
 rm -f client.key client.p8 client.der ca.key ca.tmpl client.tmpl server.tmpl
 
 CERT_URI="pkcs11:token=$(printf '%s' "$LABEL" | sed 's/ /%20/g');object=$OBJECT;type=cert"

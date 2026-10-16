@@ -9,49 +9,16 @@
 #include "request-impl.h"
 #include "storage.h"
 
-/** @file
- *  One transaction in the backend, and the only object allowed to complete it.
- *
- *  A transaction owns the start URI, the completion URI, the deadline, the
- *  storage mode it was given, the app id the FRONTEND established, the window,
- *  whatever the certificate adapter is holding, and exactly one terminal result.
- *  It is reference counted because the web view, each idle, the pending impl
- *  method invocation and the timeout source all hold references and outlive one
- *  another in unpredictable orders.
- *
- *  The races are specified rather than discovered:
- *
- *    - a committed completion wins over a simultaneous Close();
- *    - a Close() forwarded from the frontend never yields a later success;
- *    - a timeout closes the window and answers 2;
- *    - every late event after the terminal result is discarded;
- *    - whatever the certificate adapter holds is released on EVERY exit path;
- *    - THE FRONTEND CAN VANISH: the transaction is cancelled and the window
- *      destroyed at once, because a window belonging to no request is exactly
- *      the "leaked window" failure the interface promises not to have.
- *
- *  The deadline lives here and only here. The frontend forwards a clamped
- *  "timeout" and then waits on the impl call with a D-Bus timeout of G_MAXINT:
- *  it has no timer of its own, so a backend that never answers is a request that
- *  never ends. See docs/IMPL-INTERFACE.md.
- */
+/** The backend owns the deadline; the frontend waits with a G_MAXINT D-Bus timeout. See docs/IMPL-INTERFACE.md. */
 
 typedef enum
 {
-	WEBAUTH_RESPONSE_COMPLETED = 0, /**< @results carries "completion_uri" */
-	WEBAUTH_RESPONSE_CANCELLED = 1, /**< the user closed the window, or Close() arrived */
-	WEBAUTH_RESPONSE_OTHER = 2      /**< timeout, no engine, no display, no cert adapter */
+	WEBAUTH_RESPONSE_COMPLETED = 0, /**< @results carries "completion_uri". */
+	WEBAUTH_RESPONSE_CANCELLED = 1,
+	WEBAUTH_RESPONSE_OTHER = 2
 } WebAuthResponse;
 
-/** The reason symbols this backend emits. The first six are the impl XML's own
- *  vocabulary; the rest are additions, listed in docs/IMPL-INTERFACE.md, which
- *  the XML permits by saying "for instance".
- *
- *  credential_unavailable is the generic one: the flow needed a credential this
- *  backend could not supply. It used to be spelled no_certificate_adapter,
- *  which named a piece of this backend in an interface that has nothing to do
- *  with certificates. What KIND of credential is a detail field in the log,
- *  never a word on the wire. */
+/** Reason symbols and extensions are listed in docs/IMPL-INTERFACE.md. */
 #define WEBAUTH_REASON_TIMEOUT "timeout"
 #define WEBAUTH_REASON_NO_DISPLAY "no_display"
 #define WEBAUTH_REASON_NO_ENGINE "no_engine"
@@ -67,14 +34,9 @@ typedef enum
 
 typedef struct WebAuthTransaction WebAuthTransaction;
 
-/** Called when the transaction reaches its terminal result: the window and every
- *  dialog belonging to it are destroyed here, and anything the certificate
- *  adapter holds is released. */
 typedef void (*WebAuthTransactionHook)(gpointer user_data);
 
-/** @app_id and @app_identity_level are what the frontend established and are used for
- *  display only; this process never re-derives them. @mode is the EFFECTIVE
- *  storage mode (storage.h). */
+/** Application identity comes from the frontend; @mode is the effective storage mode. */
 WebAuthTransaction* webauth_transaction_new(GDBusMethodInvocation* invocation,
                                             WebAuthImplRequest* request, const char* app_id,
                                             const char* app_identity_level, const char* start_uri,
@@ -86,23 +48,18 @@ void webauth_transaction_unref(WebAuthTransaction* self);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(WebAuthTransaction, webauth_transaction_unref)
 
-/** Start the deadline. Called once the window is up, so that a slow start-up
- *  does not eat the application's timeout. */
+/** The deadline starts after the window is presented. */
 void webauth_transaction_start_deadline(WebAuthTransaction* self);
 
-/** Run @hook when the transaction finishes, and again never: the web view's
- *  window and everything it owns go away here. */
+/** Runs once on every terminal outcome to destroy the window and release certificate resources. */
 void webauth_transaction_set_teardown(WebAuthTransaction* self, WebAuthTransactionHook hook,
                                       gpointer user_data);
 
-/** Run @hook after the teardown, so that the backend can forget a transaction
- *  that has answered. It is the last thing the transaction does. */
+/** Runs after teardown and the method reply to remove the transaction from the backend. */
 void webauth_transaction_set_finished(WebAuthTransaction* self, WebAuthTransactionHook hook,
                                       gpointer user_data);
 
-/** Record the terminal result, release everything, unexport the impl request,
- *  and return from the Start method call.
- *  @return TRUE if this call is the one that completed the transaction. */
+/** Returns TRUE only for the call that commits the terminal result. */
 gboolean webauth_transaction_finish(WebAuthTransaction* self, WebAuthResponse response,
                                     const char* completion_uri, const char* reason);
 

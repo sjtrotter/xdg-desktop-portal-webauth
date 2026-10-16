@@ -13,7 +13,7 @@ struct WebAuthTransaction
 {
 	int ref_count;
 
-	GDBusMethodInvocation* invocation; /* completed exactly once, in finish() */
+	GDBusMethodInvocation* invocation;
 	WebAuthImplRequest* request;
 
 	char* app_id;
@@ -36,12 +36,7 @@ struct WebAuthTransaction
 	gboolean done;
 };
 
-/* THE CLOSE PATH. The handler is connected here rather than by the backend so
- * that the transaction, which already owns the Request, is the only thing
- * holding it -- a Request holding a reference back to its transaction would be a
- * cycle neither could leave. It is disconnected in finish() for the same
- * reason. Returning FALSE continues emission into the Request's own default
- * handler, which unexports and answers Close(). */
+/* The transaction owns the Request; the signal holds no back-reference and continues into the default Close handler. */
 static gboolean on_request_close(XdpImplRequest* object, GDBusMethodInvocation* invocation,
                                  gpointer user_data)
 {
@@ -142,16 +137,13 @@ gboolean webauth_transaction_finish(WebAuthTransaction* self, WebAuthResponse re
 	g_autofree char* duration = NULL;
 	GDBusMethodInvocation* invocation = NULL;
 
-	/* Every late event after the terminal result is discarded, and that is the
-	 * only thing keeping "exactly one answer" true when a completion and a
-	 * Close() arrive in the same main loop iteration. */
+	/* Only the first terminal event may answer the method call. */
 	if (self->done)
 		return FALSE;
 
 	self->done = TRUE;
 
-	/* The teardown and the finished hook between them drop the last two
-	 * references, so this function holds one of its own until it has answered. */
+	/* Teardown and the finished hook may drop the last external references. */
 	webauth_transaction_ref(self);
 
 	g_clear_handle_id(&self->deadline_id, g_source_remove);
@@ -160,8 +152,7 @@ gboolean webauth_transaction_finish(WebAuthTransaction* self, WebAuthResponse re
 	if (self->teardown != NULL)
 		self->teardown(self->teardown_data);
 
-	/* Unexported BEFORE the method call is completed, so that a Close() arriving
-	 * in the same instant finds nothing to close. */
+	/* Unexport before replying so a late Close cannot reach a completed transaction. */
 	webauth_impl_request_unexport(self->request);
 
 	if (response == WEBAUTH_RESPONSE_COMPLETED && completion_uri != NULL)

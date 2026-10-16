@@ -15,9 +15,7 @@ static char* cert_uri = NULL;
 static char* key_uri = NULL;
 static char* pin_file = NULL;
 
-/* The private key object of a pair written to a token under one CKA_ID: the
- * certificate URI with its object class swapped. Deriving it rather than asking
- * for it is what makes --client-cert-uri alone enough. */
+/* Certificate and private-key objects must share CKA_ID so changing the URI type selects the pair. */
 static char* derive_key_uri(const char* certificate_uri)
 {
 	const char* type = NULL;
@@ -47,14 +45,14 @@ gboolean webauth_cert_adapter_configure(const char* name, const char* certificat
 	    g_strcmp0(name, "pkcs11") != 0 && g_strcmp0(name, "none") != 0)
 	{
 		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-		            "--cert-adapter takes auto, portal, pkcs11 or none");
+		            "--cert-adapter must be auto, portal, pkcs11 or none");
 		return FALSE;
 	}
 
 	if (g_strcmp0(name, "pkcs11") == 0 && certificate_uri == NULL)
 	{
 		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-		            "--cert-adapter pkcs11 needs --client-cert-uri");
+		            "--cert-adapter pkcs11 requires --client-cert-uri");
 		return FALSE;
 	}
 
@@ -65,8 +63,7 @@ gboolean webauth_cert_adapter_configure(const char* name, const char* certificat
 		return FALSE;
 	}
 
-	/* A pin-value in a URI is a PIN in this process's argv, and argv is
-	 * world-readable through /proc. The file is the way in. */
+	/* Command-line URIs are visible through /proc; PINs must come from a file. */
 	if (certificate_uri != NULL && strstr(certificate_uri, "pin-value") != NULL)
 	{
 		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -134,8 +131,7 @@ const WebAuthCertAdapter* webauth_cert_adapter_select(GError** error)
 		return NULL;
 	}
 
-	/* auto: the portal first, because it is the one that keeps the PIN out of
-	 * this process, and the token URI second. */
+	/* The portal provider keeps PIN handling outside this process. */
 	if (webauth_cert_adapter_portal()->available(&portal_error))
 		return webauth_cert_adapter_portal();
 
@@ -143,7 +139,7 @@ const WebAuthCertAdapter* webauth_cert_adapter_select(GError** error)
 		return webauth_cert_adapter_pkcs11();
 
 	g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-	            "No certificate provider is available: portal: %s; pkcs11: %s",
+	            "Certificate providers unavailable: portal: %s; pkcs11: %s",
 	            portal_error->message, pkcs11_error->message);
 
 	return NULL;

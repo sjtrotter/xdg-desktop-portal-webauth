@@ -31,25 +31,14 @@ G_DEFINE_FINAL_TYPE_WITH_CODE(WebAuthImplRequest, webauth_impl_request, XDP_IMPL
                               G_IMPLEMENT_INTERFACE(XDP_IMPL_TYPE_REQUEST,
                                                     webauth_impl_request_iface_init))
 
-/* THE DEFAULT Close() HANDLER. The transaction connects its own handler to
- * "handle-close" to answer its pending Start with response 1; that handler
- * returns FALSE so emission continues into this class closure, which is the only
- * place that unexports and answers Close() itself. Splitting it that way is
- * upstream's idiom and it is what keeps "answered exactly once" true on both the
- * response path and the close path. */
+/* The transaction handler returns FALSE so this default handler can unexport and answer Close. */
 static gboolean webauth_impl_request_handle_close(XdpImplRequest* object,
                                                   GDBusMethodInvocation* invocation)
 {
-	/* The reference comes first: resolving who owns the frontend name can
-	 * discover that it has changed hands, and that discovery cancels every
-	 * transaction the previous owner created -- which is the one holding the
-	 * other reference to this Request. */
+	/* Owner resolution can cancel the transaction holding the other Request reference. */
 	g_autoptr(WebAuthImplRequest) request = g_object_ref(WEBAUTH_IMPL_REQUEST(object));
 
-	/* CLOSE IS AUTHORISED LIKE EVERY OTHER METHOD. A request path is
-	 * /org/freedesktop/portal/desktop/request/<sender>/<handle_token> and the
-	 * token is very often a fixed string, so anything on the bus could
-	 * otherwise cancel sign-in windows as they appeared. */
+	/* Request paths are predictable; Close requires frontend authorization. */
 	if (!webauth_backend_sender_is_frontend_default(
 	        g_dbus_method_invocation_get_sender(invocation)))
 	{
@@ -116,8 +105,7 @@ gboolean webauth_impl_request_export(WebAuthImplRequest* request, GDBusConnectio
 	if (request->exported)
 		return TRUE;
 
-	/* A failure here aborts the call: a transaction with no Request on the bus
-	 * is a window the frontend cannot cancel. */
+	/* A request export failure must abort Start so the frontend can always cancel it. */
 	if (!g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(request), connection,
 	                                      request->id, error))
 		return FALSE;

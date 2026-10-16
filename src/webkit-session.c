@@ -28,20 +28,17 @@ struct WebAuthWebkitSession
 	char* parent_window;
 	char* activation_token;
 
-	/* The host of the page a challenge may legitimately come from: the one being
-	 * loaded, and the one already loaded. */
+	/* Challenges may come from the current host or the host being loaded. */
 	char* pending_host;
 	char* current_host;
 
-	/* Why the load failed, when the reason is better than "load_failed": a
-	 * declined certificate challenge is the usual case, and a server that
-	 * required one then closes the connection. */
+	/* Certificate challenge failures override the generic load_failed reason. */
 	const char* pending_reason;
 
 	gboolean torn_down;
 };
 
-/* Development-only pinned server certificates: host -> GTlsCertificate. */
+/* Development trust pins map hosts to GTlsCertificate objects. */
 static GHashTable* debug_trust = NULL;
 
 gboolean webauth_webkit_debug_trust_add(const char* spec, GError** error)
@@ -90,13 +87,10 @@ gboolean webauth_webkit_session_available(GError** error)
 {
 	if (gdk_display_get_default() == NULL)
 	{
-		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "no display");
+		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "Display unavailable");
 		return FALSE;
 	}
 
-	/* The engine is a link-time dependency, so its absence is a missing library
-	 * rather than a run-time condition; what can still be missing at run time is
-	 * a web process, and that is discovered when one is spawned. */
 	return TRUE;
 }
 
@@ -155,9 +149,7 @@ static void on_cancel(gpointer user_data)
 	                           WEBAUTH_REASON_USER_CANCELLED);
 }
 
-/* THE MOMENT THE WHOLE DESIGN EXISTS FOR. The matched navigation is IGNORED, not
- * followed: the URI carries the authorization code, and letting the engine fetch
- * it would send the code to a page that has no part in the exchange. */
+/* Completion URIs carry credentials; structural matches, including custom schemes, must be intercepted before fetching or external dispatch. */
 static gboolean complete_on(WebAuthWebkitSession* self, const char* uri)
 {
 	if (!webauth_completion_matches(uri, webauth_transaction_completion_uri(self->transaction)))
@@ -204,8 +196,7 @@ static gboolean on_decide_policy(WebKitWebView* view, WebKitPolicyDecision* deci
 		}
 
 		case WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION:
-			/* There is one window and it belongs to the transaction. A flow that
-			 * needs a popup is a flow this backend does not serve. */
+			/* Each transaction permits only one window. */
 			webkit_policy_decision_ignore(decision);
 			return TRUE;
 
@@ -215,9 +206,7 @@ static gboolean on_decide_policy(WebKitWebView* view, WebKitPolicyDecision* deci
 
 			uri = webkit_uri_request_get_uri(webkit_response_policy_decision_get_request(response));
 
-			/* The belt to the navigation braces: a response for the completion
-			 * URI means the navigation rule missed it, and the body must still
-			 * not be rendered. */
+			/* A completion response body must be blocked even if navigation interception missed it. */
 			if (complete_on(self, uri))
 			{
 				webkit_policy_decision_ignore(decision);
@@ -226,9 +215,6 @@ static gboolean on_decide_policy(WebKitWebView* view, WebKitPolicyDecision* deci
 
 			if (!webkit_response_policy_decision_is_mime_type_supported(response))
 			{
-				/* Anything the engine would hand to a download instead of
-				 * rendering. Downloads are off; refusing the response is how
-				 * that is enforced before one starts. */
 				webkit_policy_decision_ignore(decision);
 				return TRUE;
 			}
@@ -289,19 +275,7 @@ static gboolean on_load_failed(WebKitWebView* view, WebKitLoadEvent event, const
 	if (webauth_transaction_is_done(self->transaction))
 		return TRUE;
 
-	/* A cancelled load is USUALLY this backend's own doing -- an ignored policy
-	 * decision on the completion URI -- and is then not a failure.
-	 *
-	 * IT IS NOT ALWAYS. Declining a TLS client-certificate challenge cancels the
-	 * load too, and WebKit reports that the same way: WEBKIT_NETWORK_ERROR_CANCELLED,
-	 * indistinguishable from here. Treating both as "not a failure" left a
-	 * transaction whose challenge had been declined with nothing to end it -- the
-	 * window stayed open until the caller's own timeout and the application was
-	 * told request_closed instead of the reason. Measured with the certificate
-	 * portal's chooser cancelled: 120 seconds of nothing.
-	 *
-	 * pending_reason is the difference, and it is only ever set by a path that
-	 * has already given up on this transaction. */
+	/* A declined certificate challenge also cancels the load; pending_reason must still terminate the transaction. */
 	if (g_error_matches(error, WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED) &&
 	    self->pending_reason == NULL)
 		return TRUE;
@@ -314,9 +288,7 @@ static gboolean on_load_failed(WebKitWebView* view, WebKitLoadEvent event, const
 	return TRUE;
 }
 
-/* FAIL CLOSED, WITH NO WAY TO SAY OTHERWISE. There is no "continue anyway"
- * button and no option that would add one: a sign-in page whose certificate does
- * not verify is the case this portal exists to make safe. */
+/* TLS errors terminate the flow without a bypass. */
 static gboolean on_load_failed_tls(WebKitWebView* view, const char* uri, GTlsCertificate* cert,
                                    GTlsCertificateFlags errors, gpointer user_data)
 {
@@ -344,9 +316,7 @@ static void on_web_process_terminated(WebKitWebView* view, WebKitWebProcessTermi
 	                           WEBAUTH_REASON_SESSION_TERMINATED);
 }
 
-/* The challenge must belong to the page the window is showing. A subresource on
- * a third host asking a hardware token to authenticate the user is not part of
- * the sign-in, and the user is not in a position to tell. */
+/* Client-certificate challenges must belong to the current or loading page host. */
 static gboolean challenge_is_related(WebAuthWebkitSession* self, const char* host)
 {
 	if (host == NULL)
@@ -378,9 +348,7 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 
 		if (pin == NULL)
 		{
-			/* The portal provider's token prompts on its own protected path, so
-			 * a PIN request reaching this process means the token is not the one
-			 * that was expected. */
+			/* The portal token uses a protected authentication path; an in-process PIN request indicates the wrong token. */
 			self->pending_reason = WEBAUTH_REASON_CREDENTIAL_UNAVAILABLE;
 			webkit_authentication_request_cancel(request);
 			return TRUE;
@@ -455,8 +423,6 @@ static gboolean on_authenticate(WebKitWebView* view, WebKitAuthenticationRequest
 static gboolean on_permission_request(WebKitWebView* view, WebKitPermissionRequest* request,
                                       gpointer user_data)
 {
-	/* Geolocation, notifications, the camera, the microphone, clipboard reads:
-	 * a sign-in page needs none of them and this window grants none of them. */
 	webkit_permission_request_deny(request);
 	return TRUE;
 }
@@ -477,8 +443,7 @@ static WebKitNetworkSession* build_network_session(WebAuthTransaction* transacti
 
 		if (session == NULL)
 		{
-			/* An ephemeral store that cannot be made is a transaction that
-			 * fails. It is never quietly served from the shared one. */
+			/* Ephemeral session creation failure must abort the transaction. */
 			g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
 			                    "could not create an ephemeral website data store");
 			return NULL;
@@ -497,11 +462,7 @@ static WebKitNetworkSession* build_network_session(WebAuthTransaction* transacti
 
 		session = webkit_network_session_new(data, cache);
 
-		/* THE COOKIE JAR IS NOT PERSISTED BY THE DATA DIRECTORY ALONE. A
-		 * WebKitNetworkSession with a data directory keeps caches, storage and
-		 * HSTS state there, but cookies stay in memory until the cookie manager
-		 * is given a file -- so a "shared" store without this line is an
-		 * ephemeral one with a directory next to it. */
+		/* WebKit persists cookies only when the cookie manager has a storage file. */
 		{
 			g_autofree char* jar = g_build_filename(data, "cookies.sqlite", NULL);
 
@@ -519,12 +480,7 @@ static WebKitNetworkSession* build_network_session(WebAuthTransaction* transacti
 	apply_debug_trust(session);
 	webkit_network_session_set_itp_enabled(session, TRUE);
 
-	/* A client-certificate choice and an HTTP credential are decisions for one
-	 * transaction. WEBKIT_CREDENTIAL_PERSISTENCE_NONE says so per credential;
-	 * this says it for the session, so that nothing WebKit decides on its own
-	 * is written to a store that outlives the window. There is no
-	 * WEBKIT_WEBSITE_DATA_* type for client-certificate decisions, so this is
-	 * the whole of what the engine offers here. */
+	/* Credential persistence is disabled for the session; WebKit has no website-data type for certificate choices. */
 	webkit_network_session_set_persistent_credential_storage_enabled(session, FALSE);
 
 	return session;
@@ -566,10 +522,7 @@ WebAuthWebkitSession* webauth_webkit_session_new(WebAuthTransaction* transaction
 		return NULL;
 	}
 
-	/* Chosen before the window opens rather than in the middle of a handshake,
-	 * so that a machine with no provider says so once, in the log, instead of
-	 * failing a TLS negotiation with nothing to point at. A NULL adapter is not
-	 * an error: most sign-ins need no certificate at all. */
+	/* Provider selection may fail without ending a flow that needs no certificate. */
 	self->adapter = webauth_cert_adapter_select(&adapter_error);
 	if (self->adapter == NULL)
 		webauth_log_event(G_LOG_LEVEL_DEBUG, WEBAUTH_EVENT_CERT_DECLINED, "provider",
@@ -623,7 +576,5 @@ void webauth_webkit_session_present(WebAuthWebkitSession* self)
 
 	webkit_web_view_load_uri(self->view, start_uri);
 
-	/* The clock starts when the window is up: a slow start-up must not eat the
-	 * application's timeout. */
 	webauth_transaction_start_deadline(self->transaction);
 }
