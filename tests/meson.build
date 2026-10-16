@@ -16,7 +16,7 @@ foreach name, source : webauth_unit_tests
     executable(
       'webauth-test-' + name,
       source,
-      dependencies: [webauth_core_dep],
+      dependencies: [name == 'options' ? webauth_service_dep : webauth_core_dep],
       include_directories: config_inc,
       install: false,
     ),

@@ -84,7 +84,7 @@ static const char* description =
     "\n"
     "The auto certificate provider tries the Certificate portal and its p11-kit module,\n"
     "then the token named by --client-cert-uri. PINs must come from --client-cert-pin-file;\n"
-    "pin-value in the certificate URI is refused. This process has no chooser or PIN prompt.\n"
+    "pin-value in certificate and key URIs is refused. This process has no chooser or PIN prompt.\n"
     "See docs/decisions/0007-certificate-adapter.md and docs/TESTING.md.\n"
     "\n"
     "Exit codes: 0 clean shutdown; 40 unavailable; 64 usage; 70 internal error.\n"
