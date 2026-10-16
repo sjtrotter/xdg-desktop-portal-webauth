@@ -4,9 +4,12 @@
 #ifndef WEBAUTH_TLS_PORTAL_TOKEN_H
 #define WEBAUTH_TLS_PORTAL_TOKEN_H
 
-/* Constants must match xdg-desktop-portal-certificate's src/module/portal-token.h. */
+/* Identical copies: xdg-desktop-portal-certificate src/module/portal-token.h and
+ * xdg-desktop-portal-webauth src/tls/portal-token.h. Change both together. */
 
-/** The module exposes one token with these identity fields; see docs/decisions/0007-certificate-adapter.md. */
+/** Identity of the single token the certificate portal's PKCS#11 module exposes. The token
+ *  sets CKF_PROTECTED_AUTHENTICATION_PATH: the portal collects the PIN, and a consumer must
+ *  never ask for it. */
 
 #define XDG_PORTAL_CERTIFICATE_TOKEN_LABEL "Portal Certificate"
 #define XDG_PORTAL_CERTIFICATE_TOKEN_MANUFACTURER "freedesktop.org"
