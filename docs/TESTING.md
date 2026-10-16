@@ -17,9 +17,13 @@ portal interface with the backend fixtures.
 ## Tier 1: unit tests
 
 ```console
-$ meson setup build && ninja -C build
+$ meson setup build -Dwerror=true && ninja -C build
 $ meson test -C build
 ```
+
+The build sets `GLIB_VERSION_MIN_REQUIRED` and `GLIB_VERSION_MAX_ALLOWED` to 2.80
+for all C targets. With `-Dwerror=true`, GLib APIs newer than the required version
+fail compilation, including when building against newer installed headers.
 
 [The test guide](../tests/README.md) lists the `unit` suite, hardening checks and shared
 completion fixtures. The client's suites run in

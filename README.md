@@ -34,9 +34,9 @@ through the Certificate portal.
 
 ## Try it
 
-Build dependencies are GLib/GIO 2.80 or newer (`meson.build` still declares 2.66,
-[#8](https://github.com/sjtrotter/xdg-desktop-portal-webauth/issues/8)), GTK 4.10, libadwaita 1.4
-and WebKitGTK 6.0 2.40; p11-kit is optional.
+Build dependencies are GLib/GObject/GIO 2.80 or newer, GTK 4.10, libadwaita 1.4
+and WebKitGTK 6.0 2.40; p11-kit is optional. Meson enforces the GLib requirement and
+warns about GLib API newer than 2.80; `-Dwerror=true` makes that an error.
 
 ```console
 $ meson setup build
