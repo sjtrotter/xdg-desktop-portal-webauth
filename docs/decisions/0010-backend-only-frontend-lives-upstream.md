@@ -14,9 +14,8 @@ read `org.freedesktop.portal.experimental.WebAuthentication` and
 `org.freedesktop.portal.WebAuthentication.X1` and
 `org.freedesktop.impl.portal.WebAuthentication.X1`; the public side is exported on
 `/org/freedesktop/portal/desktop/experimental` rather than the standard path; and there is
-no `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate at all — the frontend exports the
-interface whenever a backend for it is configured. The record below is left as it was
-written, except where it states a live rule.
+no `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate at all; the frontend exports the
+interface whenever a backend for it is configured.
 
 **Update 2026-09-09.** The 2026-09-07 rebuild left this backend on the standard path while the
 convention says "the backend object path should be the same" as the frontend's experimental
@@ -45,8 +44,8 @@ default. Sebastian Wick, on that PR, 2026-01-28:
 
 So there is a sanctioned way to write an unfinished portal frontend, it is inside
 xdg-desktop-portal, and the names it uses are `org.freedesktop.portal.experimental.*` and
-`org.freedesktop.impl.portal.experimental.*` — not because acceptance has been granted,
-but because that is the namespace upstream set aside for exactly this state.
+`org.freedesktop.impl.portal.experimental.*`. Upstream set aside that namespace for
+this state; its use does not imply acceptance.
 
 Against that, a separately-namespaced frontend in this repository was worse in every
 direction. It reimplemented `Request`, app-id derivation and `.portal` discovery that
@@ -61,15 +60,12 @@ application had any reason to trust.
 repository is an out-of-tree backend plus an application, and nothing else.**
 
 - The frontend is `xdg-desktop-portal`, branch
-  `experimental/certificate-webauthentication`, 10 commits on upstream `86bd3e2`
-  (`22818e6..1aaffaf`), with
-  `a6b06d4 web-authentication: Add an experimental WebAuthentication portal` as the one
-  that matters here. It defines both
+  `experimental/certificate-webauthentication`. It defines both
   `org.freedesktop.portal.experimental.WebAuthentication` (public) and
   `org.freedesktop.impl.portal.experimental.WebAuthentication` (impl), implements the URI
   validation, the option filter, the completion re-check and the
   `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` gate, and ships a python-dbusmock backend and
-  a pytest suite (16 functions, 35 cases, 70 runs, passing).
+  a pytest suite.
 - This repository builds **one binary**, `xdg-desktop-portal-webauth`, owning
   `org.freedesktop.impl.portal.desktop.webauth` and exporting
   `/org/freedesktop/portal/desktop/experimental` (until 2026-09-09 the standard path; see the
@@ -77,7 +73,7 @@ repository is an out-of-tree backend plus an application, and nothing else.**
 - The Entra client, which shared this repository at the time, is unchanged in substance. It calls
   `org.freedesktop.portal.experimental.WebAuthentication` on
   `org.freedesktop.portal.Desktop` instead of a project-controlled name, and it now has to
-  say something specific when that interface is absent — see "An absent interface is a
+  say something specific when that interface is absent; see "An absent interface is a
   normal outcome" below.
 - `data/org.freedesktop.impl.portal.WebAuthentication.X1.xml` (named
   `...experimental.WebAuthentication.xml` at the time) is a
@@ -90,7 +86,7 @@ repository is an out-of-tree backend plus an application, and nothing else.**
   the sibling repository's top-level `src/` + `data/` as closely as a second component
   allows. (At the 2026-09-07 split it became the repository root, and the mirroring is exact.)
 
-## What this changes about the old "never advertise" rule
+## Revision of the old "never advertise" rule
 
 The previous layout installed its `.portal` file into `${datadir}/webauth-portal/portals`
 and said, in the file itself, that an unaccepted prototype must not advertise itself to
@@ -108,8 +104,7 @@ The honest caveat, kept rather than dropped: **the interface named in that file 
 experimental upstream.** A stock xdg-desktop-portal has never heard of
 `org.freedesktop.impl.portal.WebAuthentication.X1`, will not match this file against any
 interface it knows, and will ignore it. Installing the file is therefore inert on a
-machine without the branch — which is what makes it safe, and is not the same claim as
-"this is a supported portal".
+machine without the branch, which makes it safe. This does not mean the portal is supported.
 
 ## An absent interface is a normal outcome, and the client must say so
 
@@ -120,67 +115,57 @@ correctly built client still produce "no such interface" until a backend for the
 is installed and configured.
 
 So the exit-40 diagnostic must say that no backend is configured rather than "portal
-unavailable". The two causes — no backend configured, no portal at all — remain
+unavailable". The two causes (no backend configured, no portal at all) remain
 indistinguishable to a client, deliberately, because the frontend does not export the
 interface in either of them.
 
 ## Consequences
 
-- **[0008](0008-build-to-the-upstream-shape.md)'s split is preserved, not reversed.**
-  Everything it argued for — that the app id is derived by a process the application
-  cannot talk to and handed to the process that draws the window naming it, that
-  alternative browsing mechanisms are alternative *backends* selected in `portals.conf`
-  rather than a capability mask, that the frontend validates and the backend enforces —
-  is exactly what this repository is now built against. What changed is who ships the
-  other half.
-- **0008's "Per-project bus names during incubation" section is moot**, and is marked as
-  such there in one line rather than rewritten away. There is no incubating frontend to
-  give a bus name to.
-- **[0005](0005-service-shape.md) is amended in one line.** Everything it is about — URL
-  in, completion out, no tokens, no accounts, no caching, the nine objections, the exit
-  criterion — is untouched. Only its "Naming" section, which chose
-  `io.github.sjtrotter.portal.WebAuthentication1`, is overtaken: the name is now the
-  frontend branch's to choose.
-- **[0007](0007-certificate-adapter.md) is amended.** The certificate adapter is now a
+- [0008](0008-build-to-the-upstream-shape.md) defines the frontend/backend split.
+  The frontend derives the app ID and passes it to the backend that displays it.
+  Alternative browsing mechanisms are backends selected in `portals.conf`.
+  The frontend validates requests; the backend enforces browser behavior.
+- There is no separate incubating frontend requiring the per-project bus names in
+  [0008](0008-build-to-the-upstream-shape.md).
+- The frontend branch owns interface naming. [0005](0005-service-shape.md) defines the
+  protocol-independent completion contract, objections and exit criterion.
+- The certificate adapter in [0007](0007-certificate-adapter.md) is a
   client of the *public* `org.freedesktop.portal.Certificate.X1` on
-  `org.freedesktop.portal.Desktop` — and the interface it calls no longer has
+  `org.freedesktop.portal.Desktop`, and the interface it calls no longer has
   `OpenPkcs11Endpoint`, which changes what the `portal` adapter can actually do.
-- **The delegation gap gets a cheap answer in-process.** 0007 and 0008 both said this
+- The delegation gap gets a cheap answer in-process. 0007 and 0008 both said this
   backend naming the wrong application in the certificate portal's chooser is solved when
-  both interfaces live in one trusted frontend process. They do now — the same
-  xdg-desktop-portal, the same branch — so the frontend can hand the original app id to
+  both interfaces live in one trusted frontend process. They now share the same
+  xdg-desktop-portal process and branch, so the frontend can hand the original app id to
   its own certificate side without anything crossing a bus. It does not do so yet; that is
   unwritten work on the branch.
 
-  **An earlier version of this line said "and only in-process". That is wrong.** The rule
-  is narrower and more useful: **never believe a caller about a third party's identity**.
+  A caller's claim about a third party's identity is untrusted.
   An app id read out of a message from a peer that could have put anything there is
   identity laundering and is not to be built. Delegation across a boundary is not itself
   forbidden; [../SECURITY.md](../SECURITY.md) states the rule and what would satisfy it,
   none of which is built. In-process is the cheapest way to satisfy the rule, not the only
   one.
-- **The branch is ours until it is accepted.** Moving the frontend into xdg-desktop-portal's
+- The branch is ours until it is accepted. Moving the frontend into xdg-desktop-portal's
   tree buys review in the right place and the reuse of `Request`, `Session`, app-id
   derivation and `.portal` discovery. It does **not** transfer maintenance: an unmerged
   branch is this author's to rebase, to keep green and to redesign when upstream asks, and
   upstream may redesign the interface rather than rename it. Any sentence in this
   repository that reads as though the frontend became somebody else's problem is describing
   the intended end state and not today.
-- **One rule, two implementations, and both are now tested.** The completion matcher
-  still exists twice — here, against live navigations, and in the frontend, re-checking
-  what this backend returns. The frontend's copy has tests
-  (`test_completion_mismatch_rejected`, `test_completion_normalisation_accepted`); this
-  one is `src/completion.c`, tested by `test-completion.c`. The shared fixture
-  table in `tests/README.md` is still the mitigation.
-- **The interface changed shape in the move.** `Start`'s signature did not, on either
-  side — which is the strongest evidence 0008's shape argument was right. What did change
+- The frontend checks returned URIs with tests
+  `test_completion_mismatch_rejected` and `test_completion_normalisation_accepted`.
+  This backend checks live navigations in `src/completion.c`, tested by `test-completion.c`.
+  [Shared fixtures](../../tests/README.md#completion-fixtures) check agreement.
+- The interface changed shape in the move. `Start`'s signature did not, on either
+  side, which is the strongest evidence 0008's shape argument was right. What did change
   is around it: `completion_uri` is specified as "absolute, with a host, no userinfo"
   rather than "https or an exactly named custom scheme"; the `reason` symbols are fixed by
   the XML; and the timeout ceiling and default are settled in code.
-- **This repository is smaller and its claims are narrower.**
+- This repository is smaller and its claims are narrower.
   [PUBLIC-INTERFACE.md](../PUBLIC-INTERFACE.md) is a pointer to the branch's XML with a
   summary, and the authority is the XML.
-- **What remains before any of it could be a pull request** is in
+- The work remaining before any of it could be a pull request is in
   [UPSTREAMING.md](../UPSTREAMING.md): the "new portals" issue upstream asks for, the
   `Assisted-by:` trailer convention the branch write-up notes, a second unrelated
   consumer, and a second backend.

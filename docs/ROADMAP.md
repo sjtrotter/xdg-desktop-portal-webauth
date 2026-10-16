@@ -1,349 +1,128 @@
 # Roadmap
 
-Status: phases 0c, 0d, 0f and 0g are **done** and 0a/0b were already done upstream; everything from
-phase 1 on is untouched. What "done" means here is [TESTING.md](TESTING.md): a fixture, not a
-tenant and not a card.
+The reference backend, both certificate providers and the first Entra client are implemented.
+The frontend is maintained on `experimental/integration`; [Upstreaming](UPSTREAMING.md) covers
+its proposal requirements. [Testing](TESTING.md) records the evidence and limits.
+[ADR 0010](decisions/0010-backend-only-frontend-lives-upstream.md) assigns frontend ownership.
 
-**What has changed since this document was last honest about its own scope:** the frontend is no
-longer this project's to build ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md),
-[UPSTREAMING.md](UPSTREAMING.md)). Anything below that budgets frontend work is work that is *done,
-elsewhere, by the same author*; the numbers have not been re-derived, and where a line is now moot
-it says so rather than pretending the rest got better.
+## Current evidence
 
-Effort figures are person-weeks for **one experienced Linux/C developer already familiar with the
-working Remmina patches**, taken from the Codex estimate in the design review. They describe a
-*credible MVP*, not something ready for general distribution. The largest single uncertainty in
-all of them is S2 (the WebKitGTK client-certificate path across distro versions).
+[Feasibility checks](SPIKES.md) records the S1, S2 and S3 results and their remaining
+keyring, card and distribution matrices.
 
-## Before anything: the two spikes — both answered
+[The impl guide](IMPL-INTERFACE.md) defines backend behavior;
+[Security](SECURITY.md#implemented-controls-and-gaps) lists implemented controls and gaps.
 
-[S1](SPIKES.md) (refresh token → PoP token for a new key, silently) and [S2](SPIKES.md) (does
-WebKit + GLib TLS accept a certificate on a p11-kit-forwarded module) are both answered. S2 was
-settled 2026-09-04: the Certificate portal's own PKCS#11 module works, and the 2026-09-04/05/06
-runs exercised it end to end. S1 was settled by the 2026-09-05 chain: under this Government
-tenant's Conditional Access policy, redeeming the refresh token for a new PoP key was not silent —
-it needed one interactive re-auth. S3 (keyring availability) also ran: the ARM token came from the
-keyring cache on the 2026-09-05 run.
+[entra-token-helper](https://github.com/sjtrotter/entra-token-helper) owns authorization-code
+exchange, PKCE S256, response validation, commercial/Government authority allowlists, ARM bearer
+and RDS-AAD PoP acquisition, refresh, OAuth error parsing and Secret Service account storage.
+Access-token cache entries share the keyring secret with refresh tokens. The client exposes
+`accounts` and `logout` in its own CLI. Per-account refresh serialization, cancellation races
+and portal web-session clearing on logout remain outstanding. The split is recorded in
+[ADR 0006](decisions/0006-two-repositories.md).
 
----
+## Backend work
 
-## Phase 0 — Reference backend and Entra client — **10–17 person-weeks**
+- Review security chrome for caller identity, origin, contrast and scaling. Complete the
+  [accessibility criteria](PUBLIC-INTERFACE.md#accessibility-requirements), including screen-reader
+  use, focus order and focus return.
+- Resolve certificate attribution, grant lifetime and authenticated connection reuse. Both
+  providers need card-removal, wrong-PIN, cancellation and timeout coverage across the support
+  matrix. [Security](SECURITY.md) defines the constraints.
+- Add frontend per-connection rate limiting and test the impl sender boundary.
+- Expand [offline fixtures](../tests/README.md), keep both matcher tables aligned and review
+  completion/Close/death races independently.
+- Package the backend with its D-Bus activation file, `.portal` declaration and documented
+  `portals.conf`. The branch-built frontend remains required. Recommend the Certificate portal;
+  retain `pkcs11` as a fallback for an operator-named token.
+- Test GNOME and KDE, Wayland and X11, including parent-window handling and activation.
 
-One backend and one token client, working against the frontend on the xdg-desktop-portal branch, on
-the machines the author controls. Not packaged for the world, not proposed to anyone. The client
-half is tracked here for continuity; since 2026-09-07 it is built and tested in
-[its own repository](https://github.com/sjtrotter/entra-token-helper).
+Planning allowances are 1-2 person-weeks for security chrome/accessibility, 1 week for
+integration and 2-3 weeks for tests and review, assuming one experienced Linux/C developer
+familiar with the Remmina patches. Remaining total effort is unestimated; the support matrix
+is the largest uncertainty. [ADR 0008](decisions/0008-build-to-the-upstream-shape.md) records
+the split's costs.
 
-The frontend line in the estimates below is **done** — it is upstream's code on a branch, with
-tests — which is a real saving, and the figures have not been reworked to reflect it. Read them as
-a ceiling.
+## Consumers and proposal
 
-The estimate rose by about a person-week against the single-service plan, and that increase is the
-price of [decisions/0008](decisions/0008-build-to-the-upstream-shape.md): a second D-Bus interface,
-a second activation path, backend discovery, and the failure paths that only exist when the two
-halves can die independently. It is spent here rather than spent twice later.
+The OneDrive wrapper has [fixture evidence](TESTING.md#headless); live OneDrive integration
+remains unproven. Seek an unrelated use case and an independent
+backend to validate the generic contract. [ADR 0005](decisions/0005-service-shape.md) records
+why these are acceptance criteria. The interface could still be rejected.
 
-### ~~0a. Frontend: the portal — 1–2 weeks~~ — **done, upstream**
+Before proposing stable interfaces:
 
-`Start`, the `Request` object, `Close()`, one `Response`. App-id derivation and its three honesty
-levels. Option filtering and argument validation. Storage-mode policy. The re-check of the
-`completion_uri` a backend returns. Exact parsed completion matching and its rejection rules — the
-frontend's copy. Structural redaction discipline.
+1. Complete the backend, accessibility and hardware validation above.
+2. Document the threat model, caller identity, completion rule, storage and chrome.
+   Test the GLib/WebKit/GnuTLS support matrix.
+3. Demonstrate independent consumers and desktop/backend implementations.
+4. Open a design discussion in
+   [flatpak/xdg-desktop-portal](https://github.com/flatpak/xdg-desktop-portal).
+5. Agree the public and impl contracts, then add conformance tests and independent review.
 
-All of it exists in `desktop-portal/web-authentication.c` on the xdg-desktop-portal branch, with 35
-passing pytest cases (70 runs across the host and Flatpak fixture). One caveat: **rate limiting is
-not implemented** — it is on the branch's own open-items list. It has been driven by WebKitGTK
-(2026-09-04/05) and by a real Entra ID tenant (2026-09-05).
+## Related interfaces and prior art
 
-### ~~0b. Frontend: backend discovery and lifetime — 0.5–1 week~~ — **done, upstream, and mostly for free**
-
-`.portal` file parsing, the `portals.conf` `[preferred]` search, not exporting the interface when
-nothing implements it, proxying with a `G_MAXINT` timeout, forwarding `Close()`, and the answers the
-frontend owes when a backend cannot start, dies, or misbehaves
-([IMPL-INTERFACE.md](IMPL-INTERFACE.md)). Almost none of this was written for these portals:
-`xdp-portal-config.c` and `xdp-request-dex.c` were already there. That is the clearest single
-measure of what
-[decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md) saved.
-
-### ~~0c. Backend: WebKitGTK web view — 1–2 weeks~~ — **done, here**
-
-The GTK4/WebKitGTK 6.0 backend: the impl skeleton and its Request object, `parent_window` parsing
-and parenting, window, navigation policy, interception before load, the backend's copy of the
-completion matcher, storage partitioning across engine state, disabled downloads, popups and
-permissions, no TLS-error bypass, structural redaction. All of it is in `src/`, and
-[TESTING.md](TESTING.md) is what it has been run against.
-
-**Two things came out of building it that the estimate did not have**, and both are recorded where
-they are enforced: the missing frame identity on a navigation policy decision, which changed what
-the interface promises ([IMPL-INTERFACE.md](IMPL-INTERFACE.md)), and the cookie manager that has to
-be given a file before a `WebKitNetworkSession` persists anything ([TESTING.md](TESTING.md)).
-
-### 0d. Backend: certificate adapter — **done for both providers**
-
-`tls/client_cert.c` and its two providers. The estimate assumed the expensive half was lifting a
-chooser and a PIN prompt out of the Remmina plugin and porting them to GTK 4. [S2](SPIKES.md)
-removed that work rather than scheduling it: WebKit resolves a certificate from a PKCS#11 URI in its
-network process and asks for the PIN itself, so this backend names a token and does no card handling
-at all. There is no `inproc` provider.
-
-**`pkcs11` is done**: a token named by `--client-cert-uri`, a PIN from a file, and a mutual-TLS
-handshake that completes against a server requiring a client certificate.
-
-**`portal` is done too, since 2026-09-04.** What it needed was not in this repository — a
-client-side PKCS#11 module from the Certificate portal, presenting the token named in
-`src/tls/portal-token.h` — and that module now exists and is installed by name.
-`tools/portal-stack.sh` runs both portals on one private bus and completes a real WebKitGTK
-mutual-TLS handshake with the card's key. It reports itself unavailable only where the portal is not
-running or its module is not in p11-kit's configuration, and `auto` then falls through to `pkcs11`.
-What is **not** done is per-transaction lifetime: see [SECURITY.md](SECURITY.md), "What closing a
-transaction does NOT do".
-
-Common to both, and disproportionately risky for its size: recognising the challenge, displaying the
-origin, refusing challenges from unrelated hosts, and releasing whatever the adapter held on **every**
-exit path — the cancellation and timeout paths especially. On the independent-review list in
-[SECURITY.md](SECURITY.md).
-
-The wide range is S2's fault and narrows once S2 has run.
-
-### 0e. Backend: security chrome and accessibility — **1–2 weeks**
-
-The chrome that shows the verified caller and the real origin independently of caller text, and the
-accessibility acceptance criteria from [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md), plus contrast
-and scaling. Budgeted as its own item because treating it as
-polish is how it does not happen, and because this chrome carries a security decision that WebKit's
-own accessibility does not cover.
-
-### ~~0f. Client: OAuth, clouds, refresh, cache — 2–3 weeks~~ — **done, in the client repository**
-
-Authorization-code exchange with `state` and PKCE S256; the strict response classifier and its
-percent-decoder; the commercial/Government cloud table; ARM bearer acquisition; RDS-AAD PoP
-acquisition using the caller's `req_cnf`, including the interactive fallback Entra's interstitial
-forces; refresh for both token kinds; token-response and OAuth-error parsing with redaction; the
-access-token cache and its key.
-
-In the client repository, [entra-token-helper](https://github.com/sjtrotter/entra-token-helper),
-with 68 unit assertions and its own `tools/entra-e2e.sh` ([TESTING.md](TESTING.md), tier 2c). One
-departure from the plan above: the access-token cache is
-**not** in memory. The CLI is a one-shot process, so an in-memory cache would live for the length of
-one call; it is stored inside the same keyring secret as the refresh token instead, under the same
-protection at rest. [SECURITY.md](SECURITY.md) says so in the secrets table.
-
-### 0g. Client: secret storage, concurrency, cancellation — **mostly done, in the client repo**
-
-Done: Secret Service storage for refresh tokens and account records, keyed by authority base,
-client id and account; the refusal to fall back to a file; `accounts` and `logout`.
-
-Not done: per-account serialization — two `token` calls for one account can both refresh and the
-second store wins, which costs a wasted round trip rather than correctness, but a rotating authority
-would make it correctness; cancellation and its races beyond the portal's own timeout; and the half
-of `logout` that asks the portal to discard the account's web session, which is recorded as a known
-gap in [SECURITY.md](SECURITY.md) rather than quietly left out.
-
-### 0h. Integration — **1 week**
-
-The Remmina adapter using FreeRDP's existing `GetCommonAccessToken` seam (save, install, chain on
-decline — exactly as `sso-mib` does), and a small reference client proving non-Remmina use. No
-FreeRDP changes required for either.
-
-### 0i. Tests and security cleanup — **2–3 weeks**
-
-Offline fixture tests (see [../tests/README.md](../tests/README.md)), including the completion
-fixture table run against **both** copies of the matcher; end-to-end tests against a real Government
-tenant for both ARM bearer and RDS-AAD PoP acquisition; and the independent review of the items
-named in [SECURITY.md](SECURITY.md), which now includes the impl boundary itself.
-
-**Phase 0 total: 10–17 person-weeks, in this repository. Allow 13–20 for something suitable for
-general distribution** rather than a controlled-environment build. The gap is distro variance,
-packaging, and the error paths that only appear on machines you do not own.
-
-The estimate has not fallen even though the Certificate portal exists as the only client-certificate
-path — that is the whole point of building the backend without an in-process adapter. What the
-Certificate portal buys is not a smaller phase 0; it is that the card code is eventually written
-*once*, for every application, rather than faster for this one.
-
-**And note the coordination cost**, most of which has now been paid in one place. The
-`AcquireCredential` contract, its grant semantics and the lifetime of anything it returns are
-settled — both interfaces are defined by one xdg-desktop-portal branch, so there are no two sketches
-to reconcile and no bus names to negotiate. Whether either can be implemented is settled too: the
-module transport S2 was to test now exists and was exercised end to end on 2026-09-04/05/06.
-
----
-
-## Phase 1 — Distribution and a second consumer
-
-Packaging for the distributions the S2 matrix identified, with **one** D-Bus service file, a
-`.portal` file in `$datadir/xdg-desktop-portal/portals`, a documented `portals.conf`, and a stated
-support floor — plus a patched or branch-built xdg-desktop-portal, which is the hard part. The
-Certificate portal is a *recommended*, not a required, dependency: without it the `pkcs11` provider
-(a token named on the command line; no chooser, no PIN prompt) is what runs instead. Testing on GNOME
-and KDE, on Wayland and X11, including `parent_window` parenting and `activation_token` behaviour.
-
-One packaging question is left, and it is smaller than it was: this repository ships one backend
-package plus a client, and the frontend is a patch to somebody else's package — a patch this
-project carries until it is accepted. The old question of
-what a distribution does when two incubating frontends want a bus name is gone with the frontends
-([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). The new one is that a
-distribution cannot ship this at all until the branch is merged, which is an argument for opening
-the upstream conversation sooner rather than later.
-
-And, more important than any of that: **a second, unrelated consumer.** Not a second RDP client —
-something that is not AVD and not FreeRDP, that needs an interactive web sign-in and would rather
-not build a browser. Until one exists, the generic layer is a generalisation from a single example,
-and [0005](decisions/0005-service-shape.md) is explicit that this is one of the ways the whole idea
-could be wrong. A second consumer is what turns the interface from a plausible shape into a tested
-one, and it is a precondition for phase 2 rather than a nice-to-have.
-
-Also in this phase: the repository split from
-[0006](decisions/0006-two-repositories.md), at the first tagged interface release.
-
----
-
-## Phase 2 — Propose the interface to freedesktop
-
-Only after phases 0 and 1 — **and note that a step of this phase has already been taken, in the
-wrong order.** The interfaces exist, as
-`org.freedesktop.portal.experimental.WebAuthentication1` and
-`org.freedesktop.impl.portal.experimental.WebAuthentication1`, on an unproposed xdg-desktop-portal
-branch. Experimental portals use the `experimental` namespace, a trailing number for breaking
-changes, and `/org/freedesktop/portal/desktop`. The frontend requires a configured backend
-and `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL=WebAuthentication1` in its startup environment.
-The Certificate portal also requires `Certificate1` in that comma-separated list.
-The interfaces have not been proposed upstream.
-[UPSTREAMING.md](UPSTREAMING.md) says where the branch is and what is left.
-
-The acceptance path, in order:
-
-1. Implement the prototype and publish the introspection XML. **Done, in the wrong order: the
-   frontend and both XML files exist on the branch, with tests, and so does this backend, run
-   against a real Entra ID tenant on 2026-09-05.**
-2. Document the threat model, completion matching, caller identity, cookie/storage model and UI
-   security chrome. (Most of that is [SECURITY.md](SECURITY.md) and
-   [PUBLIC-INTERFACE.md](PUBLIC-INTERFACE.md) already, but written against a real
-   implementation.)
-3. Demonstrate AVD **and at least one unrelated consumer**.
-4. Test on GNOME and KDE/Wayland, including parenting and activation.
-5. Open a design discussion in [`flatpak/xdg-desktop-portal`](https://github.com/flatpak/xdg-desktop-portal),
-   where the project directs requests for new portals.
-6. Agree the public interface and what the frontend enforces. This project has taken a concrete
-   position on both — [IMPL-INTERFACE.md](IMPL-INTERFACE.md) — precisely so there is something to
-   disagree with rather than a blank page.
-7. ~~Move the frontend into xdg-desktop-portal and rename both interfaces.~~ **Already done, on a
-   branch, out of order** ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)).
-   All ten commits already carry `Assisted-by: Claude:claude-fable-5-1`, which is what
-   `.gitlint.conf` asks for. What is left of this step is to have the patch reviewed — which is
-   steps 5 and 6, not this one.
-8. Obtain interest from another desktop, and a second backend. **None yet**: this repository's own
-   backend is implemented and tested, but no second, independent backend exists.
-9. Add conformance tests and documentation before declaring the incubating interface obsolete.
-
-The proposal will have to answer *"what protected host resource is being mediated?"* — portals
-traditionally mediate access that sandboxed applications lack. The strongest available answer is
-"a trusted system authentication user-agent, persistent sign-in state, and client-certificate
-capability". That is a plausible case, and it has to be made explicitly rather than assumed.
-
-### Prior art, stated accurately
-
-- **xdg-desktop-portal has no OAuth or web-authentication portal**, existing or proposed. A search
-  of its issue tracker finds only FIDO2/WebAuthn discussions —
+- Related xdg-desktop-portal issues include
   [#987 "FIDO2 Portal Proposal"](https://github.com/flatpak/xdg-desktop-portal/issues/987) and
   [#989 "FIDO U2F/WebAuthn abstraction/permission/portal"](https://github.com/flatpak/xdg-desktop-portal/issues/989)
-  — plus a closed
+  and closed
   [#311 "Add password portal"](https://github.com/flatpak/xdg-desktop-portal/issues/311). The
-  nearest *shipped* neighbours are
+  shipped neighboring interfaces are
   [`org.freedesktop.portal.Account`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Account.html)
   (basic user information) and
   [`org.freedesktop.portal.Secret`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Secret.html).
-- **[linux-credentials/credentialsd](https://github.com/linux-credentials/credentialsd)** proposes
+- [linux-credentials/credentialsd](https://github.com/linux-credentials/credentialsd) proposes
   an `org.freedesktop.portal.Credentials` interface for passkeys and WebAuthn, with a reference
-  implementation and experimental Firefox and Chromium integration. It is FIDO2-only: no OAuth, no
-  hosted web-view sign-in. Adjacent work rather than overlapping work, and a useful precedent for
-  how such an interface gets proposed and what it is asked to justify.
-- **Platform analogues** for the transaction shape:
+  implementation and experimental Firefox and Chromium integration. Its FIDO2-only scope excludes OAuth and
+  hosted web-view sign-in.
+- Platform analogues for the transaction shape:
   [`ASWebAuthenticationSession`](https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession),
   [Android Custom Tabs](https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs)
   with [AppAuth](https://github.com/openid/AppAuth-Android), and
   [`WebAuthenticationBroker`](https://learn.microsoft.com/en-us/uwp/api/windows.security.authentication.web.webauthenticationbroker)
   on Windows.
-- **Microsoft's Linux identity broker** is itself a per-user D-Bus-activated service, with
-  [sso-mib](https://github.com/siemens/sso-mib) as its C client — evidence that the shape works on
-  Linux, and a reminder that a vendor-specific service is not a platform primitive.
+- Microsoft's Linux identity broker is a per-user D-Bus-activated service, with
+  [sso-mib](https://github.com/siemens/sso-mib) as its C client.
 
-**None of these is adoption of this idea.** No maintainer has been asked, nothing has been
-proposed, and the interface here may well be argued down.
 
----
+## Deferred work
 
-## Deferred
+- Capability negotiation requires an upstream contract addition such as GetCapabilities.
+- System-browser and paste implementations are separate backends selected by `portals.conf`.
+  Browser-returnable completions include loopback HTTP, claimed HTTPS app links and registered
+  custom schemes; the AVD client registration does not offer these alternatives.
+- Browser extensions require explicit installation and remain experimental.
+- POST completions (`response_mode=form_post`, SAML HTTP-POST) require a separately reviewed
+  result shape and a consumer.
+- A separate `app_persistent` policy requires identity strong enough to key it. Current `shared`
+  storage already uses app IDs, including host labels, whose trust limits need review.
+- A KDE/Qt backend can implement the same impl contract; callers need not use the backend's toolkit.
+- Persisting certificate choice across transactions requires separate policy and must not persist PINs.
+- Device enrollment, PRTs and broker device claims belong to the Microsoft broker and `sso-mib`.
+  The Entra client implements the AVD flows on its authority allowlist; general MSAL coverage
+  is outside its scope.
+- Additional keyring providers and an explicit no-persistent-cache mode depend on the S3 matrix.
+- A client daemon and FreeRDP provider registry remain deferred pending demonstrated demand.
 
-Not "never" — "not yet, and not before something asks for it".
+Revisit [ADR 0007](decisions/0007-certificate-adapter.md) if the portal module fails across
+the support matrix. There is no in-process certificate adapter to retire.
 
-- ~~**A frontend/backend D-Bus split.**~~ **Done, deliberately and early**, against the advice
-  recorded here and in the design review. The costs that advice named are real, are accepted, and
-  are listed in [decisions/0008](decisions/0008-build-to-the-upstream-shape.md) rather than
-  deleted. What has *not* been done, and remains exactly as deferred as it was, is claiming an
-  `org.freedesktop.*` name.
-- **A capability-negotiating impl interface.** The split cost the old vtable's capability mask, and
-  version 1 replaces it with "a backend implements the whole interface or does not claim it". If
-  that turns out to be too rigid — a paste backend that can serve some flows, say — the answer is a
-  `GetCapabilities`-shaped addition argued upstream, not invented here.
-- ~~**A shared `incubating-portal-frontend`**~~ hosting both this interface and the certificate
-  portal's. **Done, and it is xdg-desktop-portal**: both interfaces are on one branch, in one
-  frontend process, which is what closes the delegation gap in-process
-  ([decisions/0010](decisions/0010-backend-only-frontend-lives-upstream.md)). What remains is for
-  that frontend to actually forward the original app id internally, and the permanent caveat, which
-  is "never believe a caller about a third party" rather than "never cross a process".
-- **A system-browser backend, and a paste backend.** Formerly "a system-browser session": under the
-  split these are separate backends selected by `portals.conf` rather than implementations behind a
-  vtable.
-- **A system-browser session.** The right first choice for flows whose completion the browser can
-  return safely — loopback HTTP, claimed HTTPS app links, registered custom schemes. Deferred only
-  because the AVD case cannot use it; it should be built as soon as a consumer can.
-- **POST completions** (`response_mode=form_post`, SAML HTTP-POST). A separately reviewed result
-  shape, added only when a real consumer needs it.
-- **A per-application persistent session mode.** Blocked on caller identity being credible enough
-  to key one. If it ever lands it should be called `app_persistent`.
-- **A browser extension session.** Experimental, explicitly installed, never the reference.
-- **A Qt user interface.** One GTK/WebKitGTK backend serves every caller, because the backend is a
-  separate process and its window need not match the caller's toolkit. A KDE-native *backend* is a
-  different matter and is now a straightforward one: implement the impl interface, ship a `.portal`
-  file, name it in `portals.conf`. That it became straightforward is most of the point of
-  [decisions/0008](decisions/0008-build-to-the-upstream-shape.md).
-- **There is no in-process certificate adapter to retire.** The backend was built directly against
-  the portal path once S2 answered; the `pkcs11` provider is a deliberate non-portal fallback, not a
-  holdover adapter. If the portal path stops working across the support matrix,
-  [0007](decisions/0007-certificate-adapter.md) should be reopened rather than left to drift.
-- **Persisting a certificate choice across transactions.** A distinct, reviewable policy under
-  either adapter, and one that never implies persisting a PIN.
-- **Device enrollment and PRT behaviour.** The Microsoft Identity Broker's job; `sso-mib` already
-  reaches it. This is the non-enrolled path, and the two are siblings.
-- **A generic MSAL replacement.** The client implements exactly the flows AVD needs against exactly
-  the authorities on its allowlist.
-- **Additional keyring backends** beyond Secret Service, plus the explicit "no persistent cache"
-  mode. Await S3.
-- **A client-side daemon.** The layering already removed most of the reason for one: the warm
-  browser session a client daemon would have bought is now the backend's shared store, and both
-  portal processes are already long-lived.
-- **A FreeRDP provider registry**, until the client's request contract has been exercised against a
-  real client.
+## FreeRDP integration
 
----
+[FreeRDP #13340](https://github.com/FreeRDP/FreeRDP/pull/13340), opened 2026-09-04 and reviewed
+favorably for 3.32, externalizes the AAD web view into a helper speaking newline-delimited
+JSON-RPC over two pipes. `navigate` takes a URL, redirect-URI prefix and timeout and returns
+the redirect URL verbatim. FreeRDP retains OAuth. The helper is selected with
+`/azure:auth-helper:<path|autodetect>`. A follow-up agreed in that review would pass OAuth
+parameters as JSON so the helper can construct the authorize URL.
 
-## FreeRDP-side follow-ups
+The proposed portal helper forwards navigation to Start and returns the completion URI.
+The helper protocol's redirect prefix must be reconciled with the portal's exact matching rule.
+A token-returning helper extension would allow `entra-token-helper` to supply cached refresh
+and proof-of-possession tokens too. `sso-mib` remains the provider for Intune-enrolled devices
+with device-bound PRTs; this project cannot mint those.
 
-Upstream FreeRDP PR #13340 (2026-09-04) externalizes the AAD web view into a helper process that
-speaks newline-delimited JSON-RPC over two pipes: `navigate` takes a URL, a redirect-URI prefix and
-a timeout and returns the redirect URL verbatim; OAuth stays in FreeRDP; the helper is selected
-with `/azure:auth-helper:<path|autodetect>`. A follow-up agreed in review will pass the OAuth
-parameters as JSON so the helper builds the authorize URL itself.
-
-That protocol is the seam this project integrates through:
-
-1. **A helper binary speaking the #13340 protocol** that forwards `navigate` to the
-   WebAuthentication portal's `Start` and returns the completion URI. No FreeRDP changes.
-2. **Argue, in the JSON follow-up, for a helper being allowed to return a token** rather than only
-   a redirect URL, so `entra-token-helper` (cached refresh tokens, proof-of-possession) can serve
-   as a helper too. `sso-mib` stays the provider for Intune-enrolled devices.
-
-The author's fork branch `client/entra-token-helper` (a `GetAccessToken` shim that runs the CLI) is
-a proof of concept from 2026-09-05 and is not the integration path.
-
+The fork-only `client/entra-token-helper` GetAccessToken shim is the proof of concept from
+2026-09-05. The intended integration uses the helper protocol above. The Remmina
+GetCommonAccessToken callback seam supports saving, chaining and restoring another provider,
+as `sso-mib` does; a reference client can exercise it without a FreeRDP code change.
