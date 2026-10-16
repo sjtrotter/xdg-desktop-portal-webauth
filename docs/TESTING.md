@@ -1,93 +1,68 @@
 # Testing
 
-What has been run, how to run it again, and what none of it proves.
+Dated transcripts establish results only for the recorded environment and revision.
 
-Three tiers, and they answer different questions:
-
-| Tier | What it covers | What it needs |
+| Tier | Coverage | Requirements |
 |---|---|---|
-| **1. Unit** | The rules: the completion match, the options, the storage partition's name, the redaction | Nothing. No display, no bus, no network. `meson test` |
-| **2. End to end, headless** | Everything between a D-Bus call and a rendered page: the real frontend, the real backend, a real web engine, a real TLS handshake | Xvfb, a built frontend, a SoftHSM fixture |
-| **2b. Both portals at once** | The primary path: the certificate comes from the **certificate portal**, through its client-side PKCS#11 module, and the card, the chooser and the PIN never enter this process | the above, plus a built `xdg-desktop-portal-certificate` and its fixture |
-| **2c. A consumer, end to end** | The other side of the interface: `entra-token-helper`, from its own repository, signing in through the portal against an Entra-shaped mock authority | Xvfb, a built frontend, this backend, and a checkout of the client repository. **No card and no second service.** |
-| **3. Against a real identity provider** | The only thing that can answer whether this works for the case the project exists for | A tenant, a card, and a person. **Done, 2026-09-05.** |
+| 1. Unit | Completion, options, storage paths, redaction and hardening | Built backend; no display, bus or network |
+| 2. Headless backend | Frontend, backend, engine and TLS handshake through `pkcs11` | Xvfb, built frontend and SoftHSM fixture |
+| 2b. Both portals | Certificate module, chooser, PIN and signing through `portal` | Tier 2 tools plus Certificate backend/module and its fixture |
+| 2c. Consumer | Entra client against a mock authority without certificate service | Client checkout, Xvfb and built frontend/backend |
+| 3. Live identity provider | Tenant policy and real card behavior | Tenant, card, reader and operator |
 
-**The portal provider is the primary path and the pkcs11 provider is the fallback.** Tier 2 runs
-the fallback, because it is the one that needs no second service; tier 2b runs the path this
-project exists for. A change that passes tier 2 and not tier 2b has not been tested.
+Run both tier 2 and tier 2b when changing certificate behavior. Tier 2c is owned by
+[entra-token-helper](https://github.com/sjtrotter/entra-token-helper); it shares the public
+portal interface with the backend fixtures.
 
-Tiers 2 and 2b are about the **backend**: a window, an engine, a handshake, a card. Tier 2c is
-driven from the client's repository, and deliberately shares nothing with them but the portal
-itself — no certificate adapter, no SoftHSM, no `xdg-desktop-portal-certificate`. If the two halves
-ever need each other's fixtures to pass, the split between them has stopped being real.
-
----
-
-## Tier 1 — the unit tests
+## Tier 1: unit tests
 
 ```console
 $ meson setup build && ninja -C build
 $ meson test -C build
 ```
 
-```
-1/5 unit - xdg-desktop-portal-webauth:completion OK   8 subtests passed
-2/5 unit - xdg-desktop-portal-webauth:options    OK   2 subtests passed
-3/5 unit - xdg-desktop-portal-webauth:storage    OK   5 subtests passed
-4/5 unit - xdg-desktop-portal-webauth:redact     OK   7 subtests passed
-5/5 unit - xdg-desktop-portal-webauth:harden     OK   2 subtests passed
+[The test guide](../tests/README.md) lists the `unit` suite, hardening checks and shared
+completion fixtures. The client's suites run in
+[its repository](https://github.com/sjtrotter/entra-token-helper).
 
-Ok:                5
-Fail:              0
-```
-
-The client's six suites moved with the client and run from
-[its own repository](https://github.com/sjtrotter/entra-token-helper).
-
-`test-harden.c` covers the counting of the window in which `PR_SET_DUMPABLE(0)` yields so that
-xdg-desktop-portal can identify this process — an unbalanced pair would leave it open for the life
-of the process, which is exactly the exposure the window exists to bound. It deliberately does not
-harden the test binary.
-
-`tests/test-completion.c` carries the frontend's own fixtures, marked `FRONTEND`, so that
-the two implementations of the completion rule can be seen to agree
-([IMPL-INTERFACE.md](IMPL-INTERFACE.md)).
-
-### With the sanitizers
+### Sanitizers
 
 ```console
 $ meson setup build-asan -Db_sanitize=address,undefined -Db_lundef=false
 $ ninja -C build-asan && meson test -C build-asan
 ```
 
-All five pass with LeakSanitizer on. If `libasan` is not installed system wide, unpack it into a
+The recorded sanitizer run passed all five tests with LeakSanitizer enabled. If libasan is unavailable, unpack it into a
 scratch directory and set `LIBRARY_PATH` (to link) and `LD_LIBRARY_PATH` (to run).
 
 ---
 
-## Tier 2 — end to end, headless
+## Tier 2: headless end-to-end tests
 
-### What it stands up
+### Stack
 
-`tools/ui-smoke.sh` starts an Xvfb and runs `tools/dev-stack.sh` inside it. That, on a **private bus**
-made by `dbus-run-session`, starts:
+`tools/ui-smoke.sh` supplies Xvfb and runs `tools/dev-stack.sh` on a private bus created by
+`dbus-run-session`. The stack includes the frontend build's `xdg-permission-store`,
+`tools/mtls-server.py`, the frontend from `experimental/integration`, this backend and
+`tools/webauth-e2e.py` calling the public interface.
 
-- `xdg-permission-store` from the frontend build — xdg-desktop-portal refuses to start without it;
-- `tools/mtls-server.py`, a fixture identity provider on a port of its own choosing;
-- the **development frontend** from the branch `experimental/integration`, with an
-  `XDG_DESKTOP_PORTAL_DIR` holding this repository's `webauth.portal`, a symlink to every other
-  `.portal` on the machine, and the machine's effective `portals.conf` with one line added;
-- this backend;
-- `tools/webauth-e2e.py`, which calls the **public** interface and nothing else.
+The launcher builds a temporary `XDG_DESKTOP_PORTAL_DIR` with `webauth.portal`, symlinks to
+other installed declarations and the effective `portals.conf` with webauth routing added.
+It appends `WebAuthentication1` to `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL`, preserving existing
+names. Manual frontend startup requires the same opt-in and a configured backend. Use comma
+separators without spaces.
 
-`dev-stack.sh` starts the frontend with `WebAuthentication1` in
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL`, preserving caller-supplied names and appending
-only missing names. A manually started frontend needs the same opt-in in its environment
-at startup, plus a configured backend. Use comma-separated names with no spaces.
-
-Nothing touches the session bus and nothing opens a window on the session display.
+The default headless run leaves the desktop session bus and display untouched. `dev-stack.sh`
+without ui-smoke uses the selected display. Its `--live` mode uses the real session bus.
 
 ### Prerequisites
+
+Build this backend first. The frontend build must contain
+`desktop-portal/xdg-desktop-portal` and `document-portal/xdg-permission-store`.
+The fixture needs SoftHSM 2, `certtool`, `pkcs11-tool` and OpenSSL; the stack needs Python with GObject
+introspection, `dbus-run-session` and Xvfb. Cancellation needs xdotool. Set `BACKEND` to override
+`build/src/xdg-desktop-portal-webauth`, and `SOFTHSM_DIR` to override
+`${TMPDIR:-/tmp}/xdp-webauth-softhsm`.
 
 ```console
 $ tools/softhsm-fixture.sh                      # the CA, the server certificate, the token, the PIN
@@ -95,31 +70,30 @@ $ export XDP_BUILD=/path/to/xdg-desktop-portal/build
 $ export XVFB=/path/to/Xvfb XDOTOOL=/path/to/xdotool
 ```
 
-If the frontend was built against a scratch prefix (libdex usually is), put its `LD_LIBRARY_PATH`
-and `PKG_CONFIG_PATH` in `.xdp-env` at the top of this repository; `tools/dev-stack.sh` sources it.
+For a frontend built against a scratch prefix, put exported LD_LIBRARY_PATH and PKG_CONFIG_PATH
+values in `.xdp-env` at the repository root. Both launchers source it; XDP_ENV overrides its path.
 
-### The fixture server's certificate, and the one trust override in the binary
+### Fixture certificate trust
 
-The fixture's server certificate is issued by a fixture CA that nothing on the machine trusts —
-correctly, and there is no way to make GnuTLS trust it for one process without editing the machine's
-p11-kit or system trust. So the backend has a development-only option,
-`--debug-trust-certificate HOST=FILE`, which pins one certificate for one host through
-`webkit_network_session_allow_tls_certificate_for_host()`. `tools/dev-stack.sh` passes it; the
-installed D-Bus service file does not, and there is no other trust override anywhere in this
-backend — no "continue anyway", no TLS-errors policy option, nothing reachable from the bus.
+`--debug-trust-certificate HOST=FILE` pins the fixture server certificate for one host through
+`webkit_network_session_allow_tls_certificate_for_host()`. `dev-stack.sh` passes it for localhost.
+The installed D-Bus service does not pass it, and no trust override is reachable through D-Bus.
 
-### The five runs
+### Recorded runs
 
-Each is one command, and each was run on 2026-09-04 on Fedora 44 with WebKitGTK 2.52.5, GTK 4.22.4,
+Recorded 2026-09-04 on Fedora 44 with WebKitGTK 2.52.5, GTK 4.22.4,
 libadwaita 1.9.3, GLib 2.88.3, glib-networking 2.80 (GnuTLS backend), GnuTLS 3.8.13 and
-p11-kit 0.26.5, against xdg-desktop-portal at `experimental/certificate-webauthentication` (the
-frontend branch before the rename to `experimental/integration`).
+p11-kit 0.26.5, against xdg-desktop-portal at `experimental/certificate-webauthentication`.
+Use `experimental/integration` for current runs.
 
-Every one of them also asserts, from the **server's** access log, that the completion URI was never
-fetched. That is the guarantee the whole design exists for, and it is checked from the far end of
-the wire rather than from the client's side.
+The default completion, `https://example.invalid/cb`, targets a different server from the
+localhost fixture. The fixture access log cannot show requests to that host. A missing `/cb`
+entry proves only that the fixture received no such request; it proves neither absence of a
+completion fetch elsewhere nor absence of DNS lookup. The matched-navigation log and returned
+completion provide interception evidence. The transcripts below retain the scripts' stronger
+access-log wording; it is not a verified conclusion.
 
-#### (i) The plain flow, no client certificates
+#### (i) Plain flow without client certificates
 
 ```console
 $ tools/ui-smoke.sh
@@ -139,18 +113,16 @@ PASS
 dev-stack.sh: the completion URI was never fetched (/cb absent from the access log)
 ```
 
-The completion URI is `https://example.invalid/cb`, which does not resolve and is not the fixture
-server. It never had to: the navigation was matched and ignored before the engine fetched anything.
+The returned completion URI is `https://example.invalid/cb`.
 
-#### (ii) Mutual TLS, with the client certificate on a PKCS#11 token
+#### (ii) Mutual TLS with a PKCS#11 token
 
 ```console
 $ tools/ui-smoke.sh --mtls
 ```
 
-The fixture server is wrapped with `ssl.CERT_REQUIRED` and the fixture CA, so a client that produces
-no certificate does not complete the handshake — `curl` without `--cert` gets
-`tlsv13 alert certificate required`.
+The fixture server uses ssl.CERT_REQUIRED with its CA. A client without a certificate cannot
+complete the handshake; curl without --cert receives `tlsv13 alert certificate required`.
 
 ```
 dev-stack.sh: fixture server on port 33375 (client certificates: required)
@@ -163,7 +135,7 @@ PASS
 dev-stack.sh: the completion URI was never fetched (/cb absent from the access log)
 ```
 
-and from the backend's own log, which is what says the token was actually used:
+The backend log records token use:
 
 ```
 webauth-Message: certificate-challenge host=localhost
@@ -173,15 +145,12 @@ webauth-Message: navigation outcome=matched uri=https://example.invalid:-1/[3]
 webauth-Message: completed app_id=- reason=- seconds=0
 ```
 
-The private key is `CKA_SENSITIVE` on the token, so the handshake signature was made by the module
-inside WebKit's network process, addressed by URI. The PIN came from
-`--client-cert-pin-file`, never from argv and never from a `pin-value` in the URI, which the backend
-refuses.
+The token key has CKA_SENSITIVE. WebKit's network process performs the handshake signature through
+its module. The backend reads the PIN from `--client-cert-pin-file`;
+[Security](SECURITY.md#pkcs11-provider) documents the key-URI validation gap.
+This run also passed with `-Db_sanitize=address,undefined`, without sanitizer findings.
 
-This run was repeated with a backend built `-Db_sanitize=address,undefined`: it passes, with **no
-sanitizer findings**.
-
-#### (iii) The user cancels
+#### (iii) User cancellation
 
 ```console
 $ tools/ui-smoke.sh --cancel --start-path=/wait
@@ -198,18 +167,18 @@ PASS
 
 #### (iv) Shared and ephemeral storage
 
-The fixture server sets a cookie and reports, in the completion query, whether the engine **arrived**
+The fixture server sets a cookie and reports, in the completion query, whether the engine arrived
 carrying one from a previous run. Four runs share one `--data-home`, as an application and its
 portal would share a store between sign-ins.
 
-`--as-app` is needed here and nowhere else: an **unidentified** caller is narrowed to ephemeral by
-the backend on purpose ([`src/storage.h`](../src/storage.h)), so reaching the shared
-mode at all needs a caller the frontend can name. The flag puts the client in an
-`app-<id>-<n>.scope` cgroup with a matching `.desktop` file, which is what a desktop environment does
-when it launches an application and what `shared/xdp-app-info-host.c` reads.
+The backend forces an empty app ID to ephemeral ([`src/storage.h`](../src/storage.h)).
+`--as-app` supplies an identifiable host caller for shared-storage checks. It requires a
+delegated systemd user cgroup and creates an app-<id>-<n>.scope with a matching desktop file,
+which the frontend's shared/xdp-app-info-host.c uses to derive a host identity.
 
 ```console
-$ DH=/tmp/webauth-store; mkdir -p $DH
+$ DH=/tmp/webauth-store
+$ mkdir -p "$DH"
 $ tools/ui-smoke.sh --cookie --session-mode=shared \
     --as-app=org.example.WebauthClient --data-home=$DH -- --expect-cookie no
 $ tools/ui-smoke.sh --cookie --cookie-value=two --session-mode=shared \
@@ -227,12 +196,11 @@ $ tools/ui-smoke.sh --cookie --cookie-value=four --session-mode=shared \
 (iv d) shared, run 4     completion cookie=yes   PASS
 ```
 
-The store is `$XDG_DATA_HOME/xdg-desktop-portal-webauth/<app id>/{data,cache}`, created 0700, with
-the cookie jar at `data/cookies.sqlite`. A `WebKitNetworkSession` with a data directory does **not**
-persist cookies on its own; the cookie manager has to be given a file, and (iv b) is the test that
-would fail if that line were removed.
+The cookie manager needs an explicit persistent file; a WebKitNetworkSession data directory
+alone does not persist cookies. [Storage rules](SECURITY.md#fixed-behavior-and-storage)
+define the persistent paths and permissions.
 
-#### (v) The frontend forwards `Close()` mid-flow
+#### (v) Forwarded `Close()` during a flow
 
 ```console
 $ tools/ui-smoke.sh --start-path=/wait \
@@ -249,71 +217,91 @@ dev-stack.sh: backend log matched: cancelled .*reason=request_closed
     webauth-Message: cancelled app_id=- reason=request_closed seconds=4
 ```
 
-**No `Response` is emitted after `Close()`, and that is upstream's behaviour, not a gap here:**
-`xdp_request_dex_handle_close()` unexports the request before forwarding the close, and
-`xdp_request_dex_emit_response()` returns early for an unexported request. The application's
-evidence that anything happened is that its `Close()` returned; the backend's evidence is the log
-line above.
+No Response follows public Close. `xdp_request_dex_handle_close()` unexports the Request
+before forwarding, and `xdp_request_dex_emit_response()` skips unexported requests. The
+application observes its Close return; the backend logs `request_closed`.
 
-### The control: the frontend's own suite
+### Frontend control suite
 
-The frontend must still pass its own tests against its python-dbusmock backend, unchanged by
-anything here:
+Run the frontend's tests against its python-dbusmock backend:
 
 ```console
 $ cd /path/to/xdg-desktop-portal/tests
 $ BUILDDIR=../build ./run-test.sh ./test_webauthentication.py -q
-35 passed, 34 warnings in 14.78s
 ```
+
+Use the `experimental/integration` branch for current runs.
 
 ---
 
-## Tier 2b — both portals at once, and the card behind the web view
+## Manual invocation and rejection checks
 
-This is the run the project exists for, and it is the one to run first when something has changed.
-`tools/portal-stack.sh` puts **one private bus inside one headless X server** and stands up both
-portals against each other.
+Start a private-bus stack with the selected display:
+
+```console
+$ tools/dev-stack.sh --no-e2e --keep
+```
+
+In another terminal, set DBUS_SESSION_BUS_ADDRESS to the printed bus address and run:
+
+```console
+$ tools/trigger-webauthentication.sh all
+```
+
+The default URIs use `example.invalid`; `START_URI` and `COMPLETION_URI` override them.
+The script supports `version`, `introspect`, `start`, `reject-scheme`, `reject-mode` and `monitor`.
+Use it for invocation and rejection checks. Its short-lived `gdbus call` connection exits after
+Start, cancelling the request under the caller-disconnection contract. The monitor uses another
+connection and cannot keep that request alive.
+
+For completion testing, use the persistent client on the printed bus:
+
+```console
+$ tools/webauth-e2e.py --start-uri '<start URI>' --completion-uri '<completion URI>'
+```
+
+## Tier 2b: both portals
+
+`tools/portal-stack.sh` runs both backends and the frontend on one private bus inside Xvfb.
 
 `portal-stack.sh` enables `WebAuthentication1,Certificate1` in the frontend
 `XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` list and preserves caller-supplied names. The stack includes:
 
-- `xdg-permission-store`, and the **development frontend** with **both** experimental interfaces
+- `xdg-permission-store`, and the development frontend with both experimental interfaces
   backed, through an
   `XDG_DESKTOP_PORTAL_DIR` holding this repository's `webauth.portal`, the sibling's
   `certificate.portal`, a symlink to every other `.portal` on the machine, and the machine's
-  effective `portals.conf` with **two** lines added;
+  effective `portals.conf` with two lines added;
 - `xdg-desktop-portal-certificate` from `${CERTIFICATE_REPO:-../xdg-desktop-portal-certificate}`,
   with `--module` pointing at that repository's SoftHSM fixture and `--pin-prompt=gtk`;
 - a `$XDG_CONFIG_HOME/pkcs11/modules/xdg-desktop-portal-certificate.module` of this run's own,
-  naming the **built** module, so that p11-kit offers the portal token to this backend and to
+  naming the built module, so that p11-kit offers the portal token to this backend and to
   WebKit's network process without anything being installed system wide;
-- this backend with `--cert-adapter portal` — named, not `auto`, so that a run in which the portal
-  provider is unavailable **fails** instead of falling through to the pkcs11 provider and proving
-  nothing;
-- `tools/mtls-server.py` demanding a client certificate and trusting **only the fixture card's own
-  certificate**, so a handshake completes only if the certificate the module handed over is that
+- this backend with `--cert-adapter portal`, so provider unavailability fails the test;
+
+- `tools/mtls-server.py` demanding a client certificate and trusting only the fixture card's own
+  certificate, so a handshake completes only if the certificate the module handed over is that
   one;
 - `tools/webauth-e2e.py` on the public interface.
 
-`xdotool` answers the chooser and the PIN prompt with the sibling's driver loop — it answers
-whatever appears rather than following a script, because *how many* windows appear is one of the
-things this run exists to find out. The PIN goes through the environment and into `xdotool`'s stdin,
-never argv.
+`xdotool` responds to chooser and PIN windows as they appear. The fixture PIN travels through
+the environment and xdotool stdin, without an argv value.
 
-**The driver races a TLS handshake, and the sleeps are sized for it.** Everything between
-`CLIENT_CERTIFICATE_REQUESTED` and the signature happens inside one handshake, and WebKit abandons
-the connection if it takes too long — the failure is `load-failed detail=Operation_was_cancelled`
-and a response `2` with reason `load_failed`, with every certificate hop before it green. Two
-choosers and an on-screen PIN prompt, each answered by a driver that slept a second before every
-keystroke, measured 11.9 seconds on this machine and lost; the same run with the pacing in
-`driver.sh` today measures 7.9. There is no window manager, so a focus set before the window is
-mapped goes nowhere, which is what the ten-second retry in `handle()` is for and why the sleeps are
-not shorter still. `--pin-prompt=system` does not race anything, because the system prompter
-answers instantly. A machine under enough load to stretch the *portal's* side of it — the network
-process starting up and enumerating the token took 8.5 seconds once, during back-to-back runs —
-can still lose; re-run it on an idle machine before believing a failure of this shape.
+The driver runs during a TLS handshake. Slow interaction can produce
+`load-failed detail=Operation_was_cancelled`, response `2` / `load_failed`, even when credential
+acquisition succeeds. Recorded timings were 11.9 seconds with one-second per-keystroke delays
+(failed) and 7.9 seconds with the current pacing. Network-process startup and enumeration took
+8.5 seconds in another run. Headless focus requires a mapped window; the driver's handle function
+retries for ten seconds. Recheck timing failures on an idle machine. The fixture system prompter
+answers without typed PIN interaction.
 
 ### Prerequisites
+
+Build this backend and the Certificate backend/module first. Set CERTIFICATE_REPO when its
+checkout is elsewhere; CERT_BUILD, CERT_BACKEND and CERT_MODULE_SO override the build and
+binaries. The Certificate fixture defaults to `${TMPDIR:-/tmp}/xdp-certificate-softhsm`;
+override with CERT_SOFTHSM_DIR. The script checks that fixture even in live mode. OpenSSL and
+Python GObject introspection are required. Private-mode UI driving needs xdotool.
 
 ```console
 $ (cd ../xdg-desktop-portal-certificate && meson setup build && ninja -C build)
@@ -322,16 +310,15 @@ $ export XDP_BUILD=/path/to/xdg-desktop-portal/build
 $ export XVFB=/path/to/Xvfb XDOTOOL=/path/to/xdotool
 ```
 
-### The run
+### Fixture run
 
 ```console
 $ tools/portal-stack.sh
 ```
 
-Re-run on 2026-09-05, Fedora 44, WebKitGTK 2.52.5, GTK 4.22.4, libadwaita 1.9.3, GLib 2.88.3,
+Recorded 2026-09-05 on Fedora 44, WebKitGTK 2.52.5, GTK 4.22.4, libadwaita 1.9.3, GLib 2.88.3,
 glib-networking (GnuTLS backend), GnuTLS 3.8.13, p11-kit 0.27, SoftHSM 2, against
-xdg-desktop-portal at `experimental/certificate-webauthentication` (the frontend branch before the
-rename to `experimental/integration`):
+xdg-desktop-portal at `experimental/certificate-webauthentication`:
 
 ```
 === hop by hop ===
@@ -359,50 +346,29 @@ signatures:       1
 portal-stack: PASS
 ```
 
-Each line is from the process that made it: `backend.log` for this backend and for both module
-instances (the network process inherits this process's stderr), `certificate.log` for the sibling,
-`server.log` for the identity provider, `access.log` for the guarantee. Nothing here is inferred
-from an exit code.
+`backend.log` includes this backend and both module instances, since the network process inherits
+stderr. `certificate.log` records the Certificate backend, `server.log` the identity provider and
+`access.log` requests received by the fixture. The [access-log limitation](#recorded-runs)
+also applies here. TLS 1.3 requests RSA_PSS; the signature passes
+through C_SignInit/C_Sign in the module, public Sign and C_Sign on SoftHSM.
 
-The signature is `RSA_PSS`: that is what TLS 1.3 asks for, and it went through `C_SignInit`/`C_Sign`
-in the module, the portal's `Sign` on the public interface, and `C_Sign` on the SoftHSM token
-inside the certificate backend.
+### Two grants per fresh handshake
 
-### The finding: ONE handshake, TWO grants, TWO choosers
+The UI process constructs the GTlsCertificate, importing the certificate through one module
+instance. WebKit's network process resolves the URI and signs through another. Each instance
+has a separate D-Bus connection and grant, producing two CreateSession/AcquireCredential pairs,
+two choosers about three seconds apart and one PIN prompt.
 
-`module instances: 2` is not a bug in either service and it is not noise. One TLS handshake needs
-the certificate in **two processes**:
+WebKit requires a certificate object, and grants cannot be transferred between
+D-Bus peers. No WebKit API removes the UI import. App-info-bound grants could reduce duplicate
+consent for sandbox callers; see the Certificate portal's ADR 0011. The excluded process-tree
+delegation branch is `experimental/certificate-webauthentication+delegation`;
+[Security](SECURITY.md) describes its limits.
 
-1. **this backend's UI process** builds the `GTlsCertificate`, because
-   `webkit_credential_new_for_certificate()` takes an object and not a URI. Building it imports the
-   certificate object, which loads the module here and makes it acquire a grant;
-2. **WebKit's network process** owns the handshake and re-resolves the URI itself — spike S2's
-   result, and the whole reason the design is a module rather than a brokered `Sign`. That is a
-   second p11-kit module instance, in a second process, with a grant of its own.
+`choosers granted` counts grant-created events. Expect two on a fresh run; a third indicates a
+regression such as chain verification acquiring a credential.
 
-Two module instances mean two `CreateSession`/`AcquireCredential` pairs, and that means **two
-choosers, about three seconds apart, asking the same question**: the user answers the same prompt
-twice for one sign-in. Only one PIN prompt appears, because only the network process signs.
-
-Neither half can be removed. The UI process cannot hand WebKit a URI, and the network process
-cannot be handed the UI process's grant: a grant belongs to the D-Bus peer that acquired it, which
-is the point of the design.
-
-The process-tree delegation that did answer the second question instead of asking it is **out of
-the portal interface**, and is archived on the frontend's
-`experimental/certificate-webauthentication+delegation` branch. Why it could not be kept is in
-[SECURITY.md](SECURITY.md).
-
-`choosers granted: 2` counts `grant-created`. **The number to watch is two, and a third is a
-regression** — it means a chain verification acquired a credential, which tier 2b's phase 0 is
-the check for.
-
-The alternative that would remove the second module instance altogether — a WebKit API taking a
-PKCS#11 URI, so this process never imports anything — does not exist. The one that would remove
-the second chooser is a grant belonging to the app-info identity rather than to the D-Bus peer;
-see the certificate portal's ADR 0011.
-
-### The finding: a second `Start` shows nothing at all
+### Repeated Start
 
 ```console
 $ tools/portal-stack.sh --second-start
@@ -419,25 +385,19 @@ PIN prompts:      1
 signatures:       1
 ```
 
-The second `Start` produced **no chooser, no PIN prompt, no signature and no certificate challenge
-at all** — the backend's log has one `certificate-challenge` for two sign-ins. Two things caused
-that, and they are worth telling apart:
+The second Start produced no chooser, PIN prompt, signature or certificate challenge. Both module
+grants remained valid until expiry, invalidation or C_Finalize. The server saw GET /start and
+GET /login over the first flow's authenticated connection, so no new handshake occurred.
 
-- the module keeps its grant until `C_Finalize`, its expiry, or the portal invalidating it, so
-  neither module instance had to ask again. This is deliberate: releasing the grant with the last
-  PKCS#11 session put the chooser up on every object import and every signature;
-- WebKit reused the connection to the identity provider, so the second flow did not perform a TLS
-  handshake at all. The server saw `GET /start` and `GET /login` a second time on a connection that
-  had already presented the card's certificate.
+Both Starts used ephemeral sessions. Each session has a fresh website data store, while the
+network process, module grants and connections can survive. Restart the backend when a fresh
+authenticated transport is required.
 
-Note that the session mode was `ephemeral` both times, and it made no difference: an ephemeral
-`WebKitNetworkSession` is a fresh **website data store**, not a fresh network process, so the module
-instance and its grant survive it. A run that wants a second chooser has to restart the backend.
-
-### The finding: cancelling the chooser used to hang, and now does not
+### Chooser cancellation
 
 ```console
-$ tools/portal-stack.sh --cancel-chooser --     --expect-response 2 --expect-reason credential_unavailable --no-require-code
+$ tools/portal-stack.sh --cancel-chooser -- \
+    --expect-response 2 --expect-reason credential_unavailable --no-require-code
 ```
 
 ```
@@ -447,101 +407,86 @@ Response reason=credential_unavailable
 PASS
 ```
 
-Escape at the certificate chooser → `AcquireCredential` answers cancelled → the module has no
-credential → `g_tls_certificate_new_from_pkcs11_uris()` fails → this backend declines the challenge
-→ the handshake fails → the transaction ends, **1.9 seconds after the Escape**.
+Escape cancels AcquireCredential, the module returns no credential, certificate construction
+fails and the handshake ends. Measured time from Escape to terminal result: 1.9 seconds.
+GnuTLS exposes the same unavailable-object failure for user refusal and unavailable providers,
+so the result is `2` / `credential_unavailable`. [The impl guide](IMPL-INTERFACE.md) describes
+this diagnostic limit.
 
-Before the fix in `webkit-session.c` it did not end at all: `webkit_authentication_request_cancel()`
-makes WebKit report the load as `WEBKIT_NETWORK_ERROR_CANCELLED`, which this backend treated as its
-own interception of the completion URI, so nothing finished the transaction. The window stayed open
-for 120 seconds until the application's own timeout, and what the application was finally told was
-`request_closed` rather than why.
-
-`credential_unavailable` is the answer, and not an ideal one: what reaches this backend is
-GnuTLS reporting that the object was not available, and it cannot tell "the user refused" from "no
-provider could run". [IMPL-INTERFACE.md](IMPL-INTERFACE.md) says so.
-
-### The other PIN prompt
+### System PIN prompt
 
 ```console
 $ tools/portal-stack.sh --pin-prompt=system
 ```
 
-runs the same stack against the sibling's system-prompter path instead of its own window: its
-`certificate-test-prompter` owns `org.gnome.keyring.SystemPrompter` on the private bus and answers
-with the fixture PIN. Nothing is typed and `xdotool` is not used for the PIN, so the run also proves
-that path needs no display of the certificate backend's own.
+This runs the same stack using the sibling's system-prompter path. Its certificate-test-prompter
+owns org.gnome.keyring.SystemPrompter on the private bus and answers with the fixture PIN.
+The PIN needs no typed interaction or Certificate-backend PIN window.
 
 ---
 
-## Tier 2c — a consumer, end to end
+## Tier 2c: consumer integration
 
 This tier lives in the client's repository,
 [entra-token-helper](https://github.com/sjtrotter/entra-token-helper), and is run from a checkout of
-it. `tools/entra-e2e.sh` there puts a headless X server and a private bus around the whole stack —
-`xdg-permission-store`, the development frontend, this backend with **no certificate
-adapter** — plus an Entra-shaped mock authority, and runs `entra-token-helper` against it as an
+it. `tools/entra-e2e.sh` starts Xvfb, a private bus, xdg-permission-store, the development
+frontend, this backend with no certificate adapter and an Entra-shaped mock authority.
+It runs entra-token-helper as an
 ordinary application calling the public interface. It finds this backend through `WEBAUTH_REPO`
 (default `../xdg-desktop-portal-webauth`) and `BACKEND` (default
 `$WEBAUTH_REPO/build/src/xdg-desktop-portal-webauth`), and the frontend through `XDP_BUILD`.
 
-Three of its thirty assertions are about this backend rather than the client:
+The fixture checks:
 
-**A cached answer touches nothing.** Asked for the same token again with `--prompt never`, the
-mock's event log does not change at all. No portal call, no window, no discovery fetch. The portal
-is only on the interactive path, which is what makes it affordable to put a web engine behind it.
+- A cached token request with `--prompt never` leaves the mock event log unchanged, without a
+  portal call, window or discovery fetch.
+- A forced `interaction_required` PoP refresh opens a second portal transaction whose shared
+  session cookie permits a click-through sign-in.
+- A missing session bus produces exit 40. A caller cannot distinguish all unavailable portal
+  configurations from absence of the portal.
 
-**The `shared` session store earns its keep.** The mock refuses the first proof-of-possession
-refresh with `interaction_required`, the client opens the portal window a second time for the
-RDS-AAD scope, and the sign-in is a click rather than a fresh authentication because the identity
-provider's session cookie is still in this backend's `shared` partition. That is the behaviour
-`session_mode: shared` exists for, provoked deterministically.
-
-**No backend is the default state of a machine.** Asked with no session bus at all, the client
-exits 40. No backend configured and no portal at all are indistinguishable to a caller by design,
-and the diagnostic says so rather than guessing.
-
-Nothing in this repository is needed to run it except a build of this backend, and nothing in this
-repository depends on it.
+The projects have no build-time or fixture dependency on each other beyond selecting a built
+backend for this run.
 
 ---
 
-## Tier 3 — against a real identity provider
+## Tier 3: live identity provider
 
-**On 2026-09-05, this repository talked to Entra ID with a real card in a real reader**: a 10:42
-live sign-in and, at 14:21, the full FreeRDP-to-AVD chain. Tier 2 is still a rehearsal for that:
-a software token in a headless X server has no reader, no PIN retry counter to spend, and nothing
-to pull out mid-handshake.
+On 2026-09-05 the backend completed a live Entra ID sign-in at 10:42 and the full
+FreeRDP-to-AVD chain at 14:21. Entra certauth requested a certificate, the Certificate portal
+prompted for a PIN, and a real PIV card produced an RSA-PSS signature. The completion navigation
+was intercepted with the authorization code. The ARM token came from the keyring cache; RDS
+proof-of-possession required interactive re-authentication. Evidence covers one PIV card, one
+reader, OpenSC, GNOME 50 on Wayland and one US Government tenant. A second card, a PIN-pad reader,
+card removal, KDE and a Flatpak runtime remain untested.
 
 ### Live run against Entra
 
-**Do not run this from a script and do not run it unattended.** It uses the real session bus, the
-real certificate backend with no `--module`, the real card in the real reader, and a real tenant. It
-spends a real PIN retry counter if the PIN is wrong.
+Attend this run and invoke it manually. It uses the session bus, Certificate backend without
+`--module`, card, reader and tenant. A wrong PIN consumes a card retry.
 
-#### What has to be true first
+#### Prerequisites
 
 - the card is in the reader and `p11tool --list-tokens` shows it (OpenSC through p11-kit; the
   certificate backend finds it the same way);
 - `xdg-desktop-portal-certificate` is installed, or built and reachable through
   `$CERTIFICATE_REPO`. Its p11-kit module file does not have to be installed by hand: `--live`
-  installs it itself, once, into the **real** per-user configuration —
+  installs it itself, once, into the real per-user configuration;
   `$XDG_CONFIG_HOME/pkcs11/modules/xdg-desktop-portal-certificate.module` (default
   `~/.config/pkcs11/modules`), created 0700/0600, and only if nothing is already there. The file
-  carries `enable-in: xdg-desktop-portal-webauth, WebKitNetworkProcess` — **not** `disable-in`,
-  because `pkcs11.conf(5)` says not to set both on one module and p11-kit's
-  `is_module_enabled_unlocked()` (`p11-kit/modules.c`) takes the `enable-in` branch and never
-  consults `disable-in` when both are present. An `enable-in` allowlist of exactly the two
-  processes that need this module is what keeps it off every other p11-kit consumer on the
-  machine — ssh, curl, browsers included — which is the reason it was never safe to install
-  globally with no restriction. Verify with `p11-kit list-modules` (must not show it) versus
-  `exec -a xdg-desktop-portal-webauth p11-kit list-modules` (must show it); remove it with
+  uses `enable-in: xdg-desktop-portal-webauth, WebKitNetworkProcess`.
+  pkcs11.conf(5) forbids setting both enable-in and disable-in. In p11-kit/modules.c,
+  is_module_enabled_unlocked() takes the enable-in branch when both are present. The allowlist
+  restricts loading to this backend and WebKitNetworkProcess, excluding unrelated consumers
+  such as ssh, curl and browsers. Verify with `p11-kit list-modules` (must not show it) and
+  `exec -a xdg-desktop-portal-webauth p11-kit list-modules` (must show it). Remove it with
   `tools/portal-stack.sh --uninstall-module`, which refuses to touch a file it did not write;
-- the frontend on the branch is what owns `org.freedesktop.portal.Desktop` — `--live` takes the
+
+- the frontend on the branch is what owns `org.freedesktop.portal.Desktop`; `--live` takes the
   name for the duration and the system portal comes back by activation afterwards;
 - `<tenant>` is the directory (tenant) id of the US Government tenant.
 
-#### The command
+#### Command
 
 ```console
 $ tools/portal-stack.sh --live --pin-prompt=system -- \
@@ -557,14 +502,19 @@ $ tools/portal-stack.sh --live --pin-prompt=system -- \
     --wait 300000
 ```
 
-`--entra-authorize` builds the authorize URL rather than having it typed: the AVD public client id,
-`response_type=code`, the scope, PKCE **S256**, a random `state`, and `prompt=login` so the run
-tests the card rather than a remembered session. It prints only the scheme, host and path of the URL
-it built. **The code verifier is written to `--entra-verifier-file` with mode 0600 and is never
-printed**; the file is refused if it already exists. With the authorization code, that verifier is
-the whole credential — delete it after the exchange.
+`--entra-authorize` builds the authorize URL with the AVD public client id,
+`response_type=code`, the scope, PKCE S256, a random `state`, and `prompt=login` so the run
+requires fresh sign-in. It prints only the scheme, host and path of the URL
+it built. The code verifier and state are written to `--entra-verifier-file` with mode 0600.
+The verifier is never printed. An existing file is moved to `<path>.prev`, deleting any older
+`.prev`, before the new file is created. The verifier and authorization code permit token exchange.
+Delete both the current file and its backup after the exchange:
 
-The equivalent, if the URL is to be pasted rather than built:
+```console
+$ rm -f -- "$XDG_RUNTIME_DIR/webauth-code-verifier" "$XDG_RUNTIME_DIR/webauth-code-verifier.prev"
+```
+
+To supply an authorize URL directly:
 
 ```console
 $ tools/portal-stack.sh --live --pin-prompt=system -- \
@@ -573,92 +523,63 @@ $ tools/portal-stack.sh --live --pin-prompt=system -- \
     --session-mode ephemeral
 ```
 
-#### What the card is actually for
+#### Certificate authentication
 
-Nothing in the authorize URL asks for a certificate. The card is used **later**: when the tenant's
-conditional access policy requires certificate-based authentication, Entra redirects the sign-in
-page to `certauth.login.microsoftonline.us`, and that host demands a TLS client certificate. That
-is the challenge this backend answers — from the certificate portal's token, with the chooser and
-the PIN prompt drawn by that service.
+When tenant policy requires certificate-based authentication, Entra redirects to
+certauth.login.microsoftonline.us and requests a TLS client certificate. This backend answers
+through the Certificate portal token; that service owns the chooser and PIN prompt.
+Use `--pin-prompt=system` for the desktop's prompter.
 
-`--pin-prompt=system` is the right choice for a real run because it puts the PIN field in the
-desktop's own prompter rather than in a window this project drew.
-
-#### What to watch, and where
+#### Log evidence
 
 | | |
 |---|---|
 | the challenge arrived, and on which host | this backend's log: `certificate-challenge host=certauth.login.microsoftonline.us` |
 | the portal provider took it | `certificate-challenge provider=portal` |
-| the module reached the portal | `pkcs11-portal-certificate-DEBUG: grant acquired` — set `G_MESSAGES_DEBUG="webauth pkcs11-portal-certificate"` |
+| the module reached the portal | `pkcs11-portal-certificate-DEBUG: grant acquired`; set `G_MESSAGES_DEBUG="webauth pkcs11-portal-certificate"` |
 | the card signed | the certificate backend's `login-ok` and `operation-completed` |
-| the flow ended without fetching the redirect | `navigation outcome=matched`, and `completed` |
+| the flow intercepted a matching navigation and completed | `navigation outcome=matched`, and `completed` |
 
-Expect **two choosers**, for the reason tier 2b measures: the certificate is built in this
-backend's process and used in WebKit's network process, and each is a separate D-Bus peer with a
-grant of its own. **A third is a regression** — it means a chain verification acquired a
-credential. Each one the user answered is a `grant-created` line in the certificate backend's
-log.
+The 2026-09-05 live run also produced two grants and one PIN prompt (see the sibling
+`xdg-desktop-portal-certificate` README): the backend's session stays logged in across the second
+grant. [Tier 2b](#two-grants-per-fresh-handshake) explains the counts and regression check.
+Consent deduplication remains unimplemented.
 
-There are two grants on the card but only **one PIN prompt**, per the 2026-09-05 run (see the
-sibling `xdg-desktop-portal-certificate` README): the backend's session stays logged in across the
-second grant. Delegation would remove the second consent, not the second login, and is not built.
+#### Tenant evidence
 
-#### What only this run can answer
+The commercial nativeclient redirect applies even against the US Government authority:
+[the client's ADR 0002](https://github.com/sjtrotter/entra-token-helper/blob/main/docs/decisions/0002-no-loopback-redirect.md)
+records the registration and AADSTS50011 behavior. The redirect must be intercepted before load.
 
-The completion URI is the **commercial** `nativeclient` URL even against the US Government
-authority, because there is no `.us` variant
-([0002](https://github.com/sjtrotter/entra-token-helper/blob/main/docs/decisions/0002-no-loopback-redirect.md),
-in the client repository) — so the flow ends on a navigation to a Microsoft-operated page that must
-never be loaded, which is exactly the case tier 2 rehearses with
-`https://example.invalid/cb`. That much is already proven. What is not:
-
-- whether the authority's `certauth.<authority>` redirect raises the client-certificate challenge on
-  a host the backend considers related to the page it is showing;
-- whether a real PIV card's PKCS#11 module behaves the way SoftHSM does when WebKit's network
-  process resolves the URI — a different module, a different login model, a reader that can be
-  slow or absent;
-- whether the second grant costs a second PIN entry on a real card, which decides whether the
-  two-chooser finding above is an annoyance or a blocker;
-- whether the identity provider accepts a portal-owned WebKitGTK engine at all, or classifies it as
-  an embedded user-agent and refuses (see the honest caveat in
-  [`src/webkit-session.h`](../src/webkit-session.h));
-- what the window looks like to somebody who has to decide whether to trust it.
-
-As of the 2026-09-05 run, the correct description of this backend is "it works against a fixture,
-and against a real Entra ID tenant on a US Government cloud."
+The 2026-09-05 run confirmed related certauth challenges, OpenSC/PIV use, one PIN prompt for two
+grants and acceptance of this WebKitGTK engine by that tenant. Other providers may reject an
+embedded user-agent, as [`webkit-session.h`](../src/webkit-session.h) describes. Card/module
+compatibility, PIN behavior and usability still need broader testing.
 
 ---
 
 ### Live token exchange
 
-The run above proves the **backend** against a real tenant: a window, a card, a challenge, a code.
-This one drives it from a consumer: the same sign-in, run by `entra-token-helper` from
-[its own repository](https://github.com/sjtrotter/entra-token-helper), ending in an access token
-rather than a code somebody read off a URL. It is recorded here because the 2026-09-05 chain is the
-only end-to-end evidence this backend has.
+[entra-token-helper](https://github.com/sjtrotter/entra-token-helper) drives the portal and
+exchanges the returned code for a token. These commands reproduce the consumer path from the
+2026-09-05 chain under the [live-run precautions](#live-run-against-entra).
 
-**Same warnings.** Real session bus, real card, real reader, real tenant, a real PIN retry counter
-to spend. Do not run it from a script and do not run it unattended.
-
-#### Stand the stack up, and drive nothing
+#### Start the stack without a client
 
 ```console
 $ tools/portal-stack.sh --live --pin-prompt=system --no-e2e --keep
 ```
 
-`--no-e2e` skips `tools/webauth-e2e.py` entirely — there is no flow to start and no fixture
-identity provider, because the client names its own authority — and `--keep` leaves everything
-running. The script prints the bus address it is holding. Everything else is the live run above:
-the frontend from the branch owns `org.freedesktop.portal.Desktop`, the certificate backend is on
-the real card with no `--module`, and the PIN goes to the desktop's own prompter.
+`--no-e2e` skips `tools/webauth-e2e.py`; the client names its own authority without a fixture
+identity provider. `--keep` leaves the stack running and prints its bus address.
+The [live-stack prerequisites](#prerequisites-2) apply, with the desktop's prompter handling PINs.
 
-#### Then, from another terminal on that bus
+#### Invoke the client on the printed bus
 
 ```console
-$ export TENANT=<directory-tenant-id>
-$ export DBUS_SESSION_BUS_ADDRESS=<the address the script printed>
-$ export PATH=<the client repository>/build:$PATH
+$ export TENANT='<directory-tenant-id>'
+$ export DBUS_SESSION_BUS_ADDRESS='<the address the script printed>'
+$ export PATH="/path/to/entra-token-helper/build:$PATH"
 
 $ entra-token-helper --verbose login \
     --cloud usgov \
@@ -667,12 +588,11 @@ $ entra-token-helper --verbose login \
     --scope 'https://www.wvd.azure.us/.default openid profile offline_access'
 ```
 
-That should open the sign-in window on the desktop, redirect to
-`certauth.login.microsoftonline.us`, raise the certificate chooser once, ask for the PIN once, and
-end with `Signed in as <you>@<tenant-domain>` — **and no token on stdout**, because `login` does not
-print one.
+This opens the sign-in window on the desktop, redirects to
+`certauth.login.microsoftonline.us`, raises two certificate choosers, asks for the PIN once, and
+ends with `Signed in as <you>@<tenant-domain>`. The login command prints no token.
 
-The ARM gateway bearer token, which should be silent the second time:
+Request an ARM gateway bearer token; a second request should be silent:
 
 ```console
 $ entra-token-helper --verbose token \
@@ -682,9 +602,9 @@ $ entra-token-helper --verbose token \
     --format json
 ```
 
-The session-host proof-of-possession token, with the confirmation blob FreeRDP would have
-generated. `<blob>` is base64url of `{"kid":"<thumbprint>"}`; any well-formed one will do for a
-first run, and the `<host>` in the scope is the session host name from the connection:
+Request a session-host proof-of-possession token with a confirmation blob generated by
+FreeRDP. `<blob>` is base64url of `{"kid":"<thumbprint>"}` for the FreeRDP-owned key; `<host>`
+is the session host name from the connection:
 
 ```console
 $ entra-token-helper --verbose token \
@@ -695,53 +615,33 @@ $ entra-token-helper --verbose token \
     --format json
 ```
 
-**Expect a second window here**, even though an account is already stored. Entra puts an
-interstitial in front of the RDS-AAD scope — "you are connecting to a remote desktop", "make sure
-you trust this client" — and it is answered inside the portal's sign-in window. That is the
-`interaction_required` path tier 2c forces with the mock's `--fail-pop-refresh 1`, happening for
-real.
+The 2026-09-05 run required a second window for the RDS-AAD scope's remote-desktop trust
+interstitial. The mock's `--fail-pop-refresh 1` forces the `interaction_required` path for tier 2c.
 
-#### What to watch
+#### Client log evidence
 
 | | |
 |---|---|
-| the request the client built | its own `--verbose` line `authorize authority=login.microsoftonline.us tenant=<hash> pop=no` — and note that it names the tenant as a hash and never the URL |
+| the request the client built | its own `--verbose` line `authorize authority=login.microsoftonline.us tenant=<hash> pop=no`; and it names the tenant as a hash and never the URL |
 | the portal answered | `portal outcome=COMPLETED` |
-| the URI was this transaction's | `callback outcome=CODE`. `UNRELATED` or `INVALID` here is the interesting failure |
+| the URI was this transaction's | `callback outcome=CODE`; `UNRELATED` or `INVALID` indicates failure |
 | the grant | `token-request grant=authorization_code pop=no`, then `token-response outcome=ok` |
 | the account was stored | `keyring outcome=stored authority=login.microsoftonline.us` |
-| the second run was silent | `cache outcome=hit`, and **no** `token-request` line at all |
+| the second run was silent | `cache outcome=hit`, and no `token-request` line at all |
 
-#### What only this run can answer
+#### Evidence and remaining checks
 
-- whether Entra accepts the authorization request this client builds — in particular whether
-  `prompt=select_account` and the commercial `nativeclient` redirect against the `.us` authority
-  behave the way the hardware run's hand-built URL did;
-- whether the ID token's `preferred_username` is the name a person expects to see in `accounts`;
-- whether the refresh token survives long enough to make the silent path worth having, and what
-  the tenant's Conditional Access policy does to it;
-- whether the interstitial appears where this document says it does, and whether answering it
-  inside the portal's window is a tolerable experience;
-- whether the PoP token the client gets back is one FreeRDP will actually accept — answered by the
-  2026-09-05 chain, through the author's fork-only proof-of-concept branch `client/entra-token-helper`
-  pointed at this binary. That branch is not proposed upstream; the upstream integration path is
-  FreeRDP/FreeRDP#13340.
+The 2026-09-05 chain demonstrates a PoP token accepted by FreeRDP through the fork-only
+`client/entra-token-helper` proof of concept. The intended helper integration is FreeRDP #13340.
+Repeat checks for client-built prompt=select_account, ID-token preferred_username, refresh-token
+lifetime under Conditional Access and interstitial usability across tenants. These are consumer
+checks; the backend does not interpret the authorization response.
 
-As of the 2026-09-05 run, the correct description of this client is "it works against a mock, and
-against a real Entra ID tenant through a proof-of-concept FreeRDP fork".
+#### Proof-of-concept command
 
-#### What the author's PoC branch sends
-
-For the record, so that a change here can be checked against it without reading the other
-repository. This is the author's fork-only proof-of-concept branch `client/entra-token-helper`, not
-proposed upstream — the upstream integration path is FreeRDP/FreeRDP#13340 (David Fort, 2026-09-04,
-reviewed favourably by akallabeth for 3.32), which externalises the AAD web view into a helper
-process speaking JSON-RPC over pipes: `navigate` takes a url, a redirect_uri prefix and a timeout
-and returns the verbatim redirect URL, OAuth stays in FreeRDP, and the helper is selected by
-`/azure:auth-helper:<path|autodetect>`. The intended integration is a small helper speaking that
-protocol which forwards to the WebAuthentication portal; it does not exist yet. On the PoC branch,
-`client_token_helper_acquire()` builds exactly this, with any option whose value is empty left out
-entirely:
+The fork-only branch from the 2026-09-05 run builds this command, omitting empty values.
+[Roadmap](ROADMAP.md#freerdp-integration) describes David Fort's FreeRDP #13340 helper protocol
+and its review by akallabeth for 3.32.
 
 ```
 entra-token-helper token \
@@ -752,28 +652,28 @@ entra-token-helper token \
   --scope <one per occurrence, decoded>
 ```
 
-It reads the **plain** stdout form — the token and a newline — and never passes `--json`. The
-authority is a **host**, from `FreeRDP_GatewayAzureActiveDirectory`, whose default is
-`login.microsoftonline.com`; the tenant is separate. `--prompt` is not passed today, so the
-default `auto` applies.
+The shim reads a token followed by a newline from stdout without requesting --json. The
+authority is a host, from `FreeRDP_GatewayAzureActiveDirectory`, whose default is
+`login.microsoftonline.com`; the tenant is separate. The shim omits --prompt, so auto applies.
 
 ---
 
-### OneDrive client through the portal
+### OneDrive wrapper
 
 The abraunegg OneDrive client (Fedora package `onedrive`, tested at v2.5.11) is an existing
-application that needs no patch to use this portal. `--auth-files <authUrlFile>:<responseUrlFile>`
+application whose file-based authentication interface needs no patch for the wrapper. `--auth-files <authUrlFile>:<responseUrlFile>`
 makes it write the Microsoft authorize URL to the first file and poll until the second exists,
 expecting the whole redirect URI a user would otherwise have copied out of a browser.
 [`../tools/onedrive-auth.py`](../tools/onedrive-auth.py) sits between those two files and
-`Start()`: it reads the authorize URL, takes the completion URI from that URL's `redirect_uri`
+`Start()`. It reads the authorize URL, takes the completion URI from that URL's `redirect_uri`
 (the nativeclient path on the same host if there is none), and writes the URI the portal returns.
 It deletes neither file; the client deletes both itself once the response file appears.
 
 Exit status is 0 completed, 1 cancelled, 2 anything else. It logs one line per state change to
-stderr, with scheme, host and path only.
+stderr, with URI scheme, host and path. It also logs result query-key names and fragment presence,
+without query values or the authorization code.
 
-#### Live, on the desktop
+#### Live desktop recipe
 
 In one terminal:
 
@@ -781,8 +681,7 @@ In one terminal:
 $ tools/portal-stack.sh --live --no-e2e --keep
 ```
 
-In another. `--live` runs on the real session bus, so nothing is exported. A confdir of its
-own keeps an existing `~/.config/onedrive` untouched:
+In another terminal on the session bus, use a separate confdir to preserve ~/.config/onedrive:
 
 ```console
 $ export A=$XDG_RUNTIME_DIR/onedrive-auth-url B=$XDG_RUNTIME_DIR/onedrive-response-url
@@ -791,16 +690,14 @@ $ onedrive --confdir ~/.config/onedrive-portal --reauth --auth-files "$A:$B" &
 $ tools/onedrive-auth.py "$A:$B"
 ```
 
-`onedrive` prints `Client requires authentication before proceeding. Waiting for --auth-files
-elements to be available.` and the wrapper prints `authorize`, `completion`, `request` and then
-`completed, response written to $B`. A sign-in window opens on the desktop against
-`login.microsoftonline.com`; the flow ends on
-`https://login.microsoftonline.com/common/oauth2/nativeclient`, which is never fetched. `onedrive`
-then reports the account and removes both files. Nothing prints the authorization code.
+On a successful live run, onedrive writes the authorize URL and waits for its response file.
+The wrapper logs authorize, completion, request and the output-file path. The portal returns the
+nativeclient completion without fetching it; onedrive then consumes the response and removes
+both files. The recorded evidence below does not establish a completed live OneDrive sign-in.
 
 #### Headless
 
-The wrapper is exercised against the fixture identity provider rather than Microsoft. With
+The recorded wrapper test uses the fixture identity provider. With
 `tools/portal-stack.sh --pin-prompt=system --keep` holding the stack up, an authorize URL naming
 the fixture's `/start` with `redirect_uri=https://example.invalid/cb` is written to the first file
 by hand, and the wrapper is run on the same bus:
@@ -812,9 +709,12 @@ onedrive-auth: request /org/freedesktop/portal/desktop/request/1_25/onedriveauth
 onedrive-auth: completed, response written to .../fb
 ```
 
-The response file is mode 0600 and holds the completion URI with its `code` and `state`, and
-`/cb` is absent from the fixture's access log. Run for real under the same stack, `onedrive` writes
-a `login.microsoftonline.com` authorize URL, the wrapper derives
-`/common/oauth2/nativeclient` from its `redirect_uri` and opens the window; the fixture cannot
-answer for Microsoft, so that run ends at `the portal answered 2, reason timeout` and exit 2, which
-is as far as it is taken.
+The response file is mode 0600 and holds the completion URI with its `code` and `state`.
+The fixture's access log contains no `/cb`; the [access-log limitation](#recorded-runs) applies.
+This exercises the wrapper with a manually written input file; it does not establish successful
+OneDrive integration.
+
+With the same fixture stack, `onedrive` writes a `login.microsoftonline.com` authorize URL.
+The wrapper derives `/common/oauth2/nativeclient` from its `redirect_uri` and opens the window.
+The fixture cannot answer for Microsoft; that attempt ended at
+`the portal answered 2, reason timeout` with exit 2.

@@ -1,154 +1,130 @@
-# The public interface is not in this repository
+# Public interface
 
-This document used to specify the public web-authentication interface at length, because
-this repository shipped the frontend that exported it. It does not any more: the frontend
-is a branch of xdg-desktop-portal, and **the XML on that branch is the specification**. See
-[decisions/0010-backend-only-frontend-lives-upstream.md](decisions/0010-backend-only-frontend-lives-upstream.md).
+Applications call the frontend in
+[xdg-desktop-portal, branch `experimental/integration`](https://github.com/sjtrotter/xdg-desktop-portal/tree/experimental/integration).
+The branch's `data/org.freedesktop.portal.experimental.WebAuthentication1.xml` is authoritative.
+[ADR 0010](decisions/0010-backend-only-frontend-lives-upstream.md) records frontend ownership.
 
-## Where it is
+| Component | Path on the frontend branch |
+|---|---|
+| Public XML | `data/org.freedesktop.portal.experimental.WebAuthentication1.xml` |
+| Impl XML | `data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml` |
+| Frontend | `desktop-portal/web-authentication.c` |
+| Mock backend | `tests/templates/webauthentication.py` |
+| Tests | `tests/test_webauthentication.py` |
+
+This repository's
+[impl XML](../data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml)
+is byte-identical to the frontend branch's impl XML apart from the provenance comment.
+
+## Export and versioning
+
+| Property | Value |
+|---|---|
+| Bus name | `org.freedesktop.portal.Desktop` |
+| Object path | `/org/freedesktop/portal/desktop` |
+| Interface | `org.freedesktop.portal.experimental.WebAuthentication1` |
+| `version` | `1` |
+
+Export requires a configured backend and `WebAuthentication1` in
+`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` in the frontend's startup environment. To enable the
+Certificate portal too, use `WebAuthentication1,Certificate1`. The list contains comma-separated
+names without spaces. Without these conditions the interface is absent from introspection and
+`Properties.Get` fails. Clients must handle an unavailable interface.
+
+Experimental public interfaces use `org.freedesktop.portal.experimental.<Name>1`; their impl
+counterparts use `org.freedesktop.impl.portal.experimental.<Name>1`, at the same object path.
+A breaking change increments the trailing number; a non-breaking change increments `version`.
+The experimental interfaces can be removed and have no stability guarantee.
+
+## Start
 
 ```
-repository   a local checkout of xdg-desktop-portal   (remote: origin, https://github.com/sjtrotter/xdg-desktop-portal)
-branch       experimental/integration
-public XML   data/org.freedesktop.portal.experimental.WebAuthentication1.xml
-impl XML     data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml
-frontend     desktop-portal/web-authentication.c
-mock backend tests/templates/webauthentication.py
-tests        tests/test_webauthentication.py
+Start(s parent_window, s start_uri, s completion_uri, a{sv} options) -> o handle
 ```
 
-The impl half is also here, as a verbatim tracking copy:
-[`../data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml`](../data/org.freedesktop.impl.portal.experimental.WebAuthentication1.xml).
-The public half is deliberately **not** copied: this repository has no reason to hold a
-second copy of an interface it does not implement, and a stale one would be worse than
-none.
+`Start` returns a Request handle. Subscribe to its `org.freedesktop.portal.Request.Response`
+signal before calling, using the predictable path from `handle_token`. The frontend exports
+the Request before forwarding to a backend. There is no portal Session object; `session_mode`
+selects website storage.
 
-Everything below is a summary for orientation. Where it disagrees with the XML, the XML is
-right.
+`start_uri` must be absolute HTTPS with a host. `completion_uri` must be absolute, without
+userinfo or a wildcard host. HTTP and HTTPS require a host. Private-use redirects such as
+`com.example.app:/oauth2redirect` are accepted with a path and no authority, per RFC 8252
+section 7.1. A URI with neither host nor path is rejected. Both URIs have bounded length;
+control characters, backslashes and malformed URI syntax are rejected.
 
-## Summary
-
-Interface `org.freedesktop.portal.experimental.WebAuthentication1`, on bus name
-`org.freedesktop.portal.Desktop`, object path
-`/org/freedesktop/portal/desktop`, `version` property `1`.
-
-The frontend exports it when a backend is configured and `WebAuthentication1` is in
-`XDG_DESKTOP_PORTAL_ENABLE_EXPERIMENTAL` in the frontend environment at startup. The list
-is comma separated, with no spaces; include `Certificate1` to enable the Certificate portal.
-Otherwise the interface is absent from introspection and `Properties.Get` fails; a client
-must treat that as *unavailable* and fall through. Breaking changes increment the trailing
-interface number; non-breaking changes increment the `version` property.
-
-```
-Start (s parent_window, s start_uri, s completion_uri, a{sv} options) → o handle  [Request]
-```
-
-One method. It hands the desktop a URI to open and the exact URI whose navigation ends the
-flow, and answers with the URI the flow finished on. There is **no `Session` object**:
-`session_mode` names a website data store, not a portal Session, despite the word.
-
-### The URIs
-
-- `start_uri` must be an absolute **`https`** URI with a host.
-- `completion_uri` must be an absolute URI with **no userinfo** and no wildcard. An
-  `http` or `https` one must name a host; a **private-use scheme redirect URI** as
-  RFC 8252 section 7.1 describes it — `com.example.app:/oauth2redirect`, with no
-  authority at all — is accepted with only a path, and is then matched on its scheme and
-  its path. One that names neither a host nor a path is refused: there would be nothing
-  to match on.
-- A malformed request is a **D-Bus error out of `Start()`**, before any backend is asked
-  and any window is opened.
-- **A sandboxed application with no network access cannot call `Start()`**: the response
-  is an answer fetched from the network, so a sandbox that is not allowed to reach the
-  network must not reach it through the portal either. The call fails with
-  `org.freedesktop.portal.Error.NotAllowed`.
+Malformed requests produce a D-Bus error before a backend is called. A sandboxed application
+without network access receives `org.freedesktop.portal.Error.NotAllowed`.
 
 ### Options
 
 | Key | Type | Meaning |
 |---|---|---|
-| `handle_token` | `s` | last element of the Request path, so the caller can subscribe before calling. Not forwarded to the backend. |
-| `activation_token` | `s` | window activation, passed through. |
-| `session_mode` | `s` | `shared` (default) or `ephemeral`. **An unknown value is an error, never a fallback.** `shared` means shared between flows run by this backend — never with the user's browser; `ephemeral` means a data store made for this flow and destroyed with it. |
-| `timeout` | `u` | seconds; default 300, and anything above the 900 s ceiling is clamped to it. **The frontend keeps this deadline**: it races the backend call against a timeout, and when the timeout wins it calls `Close()` on the impl `Request` and answers `2` with `reason` `timeout`. The value is forwarded as well, and this backend still ends the flow on its own deadline; whichever end reaches it first, the window goes away. |
-| `title` | `s` | a short hint about what the sign-in is for. Application-supplied text, shown as such, never as the identity of the window. |
+| `handle_token` | `s` | Valid object-path element naming the Request; consumed by the frontend. |
+| `activation_token` | `s` | Window activation token, passed through to the backend. |
+| `session_mode` | `s` | `shared` (default) or `ephemeral`; unknown values fail. This backend shares persistent storage per app ID and forces an empty app ID to ephemeral. Browser profiles are separate. |
+| `timeout` | `u` | Positive seconds; default 300, clamped to 900. The frontend enforces the deadline and forwards the value for the backend's timer. |
+| `title` | `s` | Single-line application-supplied hint, at most 256 characters. Displayed separately from verified identity. |
 
-Unknown keys are dropped, not forwarded.
+Unknown keys are dropped. The frontend adds `app_identity_level` for the backend.
 
-### Results, on the Request's `Response` signal
+### Response and cancellation
 
-- `completion_uri` (`s`) — the matched URI, complete and undecoded, including query and
-  fragment, obtained from the web engine rather than reconstructed. Present only when the
-  response is `0`.
-- `reason` (`s`) — an optional stable symbol explaining a non-zero response: `timeout`,
-  `no_display`, `no_backend`, `backend_disappeared`, `backend_completion_mismatch`,
-  `backend_protocol_error`, `session_terminated`, `credential_unavailable`. It is a
-  diagnostic, never a substitute for the response code, and consumers must tolerate its
-  absence.
+`Response(u response, a{sv} results)` uses `0` completed, `1` cancelled and `2` other.
+A completed response contains `completion_uri` (`s`), the complete URI obtained from the engine,
+including query and fragment. The frontend rechecks it against the requested URI.
 
-Response codes are the portal's usual three: `0` completed, `1` cancelled, `2` other.
+A non-zero response may contain `reason` (`s`), a diagnostic symbol. Frontend symbols include
+`timeout`, `backend_disappeared`, `backend_completion_mismatch` and
+`backend_protocol_error`. Backend examples include `no_display`, `session_terminated` and
+`credential_unavailable`. Clients must tolerate absent and unfamiliar reasons.
+
+At most one Response is emitted. `Request.Close()` cancels and unexports the Request; it does
+not produce a later Response. Timeout closes the impl Request and emits `2` with reason `timeout`.
+[The impl guide](IMPL-INTERFACE.md) describes the failure paths.
 
 ## Completion matching
 
-The rule, from the public XML, is matched against **every navigation the web view is asked
-to make, in any frame**, on the parsed URI:
+Match every navigation in any frame against parsed URI components:
 
-- scheme and host compared **case insensitively**, and a URI with a host never matches
-  one without — which is what makes a private-use scheme redirect exact;
-- effective ports compared with **default ports normalised** (`:443` equals the default);
-- **paths compared exactly**, on the form the URI parser produces — so `%63allback` equals
-  `callback`, `%2f` equals `%2F`, `/a/../callback` equals `/callback`, and an
-  internationalised host equals its punycode spelling. An empty path and `/` are **not**
-  equal, and neither is a host with a trailing dot: both fail closed;
-- **no userinfo, and no wildcard**: a `completion_uri` whose host contains `*` is refused
-  by `Start()` rather than matched literally;
-- **query and fragment carry the result of the flow and take no part in matching**;
-- **a match ends the flow and is never loaded**, whichever frame it happened in. The XML said
-  "subframe navigations do not end the flow" until 2026-09-04; no backend on WebKitGTK 6 could
-  keep that promise, and the wording now says what is enforced. See
-  [IMPL-INTERFACE.md](IMPL-INTERFACE.md).
+- Compare scheme and host case insensitively. A host-bearing URI cannot match a hostless URI.
+- Compare effective ports, with HTTP port 80 and HTTPS port 443 as defaults.
+- Compare paths exactly in the parser's encoded form. GLib normalizes unreserved percent
+  escapes, percent-escape case and dot segments; `%63allback` equals `callback`, `%2f` equals
+  `%2F`, and `/a/../callback` equals `/callback`. Internationalized hosts match their punycode
+  spelling. Empty path and `/` differ, as do hosts with and without a trailing dot.
+- Reject userinfo. Reject a wildcard host in the requested completion URI.
+- Exclude query and fragment from the comparison; they carry the result.
 
-It is enforced twice and the two checks answer different questions: the **backend** decides
-when to stop the browser, and must complete the transaction *before the matched navigation
-loads*, because the completion URI routinely carries the credential the flow was for. The
-**frontend** re-checks the URI the backend returned against the one the application asked
-for, before the application sees anything; on a mismatch the response becomes `2` with
-`reason` `backend_completion_mismatch` and the URI is discarded. That second check is why
-"you get what you asked for" is a statement the *portal* makes, on the bus name the
-application trusts, rather than a relay of whatever backend a distribution installed.
+A matching navigation ends the flow before loading, including in a subframe. The frontend
+discards a mismatched returned URI with `2` / `backend_completion_mismatch`. Applications must
+validate their protocol response, including OAuth `state` and code cardinality.
+[The impl guide](IMPL-INTERFACE.md#completion-checks) describes the WebKitGTK frame-identity limit.
 
-The frontend's half is implemented and tested upstream —
-`web-authentication.c:completion_uri_matches()`, `test_completion_mismatch_rejected`, and
-`test_completion_normalisation_accepted` / `test_completion_near_miss_refused`, which name
-each equivalence and each near miss one by one. This repository's half is
-[`../src/completion.h`](../src/completion.h)/`completion.c`, implemented and
-tested by `test-completion.c`; [IMPL-INTERFACE.md](IMPL-INTERFACE.md) explains why both exist.
+The frontend matcher is `web-authentication.c:completion_uri_matches()`, covered by
+`test_completion_mismatch_rejected`, `test_completion_normalisation_accepted` and
+`test_completion_near_miss_refused`. This backend's matcher is
+[`completion.h`](../src/completion.h) / `completion.c`, covered by `test-completion.c`.
+[The impl guide](IMPL-INTERFACE.md) describes fixture sharing.
 
-## What version 1 does not support
+## Version 1 limits
 
-Navigation (GET) completions only. No `response_mode=form_post`, no SAML HTTP-POST, no
-prefix matching, no wildcards, no external scheme dispatch. Why the remit is that narrow,
-and what version 1 therefore is not, is
-[decisions/0005-service-shape.md](decisions/0005-service-shape.md).
+Version 1 supports navigation (GET) completions. It has no POST completion shape
+(`response_mode=form_post` or SAML HTTP-POST), prefix matching, wildcard matching or external
+scheme dispatch. [ADR 0005](decisions/0005-service-shape.md) records the scope decision.
 
-## Accessibility
+## Accessibility requirements
 
-The chrome carries a security decision, and a user who cannot perceive it cannot make that
-decision. AT-SPI exposure for every backend-owned control — there is no in-process
-certificate chooser or PIN prompt; both are the Certificate portal's — keyboard-only
-operation, meaningful focus order
-including across a hand-off to another portal's windows, screen-reader announcement of the
-verified caller and the current origin, no meaning conveyed by colour alone, accessible
-error and cancellation states, and focus restored to the calling application on close.
+Backend-owned controls must expose AT-SPI labels, keyboard operation and meaningful focus
+order, including across Certificate portal windows. The verified caller and current origin
+must be announced to screen readers. Errors and cancellation must be accessible, color must
+not be the sole signal, and focus must return to the calling application on close. The
+Certificate portal owns its chooser and PIN controls. [Security](SECURITY.md) records coverage.
 
-These are **backend** obligations — this repository's — because the frontend draws nothing.
-They are acceptance criteria rather than polish. See [SECURITY.md](SECURITY.md).
+## Manual calls
 
-## Poking it by hand
-
-[`../tools/trigger-webauthentication.sh`](../tools/trigger-webauthentication.sh) makes
-these calls with `gdbus`, using `https://example.invalid/...` placeholders so nothing can
-reach a real identity provider by accident, and includes the two rejection cases. Its
-`start_uri` and `completion_uri` are overridable with `START_URI` and `COMPLETION_URI`.
-[`../tools/dev-stack.sh`](../tools/dev-stack.sh) starts a development frontend and this
-backend on a private bus first.
+[Testing](TESTING.md#manual-invocation-and-rejection-checks) gives invocation and rejection
+checks with [`trigger-webauthentication.sh`](../tools/trigger-webauthentication.sh) and
+completion testing with the persistent client.
+[`dev-stack.sh`](../tools/dev-stack.sh) supplies the private-bus frontend and backend.
