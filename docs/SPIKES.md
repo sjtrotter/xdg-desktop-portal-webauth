@@ -87,7 +87,7 @@ WebKitNetworkSession has no `webkit_network_session_set_tls_interaction()` sette
 signer hook. WebKit emits CLIENT_CERTIFICATE_PIN_REQUESTED (scheme 9) after the certificate
 challenge; `webkit_credential_new_for_certificate_pin()` answers it. A `pin-value` URI worked in
 the initial experiment. [The PKCS#11 provider documentation](SECURITY.md#pkcs11-provider)
-describes current rejection and the unchecked key-URI gap. The portal token uses
+describes `pin-value` rejection in both certificate and key URIs. The portal token uses
 CKF_PROTECTED_AUTHENTICATION_PATH and keeps PIN handling in its backend.
 
 A PKCS#11 URI cannot name a socket. p11-kit remoting needs `p11-kit-client.so`,

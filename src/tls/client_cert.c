@@ -71,6 +71,13 @@ gboolean webauth_cert_adapter_configure(const char* name, const char* certificat
 		return FALSE;
 	}
 
+	if (private_key_uri != NULL && strstr(private_key_uri, "pin-value") != NULL)
+	{
+		g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+		            "--client-key-uri must not carry pin-value; use --client-cert-pin-file");
+		return FALSE;
+	}
+
 	g_clear_pointer(&configured_name, g_free);
 	g_clear_pointer(&cert_uri, g_free);
 	g_clear_pointer(&key_uri, g_free);

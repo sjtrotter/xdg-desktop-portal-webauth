@@ -73,6 +73,9 @@ runs, and runs against a real identity provider.
 This process has no certificate chooser and no PIN prompt of its own
 ([ADR 0007](docs/decisions/0007-certificate-adapter.md)).
 
+Both `--client-cert-uri` and `--client-key-uri` reject `pin-value`; supply the PIN through
+`--client-cert-pin-file`.
+
 ## Status
 
 | Feature | State | Notes |
@@ -105,8 +108,6 @@ Flatpak runtime.
   application's identity through needs frontend work.
 - Certificate grants and authenticated TLS connections can outlive the sign-in that created
   them ([Security](docs/SECURITY.md)).
-- `--client-key-uri` accepts a `pin-value`
-  ([#6](https://github.com/sjtrotter/xdg-desktop-portal-webauth/issues/6)).
 - Any application can open a phishing page in the portal window; some identity providers
   refuse embedded web views; browser single sign-on is not available; version 1 completes on
   navigations only ([ADR 0005](docs/decisions/0005-service-shape.md)).

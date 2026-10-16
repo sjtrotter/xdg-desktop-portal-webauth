@@ -41,7 +41,7 @@ access control on the backend; the peer checks below remain required.
 | TLS errors fail closed, with no bypass reachable from the bus | `src/webkit-session.c` | Implemented |
 | Downloads, popups, JavaScript-opened windows and every permission request refused | `src/webkit-session.c` | Implemented |
 | Certificate challenges from a host unrelated to the page are declined | `src/webkit-session.c` | Implemented |
-| `pin-value` rejection | `src/tls/client_cert.c` | Partial: only `--client-cert-uri` is checked. See [the key-URI gap](#pkcs11-provider). |
+| `pin-value` rejection | `src/tls/client_cert.c` | Implemented for both `--client-cert-uri` and `--client-key-uri`. |
 | Structural redaction: no entry point can log a URI, a query, a certificate URI or a PIN | `src/redact.c`, unit-tested | Implemented |
 | `PR_SET_DUMPABLE(0)` and `RLIMIT_CORE 0` | `src/main.c` | Implemented for this process. `execve` resets dumpable, so WebKit's network and web processes are not covered |
 | Chrome states the frontend-established caller, its identity level, and the engine's origin | `src/chrome.c` | Implemented. Designer and user review outstanding |
@@ -218,11 +218,8 @@ termination. None is implemented.
 
 The operator names a token with `--client-cert-uri`; an optional `--client-key-uri` names its key.
 This provider supplies no chooser. It reads a required PIN from `--client-cert-pin-file`, holds
-it for the transaction and overwrites it on release. Only `--client-cert-uri` is checked for
-`pin-value`; an explicit `--client-key-uri` is copied unchecked and can expose a PIN through
-`/proc/*/cmdline`. This gap is tracked in
-[sjtrotter/xdg-desktop-portal-webauth#6](https://github.com/sjtrotter/xdg-desktop-portal-webauth/issues/6).
-Use the PIN file rather than embedding a PIN in either URI.
+it for the transaction and overwrites it on release. Both URI options reject `pin-value` and
+report an invalid argument directing the operator to `--client-cert-pin-file`.
 
 The PIN answers WebKit's CLIENT_CERTIFICATE_PIN_REQUESTED through
 `webkit_credential_new_for_certificate_pin()`. It never enters the DOM, logs or persistent engine
